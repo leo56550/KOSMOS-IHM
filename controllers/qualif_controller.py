@@ -1,0 +1,708 @@
+import os
+import io
+import json
+import shutil
+import math
+import folium
+
+from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtWebChannel import QWebChannel
+
+from services.video_service import get_all_mp4_files, check_stereo_status
+from services.campaign_service import get_video_gps_coords, get_video_json_path
+from services.migration_service import migrate_json_file_if_needed
+from services.motor_service import get_motor_stable_timestamps
+from services.image_service import extract_frame_at_time
+from views.widgets.video_player_dialog import VideoPlayerWindow
+from views.dialogs.map_dialog import MapDialog, MapBridge
+
+
+class QualifController:
+    def __init__(self, widget: QtWidgets.QWidget, parent=None):
+        self.widget = widget
+        self.parent = parent
+        self.current_language = 'en'
+        self.system_data = None
+        self.video_model = QtGui.QStandardItemModel()
+        self.trash_model = QtGui.QStandardItemModel()
+        self.selected_video_name = None
+        self.all_coords = {}
+        self.campaign_fields = {}
+        self.detached_player = None
+        self.current_campaign_folder = None
+
+        self.video_tree = self.widget.findChild(QtWidgets.QTreeView, "video_tree")
+        self.trash_video_tree = self.widget.findChild(QtWidgets.QTreeView, "trash_video_tree")
+        self.frame_campaign = self.widget.findChild(QtWidgets.QFrame, "frame_campagne")
+        self.mini_map_container = self.widget.findChild(QtWidgets.QFrame, "mini_map_container")
+        self.frame_miniature = self.widget.findChild(QtWidgets.QFrame, "frame_miniature")
+
+        if self.frame_campaign:
+            layout = QtWidgets.QVBoxLayout(self.frame_campaign)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.setSpacing(10)
+            self.lbl_section_title = QtWidgets.QLabel("Campaign Properties")
+            self.lbl_section_title.setStyleSheet(
+                "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 5px;"
+            )
+            self.lbl_section_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self.lbl_section_title)
+            self.scroll_campaign = QtWidgets.QScrollArea(self.frame_campaign)
+            self.scroll_campaign.setWidgetResizable(True)
+            self.scroll_campaign.setStyleSheet("background: transparent; border: none;")
+            self.dynamic_form_container = QtWidgets.QWidget()
+            self.scroll_campaign.setWidget(self.dynamic_form_container)
+            layout.addWidget(self.scroll_campaign)
+
+        self._init_video_list()
+        self._init_trash_list()
+        self._init_minimap()
+        self._init_miniature_area()
+        self.set_language(self.current_language)
+
+    # --- Language ---
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
+
+    def set_language(self, language: str):
+        self.current_language = language
+        if hasattr(self, 'lbl_section_title'):
+            self.lbl_section_title.setText(self.translate("Propriétés de campagne", "Campaign Properties"))
+        if hasattr(self, 'lbl_videos_title'):
+            self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
+        if hasattr(self, 'lbl_trash_title'):
+            self.lbl_trash_title.setText(self.translate("Vidéos supprimées", "Removed Videos"))
+        header_labels = [
+            self.translate("Fichier", "File"),
+            self.translate("Durée", "Duration"),
+            "FPS",
+            self.translate("Résolution", "Resolution"),
+            self.translate("Taille", "Size"),
+        ]
+        self.video_model.setHorizontalHeaderLabels(header_labels)
+        self.trash_model.setHorizontalHeaderLabels(header_labels)
+
+    # --- Init helpers ---
+
+    def _init_video_list(self):
+        self.video_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size", "Date"])
+        self.video_tree.setModel(self.video_model)
+
+        splitter = self.video_tree.parentWidget()
+        self.widget_video_container = QtWidgets.QWidget()
+        layout_block = QtWidgets.QVBoxLayout(self.widget_video_container)
+        layout_block.setContentsMargins(0, 0, 0, 0)
+        layout_block.setSpacing(5)
+        self.lbl_videos_title = QtWidgets.QLabel("Campaign Videos")
+        self.lbl_videos_title.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 2px;"
+        )
+        self.lbl_videos_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        if hasattr(splitter, "indexOf"):
+            index = splitter.indexOf(self.video_tree)
+            layout_block.addWidget(self.lbl_videos_title)
+            layout_block.addWidget(self.video_tree)
+            splitter.insertWidget(index, self.widget_video_container)
+
+        for i in range(self.video_model.columnCount()):
+            self.video_tree.resizeColumnToContents(i)
+        self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.video_tree.clicked.connect(self.on_video_selected)
+        self.video_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.video_tree.customContextMenuRequested.connect(self.show_context_menu)
+        self.video_tree.setDragEnabled(True)
+        self.video_tree.setAcceptDrops(True)
+        self.video_tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DragDrop)
+        self.video_tree.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
+        self.video_tree.dragEnterEvent = self.video_drag_enter_event
+        self.video_tree.dropEvent = self.video_drop_event
+
+    def _init_trash_list(self):
+        if not self.trash_video_tree:
+            return
+        self.trash_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size"])
+        self.trash_video_tree.setModel(self.trash_model)
+
+        splitter_trash = self.trash_video_tree.parentWidget()
+        self.widget_trash_container = QtWidgets.QWidget()
+        layout_block_trash = QtWidgets.QVBoxLayout(self.widget_trash_container)
+        layout_block_trash.setContentsMargins(0, 0, 0, 0)
+        layout_block_trash.setSpacing(5)
+        self.lbl_trash_title = QtWidgets.QLabel("Removed Videos")
+        self.lbl_trash_title.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #ff5555; padding-bottom: 2px;"
+        )
+        self.lbl_trash_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        if hasattr(splitter_trash, "indexOf"):
+            index_trash = splitter_trash.indexOf(self.trash_video_tree)
+            layout_block_trash.addWidget(self.lbl_trash_title)
+            layout_block_trash.addWidget(self.trash_video_tree)
+            splitter_trash.insertWidget(index_trash, self.widget_trash_container)
+
+        for i in range(self.trash_model.columnCount()):
+            self.trash_video_tree.resizeColumnToContents(i)
+        self.trash_video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.trash_video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.trash_video_tree.setAcceptDrops(True)
+        self.trash_video_tree.setDragEnabled(True)
+        self.trash_video_tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DragDrop)
+        self.trash_video_tree.dragEnterEvent = self.trash_drag_enter_event
+        self.trash_video_tree.dropEvent = self.trash_drop_event
+
+    def _init_minimap(self):
+        self.bridge = MapBridge()
+        self.channel = QWebChannel()
+        self.channel.registerObject("backend", self.bridge)
+        self.bridge.videoSelected.connect(self.select_video_by_name)
+        self.map_dialog = MapDialog(self.bridge, self.channel, parent=self.widget)
+        self.map_initialized = False
+
+    def _init_miniature_area(self):
+        if not self.frame_miniature:
+            return
+        if self.frame_miniature.layout():
+            old = self.frame_miniature.layout()
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            QtWidgets.QWidget().setLayout(old)
+
+        scroll_area = QtWidgets.QScrollArea(self.frame_miniature)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("background-color: #2778a2; border: none;")
+
+        scroll_content = QtWidgets.QWidget()
+        self.scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
+        self.scroll_layout.setContentsMargins(10, 10, 10, 10)
+        self.scroll_layout.setSpacing(15)
+        self.scroll_layout.addStretch()
+
+        scroll_area.setWidget(scroll_content)
+        main_layout = QtWidgets.QVBoxLayout(self.frame_miniature)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(scroll_area)
+
+    # --- Campaign opening ---
+
+    def open_system_explorer(self, derusher_name: str):
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self.parent or self.widget, "Select Campaign Folder"
+        )
+        if not directory:
+            return
+
+        self.current_campaign_folder = directory
+        self.video_model.removeRows(0, self.video_model.rowCount())
+        if self.trash_video_tree:
+            self.trash_model.removeRows(0, self.trash_model.rowCount())
+        self.all_coords.clear()
+        self.map_initialized = False   # Force la recréation de la carte pour la nouvelle campagne
+
+        videos = get_all_mp4_files(directory)
+        if not videos:
+            print("[WARNING] No MP4 files found.")
+            return
+
+        for video in videos:
+            col_name = QtGui.QStandardItem(video["name"])
+            col_dur = QtGui.QStandardItem(video["duration"])
+            col_fps = QtGui.QStandardItem(video["fps"])
+            col_res = QtGui.QStandardItem(video["res"])
+            size_str = video.get("size") or (
+                f"{os.path.getsize(video['path']) / (1024 * 1024):.2f} MB"
+                if os.path.exists(video["path"]) else "--"
+            )
+            col_size = QtGui.QStandardItem(size_str)
+            col_date = QtGui.QStandardItem(video["date"])
+            col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
+            self.video_model.appendRow([col_name, col_dur, col_fps, col_res, col_size, col_date])
+
+            coords = get_video_gps_coords(video["path"])
+            if coords:
+                self.all_coords[video["name"]] = coords
+
+        self.update_minimap(self.selected_video_name)
+
+        update_counter = 0
+        first_loaded_json = None
+
+        for video in videos:
+            json_path = get_video_json_path(video["path"])
+            if not os.path.exists(json_path):
+                continue
+            migrate_json_file_if_needed(json_path)
+            if not first_loaded_json:
+                first_loaded_json = json_path
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_payload = json.load(f)
+                if "survey" in json_payload and "derusher" in json_payload.get("video_observation", {}):
+                    json_payload["video_observation"]["derusher"]["value"] = derusher_name
+                    with open(json_path, 'w', encoding='utf-8') as f:
+                        json.dump(json_payload, f, indent=2, ensure_ascii=False)
+                    update_counter += 1
+            except Exception as e:
+                print(f"Error patching {json_path}: {e}")
+
+        print(f"[JSON] Derusher '{derusher_name}' written into {update_counter} files.")
+
+        self.system_data = None
+        if first_loaded_json:
+            try:
+                with open(first_loaded_json, 'r', encoding='utf-8') as f:
+                    complete_dataset = json.load(f)
+                if "system" in complete_dataset:
+                    self.system_data = complete_dataset["system"]
+            except Exception as e:
+                print(f"[ERROR] Could not read system data: {e}")
+            self.load_and_display_campaign_json(first_loaded_json)
+
+    def load_and_display_campaign_json(self, json_path: str):
+        if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:
+            return
+
+        # Remplacer le widget interne — évite "QWidget already has a layout"
+        # causé par deleteLater() asynchrone sur l'ancien layout.
+        new_container = QtWidgets.QWidget()
+        self.scroll_campaign.setWidget(new_container)   # QScrollArea supprime l'ancien
+        self.dynamic_form_container = new_container
+        self.campaign_fields.clear()
+
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    json_payload = json.load(f)
+                if "survey" in json_payload:
+                    form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
+                    form_layout.setContentsMargins(5, 5, 5, 5)
+                    form_layout.setSpacing(15)
+                    form_layout.setFieldGrowthPolicy(
+                        QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+                    for key, meta in json_payload["survey"].items():
+                        display_name = meta.get("name_fr", key).capitalize()
+                        value = meta.get("value") or ""
+                        input_field = QtWidgets.QLineEdit()
+                        input_field.setText(str(value))
+                        input_field.setStyleSheet("""
+                            QLineEdit { font-size: 14px; font-weight: bold; padding: 6px;
+                                        color: #ffffff; background-color: #1a1a1a;
+                                        border: 1px solid #555555; border-radius: 4px; }
+                        """)
+                        if meta.get("example"):
+                            input_field.setPlaceholderText(str(meta["example"]))
+                        self.campaign_fields[key] = input_field
+                        input_field.editingFinished.connect(
+                            lambda tk=key: self.on_campaign_field_modified(tk))
+                        lbl = QtWidgets.QLabel(f"{display_name} :")
+                        lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #e0e0e0;")
+                        form_layout.addRow(lbl, input_field)
+                    return
+            except Exception as e:
+                print(f"Error loading campaign JSON: {e}")
+
+        fallback_layout = QtWidgets.QVBoxLayout(self.dynamic_form_container)
+        lbl_error = QtWidgets.QLabel("No active campaign data found.")
+        lbl_error.setStyleSheet("color: #aaaaaa; font-style: italic; font-size: 11px;")
+        lbl_error.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        fallback_layout.addWidget(lbl_error)
+
+    def on_campaign_field_modified(self, key: str):
+        widget = self.campaign_fields.get(key)
+        if widget:
+            self.synchronize_campaign_field(key, widget.text())
+
+    def synchronize_campaign_field(self, key: str, value: str):
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path or not os.path.exists(video_path):
+                continue
+            json_path = get_video_json_path(video_path)
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if "survey" in data and key in data["survey"]:
+                        data["survey"][key]["value"] = value
+                        with open(json_path, 'w', encoding='utf-8') as f:
+                            json.dump(data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"[IO SYNC ERROR] {e}")
+
+    # --- Video selection ---
+
+    def on_video_selected(self, index: QtCore.QModelIndex):
+        item = self.video_model.itemFromIndex(index.siblingAtColumn(0))
+        if not item:
+            return
+        video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        video_name = item.text()
+        self.selected_video_name = video_name
+
+        is_stereo, video_payload = check_stereo_status(video_path)
+        video_dir = os.path.dirname(video_path)
+        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        engine_events = []
+        if os.path.exists(csv_system):
+            self.update_camera_views(video_path, csv_system)
+            engine_events = get_motor_stable_timestamps(csv_path=csv_system, delay=6.0)
+
+        self.update_minimap(selected_name=video_name)
+
+        if self.detached_player is not None:
+            try:
+                self.detached_player.close()
+                self.detached_player.deleteLater()
+            except Exception:
+                pass
+        self.detached_player = VideoPlayerWindow(video_payload, events_data=engine_events, parent=self.widget)
+        self.detached_player.show()
+
+    # --- Minimap ---
+
+    def update_minimap(self, selected_name=None):
+        valid_coords = {}
+        if self.all_coords:
+            for name, coords in self.all_coords.items():
+                if coords and len(coords) >= 2:
+                    lat, lon = coords[0], coords[1]
+                    if lat is not None and lon is not None:
+                        try:
+                            if not (math.isnan(float(lat)) or math.isnan(float(lon))):
+                                valid_coords[name] = [float(lat), float(lon)]
+                        except (ValueError, TypeError):
+                            pass
+
+        center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
+
+        if not getattr(self, 'map_initialized', False):
+            m = folium.Map(location=center, zoom_start=17, tiles=None)
+            folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
+            folium.TileLayer(
+                tiles="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png",
+                attr="Map data: &copy; OpenSeaMap contributors",
+                name="OpenSeaMap", overlay=True, control=True, max_zoom=19
+            ).add_to(m)
+            folium.LayerControl().add_to(m)
+
+            m.get_root().header.add_child(
+                folium.Element('<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>')
+            )
+            main_script = """
+            <script>
+                var qtBackend = null; var allMarkers = {}; var lastRedMarker = null;
+                document.addEventListener("DOMContentLoaded", function() {
+                    if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+                        new QWebChannel(qt.webChannelTransport, function (channel) {
+                            qtBackend = channel.objects.backend;
+                        });
+                    }
+                });
+                function notifyPython(videoName) { if (qtBackend) { qtBackend.select_video(videoName); } }
+                function changeMarkerColorJS(videoName) {
+                    if (lastRedMarker && allMarkers[lastRedMarker]) {
+                        allMarkers[lastRedMarker].setIcon(L.AwesomeMarkers.icon({icon: 'camera', prefix: 'fa', markerColor: 'blue'}));
+                        allMarkers[lastRedMarker].closePopup();
+                    }
+                    if (allMarkers[videoName]) {
+                        var mNew = allMarkers[videoName];
+                        mNew.setIcon(L.AwesomeMarkers.icon({icon: 'camera', prefix: 'fa', markerColor: 'red'}));
+                        mNew.setZIndexOffset(1000); lastRedMarker = videoName;
+                        setTimeout(function() { mNew.openPopup(); }, 50);
+                        if (window.leafletMap) { window.leafletMap.panTo(mNew.getLatLng()); }
+                    }
+                }
+            </script>"""
+            m.get_root().html.add_child(folium.Element(main_script))
+            js_map_linkage = f"""
+            <script>
+                document.addEventListener("DOMContentLoaded", function() {{
+                    if (typeof {m.get_name()} !== 'undefined') {{ window.leafletMap = {m.get_name()}; }}
+                }});
+            </script>"""
+            m.get_root().html.add_child(folium.Element(js_map_linkage))
+
+            for name, coords in valid_coords.items():
+                popup = folium.Popup(name, auto_close=False, close_on_click=False)
+                marker = folium.Marker(location=coords, popup=popup,
+                                       icon=folium.Icon(color='blue', icon='camera', prefix='fa'))
+                marker.add_to(m)
+                js_reg = f"""
+                <script>
+                    document.addEventListener("DOMContentLoaded", function() {{
+                        setTimeout(function() {{
+                            var mInstance = {marker.get_name()};
+                            if (mInstance) {{
+                                allMarkers["{name}"] = mInstance;
+                                mInstance.on('click', function(e) {{ notifyPython("{name}"); }});
+                            }}
+                        }}, 150);
+                    }});
+                </script>"""
+                m.get_root().html.add_child(folium.Element(js_reg))
+
+            data = io.BytesIO()
+            m.save(data, close_file=False)
+            self.map_dialog.map_view.setHtml(data.getvalue().decode())
+            self.map_initialized = True
+            self.map_dialog.show()
+            if selected_name and selected_name in valid_coords:
+                QtCore.QTimer.singleShot(500, lambda: self.apply_red_marker_js(selected_name))
+        else:
+            if not self.map_dialog.isVisible():
+                self.map_dialog.show()
+            if selected_name and selected_name in valid_coords:
+                self.apply_red_marker_js(selected_name)
+
+    def apply_red_marker_js(self, selected_name: str):
+        if not selected_name:
+            return
+        script = f"""
+        if (typeof changeMarkerColorJS === 'function' && typeof allMarkers !== 'undefined' && allMarkers['{selected_name}']) {{
+            changeMarkerColorJS('{selected_name}');
+        }} else {{
+            setTimeout(function() {{
+                if (typeof changeMarkerColorJS === 'function') {{ changeMarkerColorJS('{selected_name}'); }}
+            }}, 100);
+        }}"""
+        self.map_dialog.map_view.page().runJavaScript(script)
+
+    def select_video_by_name(self, video_name: str):
+        if self.selected_video_name == video_name:
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.text() == video_name:
+                index = self.video_model.indexFromItem(item)
+                self.video_tree.blockSignals(True)
+                self.video_tree.selectionModel().setCurrentIndex(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect | QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.video_tree.scrollTo(index)
+                self.video_tree.blockSignals(False)
+                self.selected_video_name = video_name
+                video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                video_dir = os.path.dirname(video_path)
+                csv_system = os.path.join(video_dir, "systemEvent.csv")
+                motor_events = []
+                if os.path.exists(csv_system):
+                    self.update_camera_views(video_path, csv_system)
+                    motor_events = get_motor_stable_timestamps(csv_path=csv_system, delay=6.0)
+                if self.detached_player is not None:
+                    try:
+                        self.detached_player.close()
+                        self.detached_player.deleteLater()
+                    except Exception:
+                        pass
+                self.detached_player = VideoPlayerWindow(video_path, events_data=motor_events, parent=self.widget)
+                self.detached_player.show()
+                self.update_minimap(video_name)
+                break
+
+    # --- Camera views / thumbnails ---
+
+    def update_camera_views(self, video_path: str, csv_path: str):
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        try:
+            motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+            if not motor_events:
+                lbl = QtWidgets.QLabel("No motor rotation found in the CSV file.")
+                lbl.setStyleSheet("color: white; font-size: 14px;")
+                self.scroll_layout.addWidget(lbl)
+                self.scroll_layout.addStretch()
+                return
+
+            rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
+            for index_rot, rotation_events in enumerate(rotation_groups):
+                frame_rotation = QtWidgets.QFrame()
+                frame_rotation.setFixedHeight(230)
+                frame_rotation.setStyleSheet(
+                    "background-color: #20415d; border-radius: 8px; border: 1px solid #3d3d3d;"
+                )
+                hbox = QtWidgets.QHBoxLayout(frame_rotation)
+                hbox.setContentsMargins(15, 10, 15, 10)
+                hbox.setSpacing(15)
+
+                title_lbl = QtWidgets.QLabel(f"Rotation\n#{index_rot + 1}\n(360°)")
+                title_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 13px;")
+                title_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                title_lbl.setFixedWidth(90)
+                hbox.addWidget(title_lbl)
+
+                for evt in rotation_events:
+                    ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
+                    w_photo = QtWidgets.QFrame()
+                    if evt_type == "rotation_360":
+                        w_photo.setFixedSize(248, 188)
+                        w_photo.setStyleSheet(
+                            "background-color: #1a1a1a; border-radius: 6px; border: 3px solid #ff3333;"
+                        )
+                    else:
+                        w_photo.setFixedSize(240, 180)
+                        w_photo.setStyleSheet(
+                            "background-color: #1a1a1a; border-radius: 6px; border: 1px solid #555555;"
+                        )
+                    frame_data = extract_frame_at_time(video_path, ts)
+                    if frame_data is not None:
+                        self._display_in_frame(w_photo, frame_data, angle, ts)
+                    hbox.addWidget(w_photo)
+
+                if len(rotation_events) < 6:
+                    for _ in range(6 - len(rotation_events)):
+                        hbox.addSpacing(240)
+                hbox.addStretch()
+                self.scroll_layout.addWidget(frame_rotation)
+        except Exception as e:
+            print(f"Error updating camera views: {e}")
+
+    def _display_in_frame(self, widget: QtWidgets.QFrame, cv_img, angle_degrees: int, ts_seconds: float):
+        h, w, ch = cv_img.shape
+        q_img = QtGui.QImage(cv_img.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+        pixmap = QtGui.QPixmap.fromImage(q_img)
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        lbl = QtWidgets.QLabel(widget)
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setPixmap(pixmap.scaled(
+            widget.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            QtCore.Qt.TransformationMode.SmoothTransformation
+        ))
+        layout.addWidget(lbl)
+        angle_lbl = QtWidgets.QLabel(f" {angle_degrees}° ", lbl)
+        angle_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #55ff55; font-weight: bold; border-radius: 3px; font-size: 10px;"
+        )
+        angle_lbl.move(5, 5)
+        minutes = int(ts_seconds // 60)
+        seconds = int(ts_seconds % 60)
+        ms = int((ts_seconds - int(ts_seconds)) * 1000)
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds:02d}.{ms:03d} ", lbl)
+        time_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #ffffff; font-weight: bold; border-radius: 3px; font-size: 10px;"
+        )
+        time_lbl.adjustSize()
+        time_lbl.move(widget.width() - time_lbl.width() - 5, 5)
+
+    # --- Context menu / drag-drop ---
+
+    def show_context_menu(self, position: QtCore.QPoint):
+        index = self.video_tree.indexAt(position)
+        if not index.isValid():
+            return
+        menu = QtWidgets.QMenu(self.video_tree)
+        trash_action = menu.addAction("Delete")
+        clicked_action = menu.exec(self.video_tree.viewport().mapToGlobal(position))
+        if clicked_action == trash_action:
+            self.delete_video_by_index(index.siblingAtColumn(0))
+
+    def delete_video_by_index(self, index: QtCore.QModelIndex):
+        row = index.row()
+        name_item = self.video_model.item(row, 0)
+        if not name_item:
+            return
+        video_name = name_item.text()
+        original_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        new_video_path = original_path
+
+        if original_path and os.path.exists(original_path):
+            try:
+                orig_dir = os.path.dirname(original_path)
+                campaign_dir = os.path.dirname(orig_dir)
+                trash_dir = os.path.join(campaign_dir, ".trash")
+                os.makedirs(trash_dir, exist_ok=True)
+                target = os.path.join(trash_dir, os.path.basename(orig_dir))
+                if os.path.exists(target):
+                    shutil.rmtree(target)
+                new_folder = shutil.move(orig_dir, trash_dir)
+                new_video_path = os.path.join(new_folder, os.path.basename(original_path))
+            except Exception as e:
+                print(f"Error moving {video_name} to trash: {e}")
+                return
+
+        items = [self.video_model.item(row, c) for c in range(5)]
+        col_name = QtGui.QStandardItem(video_name)
+        col_name.setData(new_video_path, QtCore.Qt.ItemDataRole.UserRole)
+        self.trash_model.appendRow(
+            [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
+        )
+        self.video_model.removeRow(row)
+        if self.selected_video_name == video_name:
+            self.selected_video_name = None
+
+    def restore_video_by_index(self, index: QtCore.QModelIndex):
+        row = index.row()
+        item_name = self.trash_model.item(row, 0)
+        if not item_name:
+            return
+        video_name = item_name.text()
+        video_path_trash = item_name.data(QtCore.Qt.ItemDataRole.UserRole)
+        new_video_path = video_path_trash
+
+        if video_path_trash and os.path.exists(video_path_trash):
+            try:
+                video_dir_in_trash = os.path.dirname(video_path_trash)
+                global_trash_dir = os.path.dirname(video_dir_in_trash)
+                campaign_dir = os.path.dirname(global_trash_dir)
+                destination = os.path.join(campaign_dir, os.path.basename(video_dir_in_trash))
+                if os.path.exists(destination):
+                    shutil.rmtree(destination)
+                new_folder = shutil.move(video_dir_in_trash, campaign_dir)
+                new_video_path = os.path.join(new_folder, os.path.basename(video_path_trash))
+            except Exception as e:
+                print(f"Error restoring {video_name}: {e}")
+                return
+
+        items = [self.trash_model.item(row, c) for c in range(5)]
+        col_name = QtGui.QStandardItem(video_name)
+        col_name.setData(new_video_path, QtCore.Qt.ItemDataRole.UserRole)
+        self.video_model.appendRow(
+            [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
+        )
+        self.trash_model.removeRow(row)
+
+    def trash_drag_enter_event(self, event: QtGui.QDragEnterEvent):
+        if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist") and event.source() == self.video_tree:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def trash_drop_event(self, event: QtGui.QDropEvent):
+        if event.source() == self.video_tree:
+            selected = self.video_tree.selectionModel().selectedRows()
+            if selected:
+                selected.sort(key=lambda idx: idx.row(), reverse=True)
+                for idx in selected:
+                    self.delete_video_by_index(idx)
+                event.setDropAction(QtCore.Qt.DropAction.CopyAction)
+                event.accept()
+        else:
+            event.ignore()
+
+    def video_drag_enter_event(self, event: QtGui.QDragEnterEvent):
+        if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist") and event.source() == self.trash_video_tree:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def video_drop_event(self, event: QtGui.QDropEvent):
+        if event.source() == self.trash_video_tree:
+            selected = self.trash_video_tree.selectionModel().selectedRows()
+            if selected:
+                selected.sort(key=lambda idx: idx.row(), reverse=True)
+                for idx in selected:
+                    self.restore_video_by_index(idx)
+                event.setDropAction(QtCore.Qt.DropAction.CopyAction)
+                event.accept()
+        else:
+            event.ignore()

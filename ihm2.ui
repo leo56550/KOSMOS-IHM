@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1742</width>
-    <height>1213</height>
+    <width>1551</width>
+    <height>995</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -30,11 +30,11 @@ QLabel#titre_campagne {
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="gridLayout">
-    <item row="0" column="0">
+   <layout class="QVBoxLayout" name="verticalLayout_15">
+    <item>
      <widget class="QStackedWidget" name="stackedWidget">
       <property name="currentIndex">
-       <number>4</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="page_qualification">
        <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -70,7 +70,7 @@ QLabel#titre_campagne {
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>200</height>
+                 <height>430</height>
                 </size>
                </property>
                <property name="maximumSize">
@@ -160,25 +160,6 @@ background-color: rgb(39, 120, 162);
 };
 background-color: rgb(32, 65, 93);
 </string>
-               </property>
-              </widget>
-              <widget class="QFrame" name="mini_map_container">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>200</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">background-color: rgb(32, 65, 93);
-border-radius: 10px ;
-border: 1px solid #152d42;</string>
-               </property>
-               <property name="frameShape">
-                <enum>QFrame::Shape::StyledPanel</enum>
-               </property>
-               <property name="frameShadow">
-                <enum>QFrame::Shadow::Raised</enum>
                </property>
               </widget>
              </widget>
@@ -301,7 +282,7 @@ QPushButton[actif=&quot;true&quot;] {
               <string/>
              </property>
              <property name="pixmap">
-              <pixmap>../../../Users/Administrateur/.designer/backup/img/logo_kosmos.png</pixmap>
+              <pixmap>../Users/Administrateur/.designer/backup/img/logo_kosmos.png</pixmap>
              </property>
              <property name="alignment">
               <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -464,76 +445,7 @@ border-radius: 10px
                   <property name="orientation">
                    <enum>Qt::Orientation::Vertical</enum>
                   </property>
-                  <widget class="QPushButton" name="btn_debrumage">
-                   <property name="styleSheet">
-                    <string notr="true">QPushButton {
-    background-color: #2778a2;
-    color: white;
-    font-weight: bold;
-    border-radius: 4px;
-    padding: 6px 15px;
-    font-size: 12px;
-    border: none; /* Ajouté pour éviter les bordures natives par défaut */
-}
-
-QPushButton:hover {
-    background-color: #00a2ff;
-}
-
-/* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
-QPushButton[actif=&quot;true&quot;] {
-    background-color: #00a2ff;
-    font-size: 14px;
-    padding: 10px 22px;
-    border: 1px solid #ffffff;
-}</string>
-                   </property>
-                   <property name="text">
-                    <string>Débrumage</string>
-                   </property>
-                  </widget>
-                  <widget class="QPushButton" name="btn_hr">
-                   <property name="styleSheet">
-                    <string notr="true">QPushButton {
-    background-color: #2778a2;
-    color: white;
-    font-weight: bold;
-    border-radius: 4px;
-    padding: 6px 15px;
-    font-size: 12px;
-    border: none; /* Ajouté pour éviter les bordures natives par défaut */
-}
-
-QPushButton:hover {
-    background-color: #00a2ff;
-}
-
-/* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
-QPushButton[actif=&quot;true&quot;] {
-    background-color: #00a2ff;
-    font-size: 14px;
-    padding: 10px 22px;
-    border: 1px solid #ffffff;
-}</string>
-                   </property>
-                   <property name="text">
-                    <string>HR</string>
-                   </property>
-                  </widget>
                  </widget>
-                </item>
-                <item>
-                 <spacer name="verticalSpacer_3">
-                  <property name="orientation">
-                   <enum>Qt::Orientation::Vertical</enum>
-                  </property>
-                  <property name="sizeHint" stdset="0">
-                   <size>
-                    <width>20</width>
-                    <height>40</height>
-                   </size>
-                  </property>
-                 </spacer>
                 </item>
                </layout>
               </widget>
@@ -747,10 +659,9 @@ background-color: rgb(39, 120, 162);
              <property name="orientation">
               <enum>Qt::Orientation::Horizontal</enum>
              </property>
-             <widget class="QFrame" name="graph_container">
+             <widget class="QFrame" name="frame_2">
               <property name="styleSheet">
-               <string notr="true">background-color: rgb(32, 65, 93);
-</string>
+               <string notr="true">background-color: rgb(32, 65, 93);</string>
               </property>
               <property name="frameShape">
                <enum>QFrame::Shape::StyledPanel</enum>
@@ -758,28 +669,65 @@ background-color: rgb(39, 120, 162);
               <property name="frameShadow">
                <enum>QFrame::Shadow::Raised</enum>
               </property>
-              <layout class="QGridLayout" name="gridLayout_2">
-               <item row="0" column="0">
-                <widget class="QSplitter" name="splitter_11">
+              <layout class="QHBoxLayout" name="horizontalLayout_6">
+               <item>
+                <widget class="QSplitter" name="splitter_10">
                  <property name="orientation">
-                  <enum>Qt::Orientation::Vertical</enum>
+                  <enum>Qt::Orientation::Horizontal</enum>
                  </property>
-                 <widget class="QFrame" name="common_metadata">
-                  <property name="styleSheet">
-                   <string notr="true">background-color: rgb(39, 120, 162);
-font-weight: bold;</string>
-                  </property>
+                 <widget class="QFrame" name="frame_5">
                   <property name="frameShape">
                    <enum>QFrame::Shape::StyledPanel</enum>
                   </property>
                   <property name="frameShadow">
                    <enum>QFrame::Shadow::Raised</enum>
                   </property>
+                  <layout class="QVBoxLayout" name="verticalLayout_7">
+                   <item>
+                    <widget class="QSplitter" name="splitter_6">
+                     <property name="orientation">
+                      <enum>Qt::Orientation::Vertical</enum>
+                     </property>
+                     <widget class="QTreeView" name="tree_videos">
+                      <property name="styleSheet">
+                       <string notr="true">QTreeView::item {
+    font-size: 14px;
+    padding: 8px;
+    font-weight: bold;
+}
+
+/* Style pour l'en-tête (l'étage des titres des colonnes) */
+QHeaderView::section {
+    font-size: 14px;
+    padding: 6px;            /* Donne de la hauteur à l'en-tête */
+    font-weight: bold;
+background-color: rgb(39, 120, 162);
+    color: white;
+    border: 1px solid #152d42;
+	font-weight: bold;
+};
+background-color: rgb(39, 120, 162);
+</string>
+                      </property>
+                     </widget>
+                     <widget class="QFrame" name="graph_trash_container">
+                      <property name="frameShape">
+                       <enum>QFrame::Shape::StyledPanel</enum>
+                      </property>
+                      <property name="frameShadow">
+                       <enum>QFrame::Shadow::Raised</enum>
+                      </property>
+                     </widget>
+                    </widget>
+                   </item>
+                  </layout>
                  </widget>
-                 <widget class="QFrame" name="specific_metada">
-                  <property name="styleSheet">
-                   <string notr="true">background-color: rgb(39, 120, 162);
-font-weight: bold;</string>
+                 <widget class="QFrame" name="container_weather_data">
+                  <property name="minimumSize">
+                   <size>
+                    <width>1200</width>
+                    <height>0</height>
+                   </size>
                   </property>
                   <property name="frameShape">
                    <enum>QFrame::Shape::StyledPanel</enum>
@@ -787,21 +735,144 @@ font-weight: bold;</string>
                   <property name="frameShadow">
                    <enum>QFrame::Shadow::Raised</enum>
                   </property>
+                  <layout class="QVBoxLayout" name="verticalLayout_10">
+                   <item>
+                    <widget class="QSplitter" name="splitter_11">
+                     <property name="orientation">
+                      <enum>Qt::Orientation::Horizontal</enum>
+                     </property>
+                     <widget class="QFrame" name="container_system_survey_data">
+                      <property name="styleSheet">
+                       <string notr="true">background-color: rgb(39, 120, 162);
+
+</string>
+                      </property>
+                      <property name="frameShape">
+                       <enum>QFrame::Shape::StyledPanel</enum>
+                      </property>
+                      <property name="frameShadow">
+                       <enum>QFrame::Shadow::Raised</enum>
+                      </property>
+                      <layout class="QVBoxLayout" name="verticalLayout_11">
+                       <item>
+                        <widget class="QSplitter" name="splitter_13">
+                         <property name="orientation">
+                          <enum>Qt::Orientation::Vertical</enum>
+                         </property>
+                         <widget class="QFrame" name="data_survey_container">
+                          <property name="styleSheet">
+                           <string notr="true">background-color: rgb(32, 65, 93);
+</string>
+                          </property>
+                          <property name="frameShape">
+                           <enum>QFrame::Shape::StyledPanel</enum>
+                          </property>
+                          <property name="frameShadow">
+                           <enum>QFrame::Shadow::Raised</enum>
+                          </property>
+                         </widget>
+                         <widget class="QFrame" name="data_system_container">
+                          <property name="frameShape">
+                           <enum>QFrame::Shape::StyledPanel</enum>
+                          </property>
+                          <property name="frameShadow">
+                           <enum>QFrame::Shadow::Raised</enum>
+                          </property>
+                         </widget>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                     <widget class="QFrame" name="frame_8">
+                      <property name="styleSheet">
+                       <string notr="true">background-color: rgb(39, 120, 162);
+
+</string>
+                      </property>
+                      <property name="frameShape">
+                       <enum>QFrame::Shape::StyledPanel</enum>
+                      </property>
+                      <property name="frameShadow">
+                       <enum>QFrame::Shadow::Raised</enum>
+                      </property>
+                      <layout class="QVBoxLayout" name="verticalLayout_12">
+                       <item>
+                        <widget class="QSplitter" name="splitter_15">
+                         <property name="orientation">
+                          <enum>Qt::Orientation::Vertical</enum>
+                         </property>
+                         <widget class="QFrame" name="container_meteo_data">
+                          <property name="frameShape">
+                           <enum>QFrame::Shape::StyledPanel</enum>
+                          </property>
+                          <property name="frameShadow">
+                           <enum>QFrame::Shadow::Raised</enum>
+                          </property>
+                         </widget>
+                         <widget class="QFrame" name="specific_container_data">
+                          <property name="styleSheet">
+                           <string notr="true">background-color: rgb(32, 65, 93);</string>
+                          </property>
+                          <property name="frameShape">
+                           <enum>QFrame::Shape::StyledPanel</enum>
+                          </property>
+                          <property name="frameShadow">
+                           <enum>QFrame::Shadow::Raised</enum>
+                          </property>
+                         </widget>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                    </widget>
+                   </item>
+                  </layout>
                  </widget>
                 </widget>
                </item>
-               <item row="0" column="1">
-                <widget class="QSplitter" name="splitter_10">
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="page_extraction">
+       <layout class="QVBoxLayout" name="verticalLayout_13">
+        <item>
+         <widget class="QFrame" name="frame_6">
+          <property name="styleSheet">
+           <string notr="true">background-color: rgb(32, 65, 93);
+</string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::Shape::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Shadow::Raised</enum>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_7">
+           <item>
+            <widget class="QSplitter" name="splitter_16">
+             <property name="orientation">
+              <enum>Qt::Orientation::Horizontal</enum>
+             </property>
+             <widget class="QFrame" name="frame_7">
+              <property name="frameShape">
+               <enum>QFrame::Shape::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Shadow::Raised</enum>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_14">
+               <item>
+                <widget class="QSplitter" name="splitter_17">
                  <property name="orientation">
                   <enum>Qt::Orientation::Vertical</enum>
                  </property>
-                 <widget class="QTreeView" name="treeView_2">
-                  <property name="maximumSize">
-                   <size>
-                    <width>300</width>
-                    <height>16777215</height>
-                   </size>
-                  </property>
+                 <widget class="QTreeView" name="tree_videos_2">
                   <property name="styleSheet">
                    <string notr="true">QTreeView::item {
     font-size: 14px;
@@ -823,10 +894,7 @@ background-color: rgb(39, 120, 162);
 </string>
                   </property>
                  </widget>
-                 <widget class="QFrame" name="graph_trash_container">
-                  <property name="styleSheet">
-                   <string notr="true">background-color: rgb(39, 120, 162);</string>
-                  </property>
+                 <widget class="QFrame" name="param_container">
                   <property name="frameShape">
                    <enum>QFrame::Shape::StyledPanel</enum>
                   </property>
@@ -838,45 +906,35 @@ background-color: rgb(39, 120, 162);
                </item>
               </layout>
              </widget>
-             <widget class="QFrame" name="frame_8">
-              <property name="maximumSize">
-               <size>
-                <width>500</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">background-color: rgb(32, 65, 93);
-
-</string>
-              </property>
+             <widget class="QFrame" name="lecteur_timeline_container_2">
               <property name="frameShape">
                <enum>QFrame::Shape::StyledPanel</enum>
               </property>
               <property name="frameShadow">
                <enum>QFrame::Shadow::Raised</enum>
               </property>
-              <layout class="QVBoxLayout" name="verticalLayout_7">
-               <item>
-                <widget class="QSplitter" name="splitter_6">
-                 <property name="orientation">
-                  <enum>Qt::Orientation::Vertical</enum>
-                 </property>
-                 <widget class="QFrame" name="container_weather_data">
-                  <property name="styleSheet">
-                   <string notr="true">background-color: rgb(39, 120, 162);
+             </widget>
+             <widget class="QTreeView" name="tree_segment_capture_container">
+              <property name="styleSheet">
+               <string notr="true">QTreeView::item {
+    font-size: 14px;
+    padding: 8px;
+    font-weight: bold;
+}
+
+/* Style pour l'en-tête (l'étage des titres des colonnes) */
+QHeaderView::section {
+    font-size: 14px;
+    padding: 6px;            /* Donne de la hauteur à l'en-tête */
+    font-weight: bold;
+background-color: rgb(39, 120, 162);
+    color: white;
+    border: 1px solid #152d42;
+	font-weight: bold;
+};
+background-color: rgb(39, 120, 162);
 </string>
-                  </property>
-                  <property name="frameShape">
-                   <enum>QFrame::Shape::StyledPanel</enum>
-                  </property>
-                  <property name="frameShadow">
-                   <enum>QFrame::Shadow::Raised</enum>
-                  </property>
-                 </widget>
-                </widget>
-               </item>
-              </layout>
+              </property>
              </widget>
             </widget>
            </item>
@@ -913,6 +971,7 @@ background-color: rgb(39, 120, 162);
    <addaction name="actionEvenements"/>
    <addaction name="actionMetadonnees"/>
    <addaction name="actionExport"/>
+   <addaction name="actionExtraction"/>
    <addaction name="actionA_propos"/>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -920,7 +979,7 @@ background-color: rgb(39, 120, 162);
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1742</width>
+     <width>1551</width>
      <height>33</height>
     </rect>
    </property>
@@ -976,6 +1035,14 @@ background-color: rgb(39, 120, 162);
   <action name="actionA_propos">
    <property name="text">
     <string>A propos</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
+  <action name="actionExtraction">
+   <property name="text">
+    <string>Extraction </string>
    </property>
    <property name="menuRole">
     <enum>QAction::MenuRole::NoRole</enum>
