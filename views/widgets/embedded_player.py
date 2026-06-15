@@ -8,28 +8,12 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink, QVideoFra
 
 from views.widgets.timeline_widget import VideoTimeline
 from views.dialogs.telemetry_dialog import TelemetryDialog
+from views.style import (C_INDIGO, C_CERULEAN, C_JASPER, C_MELON,
+                          C_BG_DARK, C_PRESSED, C_BORDER_SUB, BTN_PRIMARY, BTN_TOGGLE, SLIDER)
 
-_SLIDER_STYLE = """
-    QSlider::groove:horizontal { height: 4px; background: #333; border-radius: 2px; }
-    QSlider::handle:horizontal { background: #2778a2; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }
-"""
-_BTN_STYLE = """
-    QPushButton {
-        background-color: #20415d; color: white; font-weight: bold;
-        border: 1px solid #2778a2; border-radius: 4px; padding: 6px 12px; min-width: 50px;
-    }
-    QPushButton:hover { background-color: #2778a2; }
-    QPushButton:pressed { background-color: #152d42; }
-"""
-_TOGGLE_STYLE = """
-    QPushButton {
-        background-color: #20415d; color: white; font-weight: bold;
-        border: 1px solid #444; border-radius: 4px; padding: 4px 10px;
-    }
-    QPushButton:checked { background-color: #1c6a9e; border-color: #2778a2; }
-    QPushButton:hover:!disabled { background-color: #2778a2; }
-    QPushButton:disabled { color: #555; background-color: #1a1a1a; border-color: #333; }
-"""
+_SLIDER_STYLE = SLIDER
+_BTN_STYLE = BTN_PRIMARY
+_TOGGLE_STYLE = BTN_TOGGLE
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
@@ -129,17 +113,18 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.lbl_top_time = QtWidgets.QLabel("00:00 / 00:00")
         self.lbl_top_time.setStyleSheet(
-            "color: #2778a2; font-weight: bold; font-size: 14px; border: none;")
+            f"color: {C_MELON}; font-weight: bold; font-size: 13px; border: none;"
+            " font-family: 'Segoe UI', sans-serif;")
         self.time_layout.addWidget(self.lbl_top_time)
 
         self.lbl_frame_number = QtWidgets.QLabel("Frame: -")
         self.lbl_frame_number.setStyleSheet(
-            "color: white; font-size: 13px; margin-left: 12px; border: none;")
+            f"color: #b0c8d8; font-size: 12px; margin-left: 12px; border: none;")
         self.time_layout.addWidget(self.lbl_frame_number)
         self.time_layout.addStretch()
 
         self.lbl_zoom = QtWidgets.QLabel("")
-        self.lbl_zoom.setStyleSheet("color: white; font-size: 11px; margin-right: 5px;")
+        self.lbl_zoom.setStyleSheet(f"color: #b0c8d8; font-size: 11px; margin-right: 5px;")
         self.time_layout.addWidget(self.lbl_zoom)
 
         self.slider_zoom = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
@@ -185,19 +170,35 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.setStyleSheet(_BTN_STYLE)
             buttons_layout.addWidget(btn)
 
+        self._sep_cam = self._vline()
+        self.btn_cam_L = QtWidgets.QPushButton("Cam G")
+        self.btn_cam_L.setCheckable(True)
+        self.btn_cam_L.setChecked(True)
+        self.btn_cam_L.setStyleSheet(_TOGGLE_STYLE)
+        self.btn_cam_L.setToolTip("Afficher/masquer caméra gauche")
+
+        self.btn_cam_R = QtWidgets.QPushButton("Cam D")
+        self.btn_cam_R.setCheckable(True)
+        self.btn_cam_R.setChecked(True)
+        self.btn_cam_R.setStyleSheet(_TOGGLE_STYLE)
+        self.btn_cam_R.setToolTip("Afficher/masquer caméra droite")
+
+        for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
+            w.setVisible(False)
+            buttons_layout.addWidget(w)
+
         # ── Corrections panel ─────────────────────────────────────────────
         self.corrections_panel = QtWidgets.QFrame()
         self.corrections_panel.setStyleSheet(
-            "QFrame { background-color: #111111; border-top: 1px solid #2778a2; }")
+            f"QFrame {{ background-color: {C_BG_DARK}; border-top: 1px solid {C_CERULEAN}; }}")
         corr_layout = QtWidgets.QHBoxLayout(self.corrections_panel)
         corr_layout.setContentsMargins(8, 5, 8, 5)
         corr_layout.setSpacing(10)
 
-        _lbl = lambda t: self._make_corr_label(t)
-
         title_lbl = QtWidgets.QLabel("Corrections :")
         title_lbl.setStyleSheet(
-            "color: #2778a2; font-size: 11px; font-weight: bold; border: none;")
+            f"color: {C_MELON}; font-size: 11px; font-weight: bold; border: none;"
+            " font-family: 'Segoe UI', sans-serif;")
         corr_layout.addWidget(title_lbl)
 
         self.btn_corr_he = QtWidgets.QPushButton("HR")
@@ -242,7 +243,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_reset_corr.clicked.connect(self._reset_corrections)
 
         self.lbl_pause_hint = QtWidgets.QLabel("⏸ pause pour activer")
-        self.lbl_pause_hint.setStyleSheet("color: #666; font-size: 10px; border: none;")
+        self.lbl_pause_hint.setStyleSheet(f"color: {C_BORDER_SUB}; font-size: 10px; border: none; font-style: italic;")
 
         for w in [self.btn_corr_he, self.btn_corr_dehaze, sep1,
                   lbl_contrast, self.slider_contrast, self.lbl_contrast_val,
@@ -288,6 +289,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_x5.clicked.connect(lambda: self.set_playback_rate_all(5.0))
         self.btn_x10.clicked.connect(lambda: self.set_playback_rate_all(10.0))
 
+        self.btn_cam_L.toggled.connect(self._on_cam_L_toggled)
+        self.btn_cam_R.toggled.connect(self._on_cam_R_toggled)
+
         self.slider_zoom.valueChanged.connect(self.on_zoom_changed)
         self.player.positionChanged.connect(self.on_player_position_changed)
         self.player.durationChanged.connect(self.on_player_duration_changed)
@@ -305,7 +309,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     @staticmethod
     def _make_corr_label(text: str, min_w: int = 0) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text)
-        style = "color: #aaaaaa; font-size: 11px; border: none;"
+        style = f"color: #b0c8d8; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;"
         if min_w:
             style += f" min-width: {min_w}px;"
         lbl.setStyleSheet(style)
@@ -315,7 +319,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _vline() -> QtWidgets.QFrame:
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #333;")
+        sep.setStyleSheet("color: #2a4057;")
         return sep
 
     # ── Language ──────────────────────────────────────────────────────────
@@ -347,7 +351,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         is_paused = (self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState)
 
-        # Throttle to ~30 fps display when playing — avoids overloading the main thread
+        # Throttle to 30 fps display when playing — keeps the main thread free
         now_ms = int(time.monotonic() * 1000)
         if not is_paused and (now_ms - self._last_render_ms) < 33:
             return
@@ -360,30 +364,34 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             if q_img.isNull() or q_img.width() == 0 or q_img.height() == 0:
                 return
 
-            width, height = q_img.width(), q_img.height()
-            ptr = q_img.bits()
-            ptr.setsize(q_img.sizeInBytes())
-            arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 3))
-            frame_bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-            # Store raw frame the moment we pause (main stream only)
+            # ── Paused: extract numpy frame for correction controls ────────
             if is_paused and with_overlay:
-                self._last_raw_frame = frame_bgr.copy()
+                w2, h2 = q_img.width(), q_img.height()
+                ptr = q_img.bits()
+                ptr.setsize(q_img.sizeInBytes())
+                arr = np.frombuffer(ptr, np.uint8).reshape((h2, w2, 3))
+                self._last_raw_frame = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
-            # Apply corrections only when paused
-            display_frame = (self._apply_corrections(frame_bgr)
-                             if is_paused and self._has_active_corrections()
-                             else frame_bgr)
+            # ── Apply corrections (paused + main stream only) ─────────────
+            if is_paused and with_overlay and self._has_active_corrections() and self._last_raw_frame is not None:
+                corrected = self._apply_corrections(self._last_raw_frame)
+                h2, w2 = corrected.shape[:2]
+                rgb = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
+                q_img = QtGui.QImage(rgb.data, w2, h2, 3 * w2,
+                                     QtGui.QImage.Format.Format_RGB888).copy()
 
+            # ── Telemetry overlay via QPainter (zero numpy round-trip) ─────
             if with_overlay:
-                self._draw_telemetry_overlay(display_frame, width, height)
+                self._draw_overlay_painter(q_img)
 
             self._last_render_ms = now_ms
 
-            frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-            out_img = QtGui.QImage(frame_rgb.data, width, height, 3 * width,
-                                   QtGui.QImage.Format.Format_RGB888).copy()
-            pix = QtGui.QPixmap.fromImage(out_img)
+            # FastTransformation during playback (no visible diff at 25+ fps),
+            # SmoothTransformation when paused (corrections need quality).
+            transform = (QtCore.Qt.TransformationMode.SmoothTransformation if is_paused
+                         else QtCore.Qt.TransformationMode.FastTransformation)
+
+            pix = QtGui.QPixmap.fromImage(q_img)
             if target_label is self.video_widget:
                 self._last_pixmap_L = pix
             elif target_label is self.video_widget_R:
@@ -391,45 +399,43 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             target_label.setPixmap(
                 pix.scaled(target_label.size(),
                            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                           QtCore.Qt.TransformationMode.SmoothTransformation))
+                           transform))
         finally:
             frame.unmap()
 
-    def _draw_telemetry_overlay(self, frame_bgr: np.ndarray, width: int, height: int):
+    def _draw_overlay_painter(self, q_img: QtGui.QImage):
+        """Draw telemetry text directly on the QImage via QPainter — no numpy needed."""
         pos_ms = self.player.position()
-        # Recompute overlay text at most every 200 ms of video time
         if abs(pos_ms - self._telemetry_cache[1]) > 200:
-            overlay_text = "No Data"
-            if (hasattr(self, 'df_telemetry')
-                    and self.df_telemetry is not None
+            text = "No Data"
+            if (self.df_telemetry is not None
                     and not self.df_telemetry.empty
                     and 'Delta' in self.df_telemetry.columns):
                 try:
-                    current_s = pos_ms / 1000.0
-                    diffs = (self.df_telemetry['Delta'] - current_s).abs()
+                    diffs = (self.df_telemetry['Delta'] - pos_ms / 1000.0).abs()
                     idx = diffs.idxmin()
                     if diffs[idx] < 1.0:
                         row = self.df_telemetry.iloc[idx]
-                        overlay_text = (
-                            f"T: {row.get('température', 'N/A')}C | "
-                            f"P: {row.get('pression', 'N/A')}hPa | "
-                            f"Exp: {row.get('ExpTime', 'N/A')}ms | "
-                            f"Lux: {row.get('Lux', 'N/A')}"
-                        )
+                        text = (f"T: {row.get('température', 'N/A')}C | "
+                                f"P: {row.get('pression', 'N/A')}hPa | "
+                                f"Exp: {row.get('ExpTime', 'N/A')}ms | "
+                                f"Lux: {row.get('Lux', 'N/A')}")
                     else:
-                        overlay_text = "Out of Sync"
+                        text = "Out of Sync"
                 except Exception:
-                    overlay_text = "Sync Error"
-            self._telemetry_cache = (overlay_text, pos_ms)
+                    text = "Sync Error"
+            self._telemetry_cache = (text, pos_ms)
 
-        overlay_text = self._telemetry_cache[0]
-        overlay = frame_bgr.copy()
-        cv2.rectangle(overlay, (5, height - 50), (width - 5, height - 5), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.6, frame_bgr, 0.4, 0, frame_bgr)
-        cv2.putText(frame_bgr, overlay_text, (20, height - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame_bgr, f"Time: {pos_ms / 1000.0:.2f}s", (20, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        h, w = q_img.height(), q_img.width()
+        painter = QtGui.QPainter(q_img)
+        painter.fillRect(5, h - 50, w - 10, 45, QtGui.QColor(0, 0, 0, 150))
+        painter.setPen(QtGui.QColor(255, 255, 255))
+        painter.setFont(QtGui.QFont("Arial", 9))
+        painter.drawText(20, h - 20, self._telemetry_cache[0])
+        painter.setPen(QtGui.QColor(0, 255, 255))
+        painter.setFont(QtGui.QFont("Arial", 8))
+        painter.drawText(20, 25, f"Time: {pos_ms / 1000.0:.2f}s")
+        painter.end()
 
     # ── Image corrections ─────────────────────────────────────────────────
 
@@ -474,7 +480,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.video_widget.setPixmap(
                 pix.scaled(self.video_widget.size(),
                            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                           QtCore.Qt.TransformationMode.SmoothTransformation))
+                           QtCore.Qt.TransformationMode.SmoothTransformation))  # pause → qualité
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
         if event.type() == QtCore.QEvent.Type.Resize:
@@ -538,6 +544,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     # ── Playback control ──────────────────────────────────────────────────
 
+    def hideEvent(self, event: QtGui.QHideEvent):
+        """Pause automatiquement quand la page est masquée (changement de page)."""
+        super().hideEvent(event)
+        self.pause_all()
+
     def pause(self):
         self.player.pause()
 
@@ -595,6 +606,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.player.pause()
         self.player.setPosition(target_ms)
         self.center_scroll_on_cursor()
+        # Synchroniser le curseur de télémétrie pendant le drag (positionChanged peut être différé)
+        if self.current_video_path and hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
+            self.telemetry_dialog.update_cursor(target_ms / 1000.0)
 
     def on_timeline_released(self, target_ms: int):
         self.player.setPosition(target_ms)
@@ -607,7 +621,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
-        if hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
+        if (self.current_video_path
+                and hasattr(self, 'telemetry_dialog')
+                and self.telemetry_dialog.isVisible()):
             self.telemetry_dialog.update_cursor(position_ms / 1000.0)
 
         if not self.timeline.is_dragging:
@@ -671,15 +687,26 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
+                self.video_widget.setVisible(True)
                 self.video_widget_R.setVisible(True)
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
+            # Reset cam toggles
+            for btn in [self.btn_cam_L, self.btn_cam_R]:
+                btn.blockSignals(True)
+                btn.setChecked(True)
+                btn.blockSignals(False)
+            for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
+                w.setVisible(True)
         else:
             self.is_stereo = False
+            self.video_widget.setVisible(True)
             self.video_widget_R.setVisible(False)
+            for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
+                w.setVisible(False)
             path = video_data[0] if isinstance(video_data, list) else video_data
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
@@ -692,6 +719,35 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.play_all()
 
         self.timeline.update()
+
+    def _on_cam_L_toggled(self, checked: bool):
+        if not checked and not self.btn_cam_R.isChecked():
+            self.btn_cam_L.blockSignals(True)
+            self.btn_cam_L.setChecked(True)
+            self.btn_cam_L.blockSignals(False)
+            return
+        self.video_widget.setVisible(checked)
+
+    def _on_cam_R_toggled(self, checked: bool):
+        if not checked and not self.btn_cam_L.isChecked():
+            self.btn_cam_R.blockSignals(True)
+            self.btn_cam_R.setChecked(True)
+            self.btn_cam_R.blockSignals(False)
+            return
+        self.video_widget_R.setVisible(checked)
+
+    def release_video_file(self, path: str):
+        """Stop and clear source if this player holds a file from the same directory as path."""
+        if not self.current_video_path:
+            return
+        if os.path.normpath(os.path.dirname(path)) == os.path.normpath(
+                os.path.dirname(self.current_video_path)):
+            self.player.stop()
+            self.player_R.stop()
+            self.player.setSource(QtCore.QUrl())
+            self.player_R.setSource(QtCore.QUrl())
+            self.current_video_path = None
+            self.display_stack.setCurrentIndex(0)
 
     def load_dynamic_metadata(self, csv_path: str):
         try:

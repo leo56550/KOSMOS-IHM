@@ -67,6 +67,26 @@ class ExtractionController:
         if self.tree_videos_2:
             self.tree_videos_2.setModel(self.video_model)
 
+    def select_video_by_name(self, video_name: str):
+        """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
+        if not self.tree_videos_2 or not self.video_model:
+            return
+        model = self.tree_videos_2.model()
+        if not model:
+            return
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if item and item.text() == video_name:
+                index = model.indexFromItem(item)
+                self.tree_videos_2.selectionModel().setCurrentIndex(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.tree_videos_2.scrollTo(index)
+                self.on_video_selected_treeview(index)
+                break
+
     def refresh_video_list(self):
         if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
             if self.video_model and self.video_model.rowCount() > 0:
@@ -107,6 +127,12 @@ class ExtractionController:
                     motor_events = get_motor_stable_timestamps(csv_system, delay=6.0)
                 except Exception as e:
                     print(f"[MOTEURS] Erreur : {e}")
+
+            csv_telemetry = video_path.replace(".mp4", ".csv")
+            if os.path.exists(csv_telemetry):
+                self.video_player.load_dynamic_metadata(csv_telemetry)
+            else:
+                self.video_player.df_telemetry = None
 
             if hasattr(self.video_player, 'load_video_and_events'):
                 self.video_player.load_video_and_events(video_payload, motor_events, is_stereo=is_stereo)
@@ -178,8 +204,9 @@ class ExtractionController:
             self.group_export.setEnabled(False)
             self.lbl_export_status.setText("Préparation de l'export...")
 
+            segments_dir = os.path.join(os.path.dirname(self.current_video_path), "segments")
             self.segmentation_worker = VideoSegmentationWorker(
-                source_path, self.start_ms, self.end_ms, os.path.dirname(self.current_video_path)
+                source_path, self.start_ms, self.end_ms, segments_dir
             )
             self.segmentation_worker.progress_updated.connect(self.on_export_progress)
             self.segmentation_worker.export_finished.connect(self.on_segment_finished)
@@ -195,7 +222,11 @@ class ExtractionController:
 
     def on_segment_finished(self, message):
         self.group_export.setEnabled(True)
-        path = os.path.join(os.path.dirname(self.current_video_path), f"{self.last_segment_name}.mp4")
+        # Le worker génère le nom automatiquement — on le retrouve dans le message
+        # ou on le reconstruit depuis le chemin réel dans segments/
+        segments_dir = os.path.join(os.path.dirname(self.current_video_path), "segments")
+        base = os.path.splitext(os.path.basename(self.current_video_path))[0]
+        path = os.path.join(segments_dir, f"{base}_segment_{self.start_ms}_{self.end_ms}.mp4")
         self.add_to_deliverables_tree(path)
         self.lbl_export_status.setText("Export terminé.")
 

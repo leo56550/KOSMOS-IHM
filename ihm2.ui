@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1551</width>
-    <height>995</height>
+    <width>1555</width>
+    <height>1020</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -34,7 +34,7 @@ QLabel#titre_campagne {
     <item>
      <widget class="QStackedWidget" name="stackedWidget">
       <property name="currentIndex">
-       <number>0</number>
+       <number>2</number>
       </property>
       <widget class="QWidget" name="page_qualification">
        <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -178,12 +178,12 @@ background-color: rgb(32, 65, 93);
 }
 
 QPushButton:hover {
-    background-color: #00a2ff;
+    background-color: #3290C2;
 }
 
 /* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
 QPushButton[actif=&quot;true&quot;] {
-    background-color: #00a2ff;
+    background-color: #3290C2;
     font-size: 14px;
     padding: 10px 22px;
     border: 1px solid #ffffff;
@@ -318,12 +318,12 @@ QPushButton[actif=&quot;true&quot;] {
 }
 
 QPushButton:hover {
-    background-color: #00a2ff;
+    background-color: #3290C2;
 }
 
 /* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
 QPushButton[actif=&quot;true&quot;] {
-    background-color: #00a2ff;
+    background-color: #3290C2;
     font-size: 14px;
     padding: 10px 22px;
     border: 1px solid #ffffff;
@@ -388,6 +388,12 @@ QPushButton[actif=&quot;true&quot;] {
                <enum>Qt::Orientation::Vertical</enum>
               </property>
               <widget class="QTreeView" name="tree_video_validation">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>750</height>
+                </size>
+               </property>
                <property name="styleSheet">
                 <string notr="true">QTreeView::item {
     font-size: 14px;
@@ -423,6 +429,12 @@ background-color: rgb(39, 120, 162);
                <enum>Qt::Orientation::Vertical</enum>
               </property>
               <widget class="QFrame" name="exploitable_container">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>50</height>
+                </size>
+               </property>
                <property name="styleSheet">
                 <string notr="true">background-color: rgb(39, 120, 162);
 border: 1px solid #ababab;
@@ -462,12 +474,12 @@ border-radius: 10px
 }
 
 QPushButton:hover {
-    background-color: #00a2ff;
+    background-color: #3290C2;
 }
 
 /* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
 QPushButton[actif=&quot;true&quot;] {
-    background-color: #00a2ff;
+    background-color: #3290C2;
     font-size: 14px;
     padding: 10px 22px;
     border: 1px solid #ffffff;
@@ -979,7 +991,7 @@ background-color: rgb(39, 120, 162);
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1551</width>
+     <width>1555</width>
      <height>33</height>
     </rect>
    </property>

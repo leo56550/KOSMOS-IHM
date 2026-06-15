@@ -18,9 +18,10 @@ from views.dialogs.map_dialog import MapDialog, MapBridge
 
 
 class QualifController:
-    def __init__(self, widget: QtWidgets.QWidget, parent=None):
+    def __init__(self, widget: QtWidgets.QWidget, parent=None, on_before_delete=None):
         self.widget = widget
         self.parent = parent
+        self._on_before_delete = on_before_delete
         self.current_language = 'en'
         self.system_data = None
         self.video_model = QtGui.QStandardItemModel()
@@ -43,7 +44,8 @@ class QualifController:
             layout.setSpacing(10)
             self.lbl_section_title = QtWidgets.QLabel("Campaign Properties")
             self.lbl_section_title.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 5px;"
+                "font-size: 13px; font-weight: bold; color: #F2BFB4;"
+                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
             )
             self.lbl_section_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(self.lbl_section_title)
@@ -96,7 +98,8 @@ class QualifController:
         layout_block.setSpacing(5)
         self.lbl_videos_title = QtWidgets.QLabel("Campaign Videos")
         self.lbl_videos_title.setStyleSheet(
-            "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 2px;"
+            "font-size: 13px; font-weight: bold; color: #F2BFB4;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
         )
         self.lbl_videos_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         if hasattr(splitter, "indexOf"):
@@ -132,7 +135,8 @@ class QualifController:
         layout_block_trash.setSpacing(5)
         self.lbl_trash_title = QtWidgets.QLabel("Removed Videos")
         self.lbl_trash_title.setStyleSheet(
-            "font-size: 14px; font-weight: bold; color: #ff5555; padding-bottom: 2px;"
+            "font-size: 13px; font-weight: bold; color: #D94F38;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
         )
         self.lbl_trash_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         if hasattr(splitter_trash, "indexOf"):
@@ -200,6 +204,8 @@ class QualifController:
             self.trash_model.removeRows(0, self.trash_model.rowCount())
         self.all_coords.clear()
         self.map_initialized = False   # Force la recréation de la carte pour la nouvelle campagne
+
+        self._load_existing_trash(directory)
 
         videos = get_all_mp4_files(directory)
         if not videos:
@@ -606,6 +612,17 @@ class QualifController:
         if clicked_action == trash_action:
             self.delete_video_by_index(index.siblingAtColumn(0))
 
+    def _close_detached_player(self):
+        """Libère les handles fichiers du lecteur détaché avant tout déplacement sur disque."""
+        if self.detached_player is not None:
+            try:
+                self.detached_player.release_files()
+                self.detached_player.close()
+                self.detached_player.deleteLater()
+            except Exception:
+                pass
+            self.detached_player = None
+
     def delete_video_by_index(self, index: QtCore.QModelIndex):
         row = index.row()
         name_item = self.video_model.item(row, 0)
@@ -616,6 +633,10 @@ class QualifController:
         new_video_path = original_path
 
         if original_path and os.path.exists(original_path):
+            # Libérer tous les players qui tiendraient ce fichier (verrou Windows)
+            if self._on_before_delete:
+                self._on_before_delete(original_path)
+            self._close_detached_player()
             try:
                 orig_dir = os.path.dirname(original_path)
                 campaign_dir = os.path.dirname(orig_dir)
@@ -639,6 +660,49 @@ class QualifController:
         self.video_model.removeRow(row)
         if self.selected_video_name == video_name:
             self.selected_video_name = None
+
+    def _load_existing_trash(self, campaign_dir: str):
+        """Repeupler le modèle trash depuis le dossier .trash sur disque."""
+        trash_dir = os.path.join(campaign_dir, ".trash")
+        if not os.path.exists(trash_dir):
+            return
+        for folder_name in sorted(os.listdir(trash_dir)):
+            folder_path = os.path.join(trash_dir, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+            for file in sorted(os.listdir(folder_path)):
+                if not file.lower().endswith(".mp4"):
+                    continue
+                video_path = os.path.join(folder_path, file)
+                try:
+                    import cv2 as _cv2
+                    cap = _cv2.VideoCapture(video_path)
+                    if cap.isOpened():
+                        fps = cap.get(_cv2.CAP_PROP_FPS)
+                        fc = cap.get(_cv2.CAP_PROP_FRAME_COUNT)
+                        w = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+                        h = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+                        cap.release()
+                        dur_sec = fc / fps if fps > 0 else 0
+                        duration = f"{int(dur_sec // 60):02d}:{int(dur_sec % 60):02d}"
+                        fps_str = f"{fps:.2f}"
+                        res_str = f"{w}x{h}"
+                    else:
+                        cap.release()
+                        duration = fps_str = res_str = "--"
+                    size_str = f"{os.path.getsize(video_path) / (1024*1024):.2f} MB"
+                except Exception:
+                    duration = fps_str = res_str = size_str = "--"
+
+                col_name = QtGui.QStandardItem(file)
+                col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
+                self.trash_model.appendRow([
+                    col_name,
+                    QtGui.QStandardItem(duration),
+                    QtGui.QStandardItem(fps_str),
+                    QtGui.QStandardItem(res_str),
+                    QtGui.QStandardItem(size_str),
+                ])
 
     def restore_video_by_index(self, index: QtCore.QModelIndex):
         row = index.row()

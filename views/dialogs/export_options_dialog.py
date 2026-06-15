@@ -13,27 +13,37 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.resize(350, 320)
 
         self.setStyleSheet("""
+            QDialog { background-color: #111820; color: #ffffff; }
+            QLabel { color: #b0c8d8; font-family: "Segoe UI", sans-serif; }
             QGroupBox {
-                margin-top: 20px;
+                border: 1px solid #2778A2; border-radius: 5px;
+                margin-top: 18px; padding-top: 10px; color: #F2BFB4;
+                font-family: "Segoe UI", sans-serif; font-weight: bold;
             }
             QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 6px;
-                font-size: 14px;
-                font-weight: bold;
-                background-color: rgb(39, 120, 162);
-                color: white;
-                border: 1px solid #152d42;
+                subcontrol-origin: margin; subcontrol-position: top left;
+                padding: 3px 8px; background-color: #2778A2; color: white;
+                border-radius: 3px; font-size: 12px; font-weight: bold;
             }
+            QCheckBox { color: #b0c8d8; spacing: 6px; font-family: "Segoe UI", sans-serif; }
+            QCheckBox::indicator {
+                width: 14px; height: 14px;
+                border: 1px solid #2778A2; border-radius: 3px; background: #162433;
+            }
+            QCheckBox::indicator:checked { background-color: #2778A2; }
+            QSpinBox {
+                background-color: #162433; color: #F2BFB4;
+                border: 1px solid #2a4057; border-radius: 3px; padding: 3px 6px;
+                font-family: "Segoe UI", sans-serif;
+            }
+            QSpinBox:focus { border-color: #2778A2; }
             QPushButton {
-                font-size: 14px;
-                padding: 6px;
-                font-weight: bold;
-                background-color: rgb(39, 120, 162);
-                color: white;
-                border: 1px solid #152d42;
+                background-color: #20415D; color: white; font-weight: bold;
+                border: 1px solid #2778A2; border-radius: 4px;
+                padding: 6px 18px; font-size: 12px; font-family: "Segoe UI", sans-serif;
             }
+            QPushButton:hover { background-color: #2778A2; }
+            QPushButton:pressed { background-color: #152d42; }
         """)
 
         layout = QtWidgets.QVBoxLayout(self)

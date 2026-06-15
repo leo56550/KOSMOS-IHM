@@ -24,21 +24,37 @@ class CaptureDialog(QtWidgets.QDialog):
         self.result_name = None
 
         self.setStyleSheet("""
-            QDialog { background-color: #2c3e50; color: white; }
-            QLabel { color: white; font-weight: bold; }
+            QDialog { background-color: #111820; color: #ffffff; }
+            QLabel { color: #b0c8d8; font-family: "Segoe UI", sans-serif; }
             QGroupBox {
-                border: 2px solid rgb(39, 120, 162);
-                border-radius: 5px; margin-top: 10px;
-                padding-top: 10px; color: white;
+                border: 1px solid #2778A2; border-radius: 5px;
+                margin-top: 18px; padding-top: 10px; color: #F2BFB4;
+                font-family: "Segoe UI", sans-serif; font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin; subcontrol-position: top left;
+                padding: 3px 8px; background-color: #2778A2; color: white;
+                border-radius: 3px; font-size: 12px;
             }
             QLineEdit {
-                background-color: #ecf0f1; border: 2px solid rgb(39, 120, 162);
-                border-radius: 4px; padding: 5px; color: #2c3e50; font-weight: bold;
+                background-color: #162433; color: #F2BFB4;
+                border: 1px solid #2a4057; border-radius: 4px; padding: 5px 8px;
+                font-family: "Segoe UI", sans-serif;
             }
+            QLineEdit:focus { border-color: #2778A2; }
+            QCheckBox { color: #b0c8d8; spacing: 6px; }
+            QCheckBox::indicator {
+                width: 14px; height: 14px;
+                border: 1px solid #2778A2; border-radius: 3px; background: #162433;
+            }
+            QCheckBox::indicator:checked { background-color: #2778A2; }
             QPushButton {
-                background-color: rgb(39, 120, 162); color: white;
-                border-radius: 4px; padding: 8px 15px; font-weight: bold;
+                background-color: #20415D; color: white; font-weight: bold;
+                border: 1px solid #2778A2; border-radius: 4px; padding: 7px 18px;
+                font-family: "Segoe UI", sans-serif;
             }
+            QPushButton:hover { background-color: #2778A2; }
+            QPushButton:pressed { background-color: #152d42; }
         """)
 
         self.a_vector_normal = calculate_atmospheric_light(self.raw_frame)
@@ -116,7 +132,7 @@ class CaptureDialog(QtWidgets.QDialog):
         lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         lbl.setScaledContents(True)
         lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("border: 2px solid rgb(39, 120, 162); background-color: black;")
+        lbl.setStyleSheet("border: 1px solid #2778A2; background-color: #000000; border-radius: 4px;")
         return lbl
 
     def on_dehaze_toggled(self):

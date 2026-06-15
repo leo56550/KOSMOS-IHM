@@ -31,7 +31,10 @@ class AppController:
             window.page_accueil,
             self.handle_campaign_opening
         )
-        self.qualif_ctrl = QualifController(window.page_qualification, parent=window)
+        self.qualif_ctrl = QualifController(
+            window.page_qualification, parent=window,
+            on_before_delete=self._release_file_in_all_players
+        )
         self.validation_ctrl = ValidationController(window.page_validation, self.qualif_ctrl.video_model)
         self.evenements_ctrl = EvenementsController(window.page_evenements, self.qualif_ctrl.video_model)
         self.metadonnees_ctrl = MetadonneesController(
@@ -46,6 +49,13 @@ class AppController:
             self.accueil_ctrl, self.qualif_ctrl, self.validation_ctrl,
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
+
+        # Carte : propager les clics sur les marqueurs vers tous les controllers
+        bridge = self.qualif_ctrl.bridge
+        bridge.videoSelected.connect(self.validation_ctrl.select_video_by_name)
+        bridge.videoSelected.connect(self.evenements_ctrl.select_video_by_name)
+        bridge.videoSelected.connect(self.metadonnees_ctrl.select_video_by_name)
+        bridge.videoSelected.connect(self.extraction_ctrl.select_video_by_name)
 
         # Wire navigation actions
         window.actionAcceuil.triggered.connect(lambda: self.switch_page(window.page_accueil))
@@ -218,9 +228,31 @@ class AppController:
             w.actionValidation.setEnabled(self.qualification_completed)
             w.actionEvenements.setEnabled(self.qualification_completed and self.validation_completed)
 
+    def _release_file_in_all_players(self, path: str):
+        """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
+        for player in [
+            getattr(self.validation_ctrl, 'player', None),
+            getattr(self.evenements_ctrl, 'event_player', None),
+            getattr(self.extraction_ctrl, 'video_player', None),
+        ]:
+            if player is not None and hasattr(player, 'release_video_file'):
+                player.release_video_file(path)
+
+    def _stop_background_players(self, target_page):
+        """Arrête les lecteurs de la page qu'on quitte pour éviter l'accumulation."""
+        w = self.window
+        current = w.stackedWidget.currentWidget()
+        if current == target_page:
+            return
+        # Lecteur détaché de qualification : fermé quand on quitte la page qualif
+        if current == w.page_qualification:
+            self.qualif_ctrl._close_detached_player()
+
     def switch_page(self, page):
         w = self.window
         free_pages = [w.page_accueil, w.page_apropos, w.page_extraction]
+
+        self._stop_background_players(page)
 
         if page in free_pages:
             w.stackedWidget.setCurrentWidget(page)

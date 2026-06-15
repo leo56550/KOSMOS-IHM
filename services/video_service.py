@@ -18,7 +18,8 @@ def get_all_mp4_files(parent_folder: str) -> list:
     video_data = []
 
     for root, dirs, files in os.walk(parent_folder):
-        if "trash" in root.split(os.sep):
+        parts = root.split(os.sep)
+        if "trash" in parts or ".trash" in parts or "segments" in parts:
             continue
 
         current_folder_date = extract_date_from_template(root)

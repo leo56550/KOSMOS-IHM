@@ -134,7 +134,14 @@ class VideoPlayerWindow(QtWidgets.QDialog):
         if self.is_stereo:
             self.player_R.setPosition(target)
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def release_files(self):
+        """Stoppe les lecteurs et libère les handles fichiers (nécessaire sur Windows
+        avant tout shutil.move/rmtree sur le dossier de la vidéo)."""
         self.player.stop()
         self.player_R.stop()
+        self.player.setSource(QtCore.QUrl())
+        self.player_R.setSource(QtCore.QUrl())
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.release_files()
         event.accept()

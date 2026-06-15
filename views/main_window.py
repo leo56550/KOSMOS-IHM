@@ -109,7 +109,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.derusher_label = QtWidgets.QLabel("")
         self.derusher_label.setStyleSheet(
-            "color: #ffffff; font-weight: bold; padding-left:12px; padding-right:12px;"
+            "color: #F2BFB4; font-weight: bold; font-family: 'Segoe UI', sans-serif;"
+            " font-size: 11px; padding-left:12px; padding-right:12px; letter-spacing: 0.3px;"
         )
         self.derusher_label.setMinimumWidth(200)
         self.derusher_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -121,16 +122,50 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nav_toolbar.addWidget(right_spacer)
 
         self.nav_toolbar.setStyleSheet("""
-            QToolBar { background-color: #20415d; border-top: 1px solid #2778a2; padding: 8px; }
-            QToolButton { background-color: #2778a2; color: white; font-weight: bold;
-                          border-radius: 4px; padding: 6px 15px; font-size: 12px; }
-            QToolButton:hover { background-color: #00a2ff; }
-            QToolButton[actif="true"] { background-color: #00a2ff; font-size: 14px;
-                                        padding: 10px 22px; border: 1px solid #ffffff; }
-            QToolButton#lang_fr, QToolButton#lang_en { background-color: transparent; border: none;
-                                                        font-size: 20px; padding: 0 6px; }
-            QToolButton#lang_fr:checked, QToolButton#lang_en:checked { background-color: #ffffff;
-                                                                         color: #20415d; border-radius: 6px; }
+            QToolBar {
+                background-color: #20415D;
+                border-bottom: 2px solid #2778A2;
+                padding: 6px 10px;
+                spacing: 6px;
+            }
+            QToolButton {
+                background-color: #1b3550;
+                color: #F2BFB4;
+                font-weight: bold;
+                font-family: "Segoe UI Black", "Segoe UI", sans-serif;
+                font-size: 11px;
+                border: 1px solid #2a4a62;
+                border-radius: 5px;
+                padding: 6px 18px;
+                letter-spacing: 0.5px;
+            }
+            QToolButton:hover {
+                background-color: #2778A2;
+                color: #ffffff;
+                border-color: #2778A2;
+            }
+            QToolButton[actif="true"] {
+                background-color: #2778A2;
+                color: #ffffff;
+                font-size: 12px;
+                padding: 7px 22px;
+                border: 1px solid #F2BFB4;
+                border-radius: 5px;
+            }
+            QToolButton#lang_fr, QToolButton#lang_en {
+                background-color: transparent;
+                border: 1px solid transparent;
+                padding: 2px 4px;
+                border-radius: 4px;
+            }
+            QToolButton#lang_fr:hover, QToolButton#lang_en:hover {
+                border-color: #2778A2;
+            }
+            QToolButton#lang_fr:checked, QToolButton#lang_en:checked {
+                background-color: #F2BFB4;
+                border: 1px solid #F2BFB4;
+                border-radius: 4px;
+            }
         """)
 
     def _load_flag_icon(self, filename: str) -> QtGui.QIcon:

@@ -106,6 +106,26 @@ class EvenementsController:
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
 
+    def select_video_by_name(self, video_name: str):
+        """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
+        if not self.tree_view_events or not self.video_model:
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.text() == video_name:
+                source_index = self.video_model.indexFromItem(item)
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                if not proxy_index.isValid():
+                    return
+                self.tree_view_events.selectionModel().setCurrentIndex(
+                    proxy_index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.tree_view_events.scrollTo(proxy_index)
+                self.on_video_selected(proxy_index)
+                break
+
     # --- Tree layout ---
 
     def _initialize_list_event_layout(self):
@@ -690,6 +710,11 @@ class EvenementsController:
             self.tree_captures.blockSignals(False)
 
         if hasattr(self, 'event_player') and self.event_player:
+            csv_telemetry = self.current_video_path.replace(".mp4", ".csv")
+            if os.path.exists(csv_telemetry):
+                self.event_player.load_dynamic_metadata(csv_telemetry)
+            else:
+                self.event_player.df_telemetry = None
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
 
     def charger_evenements_du_json(self):

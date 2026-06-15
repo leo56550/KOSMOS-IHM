@@ -28,19 +28,25 @@ class AccueilController:
         dialog.setLabelText(self.translate("Nom du dérusher :", "Derusher name:"))
         dialog.setInputMode(QtWidgets.QInputDialog.InputMode.TextInput)
         dialog.setStyleSheet("""
-            QInputDialog { background-color: #20415d; color: white; }
-            QLabel { color: white; font-weight: bold; font-size: 13px; }
+            QInputDialog { background-color: #111820; color: white; }
+            QLabel {
+                color: #F2BFB4; font-weight: bold; font-size: 13px;
+                font-family: "Segoe UI", sans-serif;
+            }
             QLineEdit {
-                background-color: #ffffff; color: #20415d;
-                border: 1px solid #2778a2; border-radius: 4px; padding: 6px; font-size: 13px;
+                background-color: #162433; color: #F2BFB4;
+                border: 1px solid #2778A2; border-radius: 4px;
+                padding: 7px; font-size: 13px; font-family: "Segoe UI", sans-serif;
             }
-            QLineEdit:focus { border: 1px solid #00a2ff; }
+            QLineEdit:focus { border: 2px solid #2778A2; }
             QPushButton {
-                background-color: #2778a2; color: white; font-weight: bold;
-                border-radius: 4px; padding: 6px 15px; font-size: 12px; min-width: 65px;
+                background-color: #20415D; color: white; font-weight: bold;
+                border: 1px solid #2778A2; border-radius: 4px;
+                padding: 7px 18px; font-size: 12px; min-width: 70px;
+                font-family: "Segoe UI", sans-serif;
             }
-            QPushButton:hover { background-color: #00a2ff; }
-            QPushButton:pressed { background-color: #20415d; border: 1px solid #ffffff; }
+            QPushButton:hover { background-color: #2778A2; }
+            QPushButton:pressed { background-color: #152d42; border-color: #F2BFB4; }
         """)
 
         executable = dialog.exec()

@@ -38,7 +38,8 @@ class QualifView:
 
         self.lbl_section_title = QtWidgets.QLabel("Campaign Properties")
         self.lbl_section_title.setStyleSheet(
-            "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 5px;"
+            "font-size: 13px; font-weight: bold; color: #F2BFB4;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 5px;"
         )
         self.lbl_section_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lbl_section_title)
@@ -89,7 +90,8 @@ class QualifView:
             layout.setSpacing(5)
             self.lbl_videos_title = QtWidgets.QLabel("Campaign Videos")
             self.lbl_videos_title.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #ffffff; padding-bottom: 2px;"
+                "font-size: 13px; font-weight: bold; color: #F2BFB4;"
+                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
             )
             self.lbl_videos_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if hasattr(splitter, "indexOf"):
@@ -111,7 +113,8 @@ class QualifView:
             layout_trash.setSpacing(5)
             self.lbl_trash_title = QtWidgets.QLabel("Removed Videos")
             self.lbl_trash_title.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #ff5555; padding-bottom: 2px;"
+                "font-size: 13px; font-weight: bold; color: #D94F38;"
+                " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
             )
             self.lbl_trash_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if hasattr(splitter_trash, "indexOf"):

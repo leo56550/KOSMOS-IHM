@@ -10,6 +10,16 @@ from services.weather_service import WeatherWorker
 from services.campaign_service import get_video_json_path, _find_first_json_in_folder
 from views.dialogs.weather_dialog import WeatherWebDialog
 
+_FIELD_STYLE = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
+                " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
+_EMPTY_STYLE = ("background-color: #162433; color: #5a7a8a; border: 1px solid #1e3448;"
+                " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
+_LABEL_STYLE  = ("color: #b0c8d8; font-weight: bold; font-size: 11px; border: none;"
+                 " min-width: 130px; font-family: 'Segoe UI', sans-serif;")
+_SECTION_TITLE_STYLE = ("font-weight: bold; color: #F2BFB4; font-size: 13px; padding-bottom: 2px;"
+                        " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;")
+_SECTION_LINE_STYLE  = "border-bottom: 1px solid #2778A2; margin-bottom: 6px;"
+
 
 class MetadonneesController:
     def __init__(self, widget: QtWidgets.QWidget, video_model: QtGui.QStandardItemModel,
@@ -42,8 +52,13 @@ class MetadonneesController:
         self.data_survey_container = self.widget.findChild(QtWidgets.QFrame, "data_survey_container")
         self.specific_container_data = self.widget.findChild(QtWidgets.QFrame, "specific_container_data")
 
+        # Remove the 1200px minimum that was causing the toolbar to go off-screen
+        meteo_outer = self.widget.findChild(QtWidgets.QFrame, "container_weather_data")
+        if meteo_outer:
+            meteo_outer.setMinimumWidth(0)
+
         self._setup_ui()
-        self._init_main_layouts()
+        self._init_scroll_areas()
         self._init_trash_gauge()
 
         if self.tree_videos:
@@ -53,41 +68,109 @@ class MetadonneesController:
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self.save_metadata_to_json)
 
-    # --- Setup helpers ---
+    # ── Setup ─────────────────────────────────────────────────────────────
 
     def _setup_ui(self):
         if self.tree_videos:
             self.tree_videos.setModel(self.video_model)
             self.tree_videos.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+            self.tree_videos.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
 
-    def _init_main_layouts(self):
-        containers = [
-            (self.container_weather_data, "weather_grid_layout"),
-            (self.data_system_container, "system_grid_layout"),
-            (self.data_survey_container, "survey_grid_layout"),
-            (self.specific_container_data, "video_grid_layout"),
-        ]
-        for widget, attr_name in containers:
-            if widget:
-                if widget.layout() is None:
-                    layout = QtWidgets.QVBoxLayout(widget)
-                    layout.setContentsMargins(10, 10, 10, 10)
-                    layout.setSpacing(8)
-                setattr(self, attr_name, widget.layout())
-            else:
-                setattr(self, attr_name, None)
+    def _make_scroll_area(self, container: QtWidgets.QFrame) -> QtWidgets.QScrollArea | None:
+        """Installe un QScrollArea dans le container et retourne-le."""
+        if not container:
+            return None
+        # Remove any existing layout
+        old = container.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+            dummy = QtWidgets.QWidget()
+            dummy.setLayout(old)
+
+        outer = QtWidgets.QVBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }"
+                             "QScrollBar:vertical { width: 6px; background: #1a1a1a; }"
+                             "QScrollBar::handle:vertical { background: #2778a2; border-radius: 3px; }")
+
+        placeholder = QtWidgets.QWidget()
+        placeholder.setStyleSheet("background: transparent;")
+        scroll.setWidget(placeholder)
+        outer.addWidget(scroll)
+        return scroll
+
+    def _init_scroll_areas(self):
+        """Crée un QScrollArea dans chaque container de données."""
+        self._scroll_survey = self._make_scroll_area(self.data_survey_container)
+        self._scroll_system = self._make_scroll_area(self.data_system_container)
+        self._scroll_weather = self._make_scroll_area(self.container_weather_data)
+        self._scroll_video = self._make_scroll_area(self.specific_container_data)
 
     def _init_trash_gauge(self):
         if not self.graph_trash_container:
             return
-        graph_layout = self.graph_trash_container.layout() or QtWidgets.QVBoxLayout(self.graph_trash_container)
-        self.figure = Figure(figsize=(3, 3), facecolor='none')
+
+        # Compact height — prevents the canvas from growing over the toolbar
+        self.graph_trash_container.setMaximumHeight(155)
+
+        old = self.graph_trash_container.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+            dummy = QtWidgets.QWidget()
+            dummy.setLayout(old)
+
+        row_layout = QtWidgets.QHBoxLayout(self.graph_trash_container)
+        row_layout.setContentsMargins(6, 4, 6, 4)
+        row_layout.setSpacing(8)
+
+        # Small donut chart (fixed size — no growing)
+        self.figure = Figure(figsize=(1.4, 1.4), facecolor='none')
+        self.figure.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
         self.canvas = FigureCanvas(self.figure)
-        graph_layout.addWidget(self.canvas)
+        self.canvas.setFixedSize(130, 130)
+        # NoFocus prevents the canvas from stealing focus and hiding the toolbar
+        self.canvas.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        row_layout.addWidget(self.canvas)
+
+        # Stats labels beside the chart
+        stats = QtWidgets.QWidget()
+        stats.setStyleSheet("background: transparent;")
+        stats_vbox = QtWidgets.QVBoxLayout(stats)
+        stats_vbox.setContentsMargins(0, 10, 0, 10)
+        stats_vbox.setSpacing(6)
+
+        self.lbl_stat_title = QtWidgets.QLabel("Campagne")
+        self.lbl_stat_title.setStyleSheet(
+            "color: #F2BFB4; font-weight: bold; font-size: 11px; border: none;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;")
+        self.lbl_video_count = QtWidgets.QLabel("Vidéos : —")
+        self.lbl_video_count.setStyleSheet(
+            "color: #2778A2; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;")
+        self.lbl_trash_count = QtWidgets.QLabel("Poubelle : —")
+        self.lbl_trash_count.setStyleSheet(
+            "color: #D94F38; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;")
+
+        for lbl in [self.lbl_stat_title, self.lbl_video_count, self.lbl_trash_count]:
+            stats_vbox.addWidget(lbl)
+        stats_vbox.addStretch()
+        row_layout.addWidget(stats)
+
         self.ax = self.figure.add_subplot(111)
         self.refresh_statistics()
 
-    # --- Public interface ---
+    # ── Public interface ─────────────────────────────────────────────────
 
     def set_language(self, language: str):
         self.current_language = language
@@ -98,19 +181,42 @@ class MetadonneesController:
         self.video_model = model
         if self.tree_videos:
             self.tree_videos.setModel(self.video_model)
+            # setModel() remplace le selectionModel — on reconnecte le signal au nouveau
+            self.tree_videos.selectionModel().selectionChanged.connect(self.on_selection_changed)
+
+    def select_video_by_name(self, video_name: str):
+        """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
+        if not self.tree_videos or not self.video_model:
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.text() == video_name:
+                index = self.video_model.indexFromItem(item)
+                self.tree_videos.selectionModel().setCurrentIndex(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.tree_videos.scrollTo(index)
+                # selectionChanged se déclenche automatiquement → on_selection_changed chargera les données
+                break
 
     def on_selection_changed(self, selected, deselected):
         indexes = selected.indexes()
         if not indexes:
             return
-        item = self.video_model.itemFromIndex(indexes[0])
-        if item:
-            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if video_path:
-                self.current_video_path = str(video_path)
-                json_path = get_video_json_path(self.current_video_path)
-                if os.path.exists(json_path):
-                    self.load_all_data(json_path)
+        # Toujours cibler la colonne 0 — c'est là qu'est stocké UserRole
+        col0_index = indexes[0].sibling(indexes[0].row(), 0)
+        item = self.video_model.itemFromIndex(col0_index)
+        if not item:
+            return
+        video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if not video_path:
+            return
+        self.current_video_path = str(video_path)
+        json_path = get_video_json_path(self.current_video_path)
+        if os.path.exists(json_path):
+            self.load_all_data(json_path)
 
     def load_global_campaign_metadata(self, campaign_folder: str):
         from services.campaign_service import get_campaign_json_data
@@ -134,9 +240,9 @@ class MetadonneesController:
             return
 
         if "system" in data:
-            self._display_data_block("system", data["system"], self.system_grid_layout, "System Data")
+            self._display_block_in_scroll("system", data["system"], self._scroll_system, "Système")
         if "survey" in data:
-            self._display_data_block("survey", data["survey"], self.survey_grid_layout, "Campaign Data")
+            self._display_block_in_scroll("survey", data["survey"], self._scroll_survey, "Campagne")
 
     def load_all_data(self, json_path: str):
         if not os.path.isfile(json_path):
@@ -150,263 +256,231 @@ class MetadonneesController:
             return
 
         if "system" in self._json_data:
-            self._display_data_block("system", self._json_data["system"], self.system_grid_layout, "System Data")
+            self._display_block_in_scroll("system", self._json_data["system"],
+                                          self._scroll_system, "Système")
         if "survey" in self._json_data:
-            self._display_data_block("survey", self._json_data["survey"], self.survey_grid_layout, "Campaign Data")
-
+            self._display_block_in_scroll("survey", self._json_data["survey"],
+                                          self._scroll_survey, "Campagne")
         if "video_observation" in self._json_data:
-            video_obs = self._json_data["video_observation"]
-            weather_sea_dict = {k: v for k, v in video_obs.items() if k in self.weather_sea_keys}
-            specific_video_dict = {k: v for k, v in video_obs.items() if k not in self.weather_sea_keys}
-            self._display_data_block("video_observation", specific_video_dict, self.video_grid_layout, "Video Data")
-            self._display_weather_data(weather_sea_dict)
+            obs = self._json_data["video_observation"]
+            weather = {k: v for k, v in obs.items() if k in self.weather_sea_keys}
+            specific = {k: v for k, v in obs.items() if k not in self.weather_sea_keys}
+            self._display_block_in_scroll("video_observation", specific,
+                                          self._scroll_video, "Vidéo",
+                                          extra_btn=("Compare with slate", self.on_compare_slate_clicked))
+            self._display_weather_in_scroll(weather)
 
-    def _display_data_block(self, block_key, block_data, obsolete_layout, title, target_container=None):
-        container_map = {
-            "system": self.data_system_container,
-            "survey": self.data_survey_container,
-            "video_observation": self.specific_container_data,
-        }
-        container = target_container if target_container else container_map.get(block_key)
-        if not container:
-            return
+    # ── Rendering helpers ─────────────────────────────────────────────────
 
-        block_name = f"dynamic_form_{block_key}"
-        for child in container.findChildren(QtWidgets.QWidget, block_name):
-            child.setParent(None)
-            child.deleteLater()
+    def _build_form_widget(self, block_key: str, block_data: dict, title: str,
+                           extra_btn: tuple | None = None) -> QtWidgets.QWidget:
+        """Construit et retourne un widget formulaire pour un bloc de données."""
+        root = QtWidgets.QWidget()
+        root.setStyleSheet("background: transparent;")
+        vbox = QtWidgets.QVBoxLayout(root)
+        vbox.setContentsMargins(8, 8, 8, 8)
+        vbox.setSpacing(6)
 
-        if container.layout() is None:
-            QtWidgets.QVBoxLayout(container).setContentsMargins(5, 5, 5, 5)
-
-        form_widget = QtWidgets.QWidget()
-        form_widget.setObjectName(block_name)
-        form_layout = QtWidgets.QVBoxLayout(form_widget)
-        form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(8)
-
-        header_widget = QtWidgets.QWidget()
-        header_layout = QtWidgets.QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(0, 0, 0, 5)
-
-        title_label = QtWidgets.QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; color: white; font-size: 13px;")
-        header_layout.addWidget(title_label)
-
-        if block_key == "video_observation" and not target_container:
-            btn_slate = QtWidgets.QPushButton("Compare with slate")
-            btn_slate.setStyleSheet("""
-                QPushButton { background-color: #3a3a3a; color: #00ffaa; border: 1px solid #555;
-                              border-radius: 4px; padding: 4px 8px; font-weight: bold; }
-                QPushButton:hover { background-color: #4a4a4a; border-color: #00ffaa; }
-                QPushButton:pressed { background-color: #2a2a2a; }
+        # Section header
+        hdr = QtWidgets.QWidget()
+        hdr.setStyleSheet(_SECTION_LINE_STYLE)
+        hdr_row = QtWidgets.QHBoxLayout(hdr)
+        hdr_row.setContentsMargins(0, 0, 0, 4)
+        title_lbl = QtWidgets.QLabel(title)
+        title_lbl.setStyleSheet(_SECTION_TITLE_STYLE)
+        hdr_row.addWidget(title_lbl)
+        if extra_btn:
+            btn = QtWidgets.QPushButton(extra_btn[0])
+            btn.setStyleSheet("""
+                QPushButton { background-color: #20415d; color: #F2BFB4; border: 1px solid #2778a2;
+                              border-radius: 4px; padding: 3px 8px; font-size: 11px; }
+                QPushButton:hover { background-color: #2778a2; }
             """)
-            btn_slate.clicked.connect(self.on_compare_slate_clicked)
-            header_layout.addWidget(btn_slate, 0, QtCore.Qt.AlignmentFlag.AlignRight)
-
-        header_widget.setStyleSheet("border-bottom: 2px solid #555; padding-bottom: 4px;")
-        form_layout.addWidget(header_widget)
+            btn.clicked.connect(extra_btn[1])
+            hdr_row.addStretch()
+            hdr_row.addWidget(btn)
+        vbox.addWidget(hdr)
 
         if not isinstance(block_data, dict):
-            return
+            vbox.addStretch()
+            return root
 
         lang = self.current_language
         for field_id, structure in block_data.items():
             if not isinstance(structure, dict) or "name" not in structure:
                 continue
 
-            tooltip_text = structure.get("description_fr", "")
             val = structure.get("value", "")
             example = structure.get("example", "")
             auth_values = structure.get(f"authorized_values_{lang}")
             label_text = structure.get(f"name_{lang}", structure.get("name", field_id))
+            tooltip = structure.get("description_fr", "")
 
-            w = QtWidgets.QWidget()
-            h_layout = QtWidgets.QHBoxLayout(w)
-            h_layout.setContentsMargins(5, 3, 5, 3)
-            h_layout.setSpacing(10)
+            row = QtWidgets.QWidget()
+            row.setStyleSheet("background: transparent;")
+            row_layout = QtWidgets.QHBoxLayout(row)
+            row_layout.setContentsMargins(2, 1, 2, 1)
+            row_layout.setSpacing(8)
 
             lbl = QtWidgets.QLabel(label_text)
-            lbl.setStyleSheet("color: #ccc; font-weight: bold; min-width: 150px; border: none;")
-            if tooltip_text:
-                lbl.setToolTip(tooltip_text)
-            h_layout.addWidget(lbl, 1)
+            lbl.setStyleSheet(_LABEL_STYLE)
+            lbl.setWordWrap(False)
+            if tooltip:
+                lbl.setToolTip(tooltip)
+            row_layout.addWidget(lbl, 1)
 
             if auth_values:
                 combo = QtWidgets.QComboBox()
+                combo.setStyleSheet("""
+                    QComboBox { background-color: #162433; color: #F2BFB4;
+                                border: 1px solid #444; border-radius: 3px; padding: 2px 6px; }
+                    QComboBox QAbstractItemView { background-color: #162433; color: white; }
+                """)
                 combo.addItems([str(v) for v in auth_values])
                 if val:
                     idx = combo.findText(str(val))
                     if idx >= 0:
                         combo.setCurrentIndex(idx)
                 combo.currentTextChanged.connect(
-                    lambda t, b=block_key, f_id=field_id, w_in=combo: self._update_value(b, f_id, t, w_in)
-                )
-                h_layout.addWidget(combo, 2)
+                    lambda t, b=block_key, f=field_id: self._update_value(b, f, t))
+                row_layout.addWidget(combo, 2)
             else:
                 line = QtWidgets.QLineEdit()
                 line.setText(str(val) if val else "")
                 line.setPlaceholderText(str(example))
-                line.setStyleSheet(
-                    "background-color: #2b2b2b; color: #ffaa00;" if val else
-                    "background-color: #2b2b2b; color: #666;"
-                )
+                line.setStyleSheet(_FIELD_STYLE if val else _EMPTY_STYLE)
                 line.textChanged.connect(
-                    lambda t, b=block_key, f_id=field_id, w_in=line: self._update_value(b, f_id, t, w_in)
-                )
-                h_layout.addWidget(line, 2)
+                    lambda t, b=block_key, f=field_id, w=line: self._update_value(b, f, t, w))
+                row_layout.addWidget(line, 2)
 
-            form_layout.addWidget(w)
+            vbox.addWidget(row)
 
-        form_layout.addStretch()
-        container.layout().addWidget(form_widget)
+        vbox.addStretch()
+        return root
 
-    def _display_weather_data(self, weather_sea_dict):
-        container = self.container_weather_data
-        if not container:
+    def _display_block_in_scroll(self, block_key: str, block_data: dict,
+                                  scroll: QtWidgets.QScrollArea | None, title: str,
+                                  extra_btn: tuple | None = None):
+        """Remplace le widget du QScrollArea par un formulaire reconstruit."""
+        if not scroll:
+            return
+        form = self._build_form_widget(block_key, block_data, title, extra_btn)
+        scroll.setWidget(form)
+
+    def _display_weather_in_scroll(self, weather_sea_dict: dict):
+        if not self._scroll_weather:
             return
 
-        for child in container.findChildren(QtWidgets.QWidget, "dynamic_form_weather_sea"):
-            child.setParent(None)
-            child.deleteLater()
+        root = QtWidgets.QWidget()
+        root.setStyleSheet("background: transparent;")
+        vbox = QtWidgets.QVBoxLayout(root)
+        vbox.setContentsMargins(8, 8, 8, 8)
+        vbox.setSpacing(6)
 
-        if container.layout() is None:
-            QtWidgets.QVBoxLayout(container).setContentsMargins(5, 5, 5, 5)
-
-        form_widget = QtWidgets.QWidget()
-        form_widget.setObjectName("dynamic_form_weather_sea")
-        form_layout = QtWidgets.QVBoxLayout(form_widget)
-        form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(8)
-
-        header_widget = QtWidgets.QWidget()
-        header_layout = QtWidgets.QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(0, 0, 0, 5)
-
-        title_label = QtWidgets.QLabel("Weather & Sea Data")
-        title_label.setStyleSheet("font-weight: bold; color: white; font-size: 13px;")
-        header_layout.addWidget(title_label)
-
-        btn_web = QtWidgets.QPushButton("Compare with Web Data")
+        hdr = QtWidgets.QWidget()
+        hdr.setStyleSheet(_SECTION_LINE_STYLE)
+        hdr_row = QtWidgets.QHBoxLayout(hdr)
+        hdr_row.setContentsMargins(0, 0, 0, 4)
+        title_lbl = QtWidgets.QLabel("Météo & Mer")
+        title_lbl.setStyleSheet(_SECTION_TITLE_STYLE)
+        hdr_row.addWidget(title_lbl)
+        btn_web = QtWidgets.QPushButton("Comparer données web")
         btn_web.setStyleSheet("""
-            QPushButton { background-color: #3a3a3a; color: #00ffaa; border: 1px solid #555;
-                          border-radius: 4px; padding: 4px 8px; font-weight: bold; }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #00ffaa; }
-            QPushButton:pressed { background-color: #2a2a2a; }
+            QPushButton { background-color: #20415d; color: #F2BFB4; border: 1px solid #2778a2;
+                          border-radius: 4px; padding: 3px 8px; font-size: 11px; }
+            QPushButton:hover { background-color: #2778a2; }
         """)
         btn_web.clicked.connect(self.action_compare_weather_web)
-        header_layout.addWidget(btn_web, 0, QtCore.Qt.AlignmentFlag.AlignRight)
-
-        header_widget.setStyleSheet("border-bottom: 2px solid #555; padding-bottom: 4px;")
-        form_layout.addWidget(header_widget)
+        hdr_row.addStretch()
+        hdr_row.addWidget(btn_web)
+        vbox.addWidget(hdr)
 
         if isinstance(weather_sea_dict, dict):
             lang = self.current_language
             for field_id, structure in weather_sea_dict.items():
                 if not isinstance(structure, dict) or "name" not in structure:
                     continue
-                tooltip_text = structure.get("description_fr", "")
                 val = structure.get("value", "")
                 example = structure.get("example", "")
                 auth_values = structure.get(f"authorized_values_{lang}")
                 label_text = structure.get(f"name_{lang}", structure.get("name", field_id))
 
-                w = QtWidgets.QWidget()
-                h_layout = QtWidgets.QHBoxLayout(w)
-                h_layout.setContentsMargins(5, 3, 5, 3)
-                h_layout.setSpacing(10)
+                row = QtWidgets.QWidget()
+                row.setStyleSheet("background: transparent;")
+                row_layout = QtWidgets.QHBoxLayout(row)
+                row_layout.setContentsMargins(2, 1, 2, 1)
+                row_layout.setSpacing(8)
 
                 lbl = QtWidgets.QLabel(label_text)
-                lbl.setStyleSheet("color: #ccc; font-weight: bold; min-width: 150px; border: none;")
-                if tooltip_text:
-                    lbl.setToolTip(tooltip_text)
-                h_layout.addWidget(lbl, 1)
+                lbl.setStyleSheet(_LABEL_STYLE)
+                row_layout.addWidget(lbl, 1)
 
                 if auth_values:
                     combo = QtWidgets.QComboBox()
+                    combo.setStyleSheet("""
+                        QComboBox { background-color: #162433; color: #F2BFB4;
+                                    border: 1px solid #444; border-radius: 3px; padding: 2px 6px; }
+                        QComboBox QAbstractItemView { background-color: #162433; color: white; }
+                    """)
                     combo.addItems([str(v) for v in auth_values])
                     if val:
                         idx = combo.findText(str(val))
                         if idx >= 0:
                             combo.setCurrentIndex(idx)
                     combo.currentTextChanged.connect(
-                        lambda t, b="video_observation", f_id=field_id, w_in=combo: self._update_value(b, f_id, t, w_in)
-                    )
-                    h_layout.addWidget(combo, 2)
+                        lambda t, f=field_id: self._update_value("video_observation", f, t))
+                    row_layout.addWidget(combo, 2)
                 else:
                     line = QtWidgets.QLineEdit()
                     line.setText(str(val) if val else "")
                     line.setPlaceholderText(str(example))
-                    line.setStyleSheet(
-                        "background-color: #2b2b2b; color: #ffaa00;" if val else
-                        "background-color: #2b2b2b; color: #666;"
-                    )
+                    line.setStyleSheet(_FIELD_STYLE if val else _EMPTY_STYLE)
                     line.textChanged.connect(
-                        lambda t, b="video_observation", f_id=field_id, w_in=line: self._update_value(b, f_id, t, w_in)
-                    )
-                    h_layout.addWidget(line, 2)
+                        lambda t, f=field_id, w=line: self._update_value("video_observation", f, t, w))
+                    row_layout.addWidget(line, 2)
 
-                form_layout.addWidget(w)
+                vbox.addWidget(row)
 
-        form_layout.addStretch()
-        container.layout().addWidget(form_widget)
+        vbox.addStretch()
+        self._scroll_weather.setWidget(root)
 
-    def action_compare_weather_web(self):
-        lat, lon, raw_date = None, None, None
+    # ── Statistics chart ──────────────────────────────────────────────────
 
-        for block_name, block_content in self._json_data.items():
-            if isinstance(block_content, dict):
-                if "date" in block_content and block_content["date"].get("value"):
-                    raw_date = block_content["date"]["value"]
-                if not lat and "latitude" in block_content and block_content["latitude"].get("value"):
-                    lat = block_content["latitude"]["value"]
-                if not lon and "longitude" in block_content and block_content["longitude"].get("value"):
-                    lon = block_content["longitude"]["value"]
-
-        formatted_date = None
-        if raw_date:
-            date_str = str(raw_date).strip()
-            if len(date_str) == 8 and date_str.isdigit():
-                formatted_date = f"{date_str[0:4]}-{date_str[4:6]}-{date_str[6:8]}"
-            elif "-" in date_str:
-                formatted_date = date_str.split(" ")[0].split("T")[0]
-
-        if not lat or not lon:
-            QtWidgets.QMessageBox.warning(self.widget, "Missing Coordinates",
-                                          f"Latitude ({lat}) or Longitude ({lon}) is missing.")
+    def refresh_statistics(self):
+        if not hasattr(self, 'ax'):
             return
-        if not formatted_date:
-            QtWidgets.QMessageBox.warning(self.widget, "Missing or Invalid Date",
-                                          f"The read date is: '{raw_date}'.\n\nPlease check the Date field.")
-            return
+        video_count = self.video_model.rowCount()
+        trash_count = self.trash_model.rowCount()
 
-        self.weather_worker = WeatherWorker(lat, lon, formatted_date)
-        self.weather_worker.weather_fetched.connect(self._open_web_weather_popup)
-        self.weather_worker.start()
+        if hasattr(self, 'lbl_video_count'):
+            self.lbl_video_count.setText(f"Vidéos : {video_count}")
+            self.lbl_trash_count.setText(f"Poubelle : {trash_count}")
 
-    def _open_web_weather_popup(self, fetched_api_data, relevant_date):
-        if not fetched_api_data:
-            QtWidgets.QMessageBox.critical(self.widget, "Connection Error", "Unable to retrieve data.")
-            return
-        dialog = WeatherWebDialog(web_data=fetched_api_data, lang=self.current_language, parent=self.widget)
-        dialog.exec()
+        self.ax.clear()
+        if video_count + trash_count == 0:
+            self.ax.pie([1], colors=['#2a2a2a'], wedgeprops=dict(width=0.3))
+        else:
+            self.ax.pie(
+                [video_count, trash_count],
+                colors=['#2778A2', '#D94F38'],
+                startangle=90,
+                wedgeprops=dict(width=0.35, edgecolor='#111')
+            )
+        self.ax.axis('equal')
+        # draw_idle defers the repaint to the next Qt event — avoids painting over other widgets
+        self.canvas.draw_idle()
 
-    def inject_weather_data(self, data=None):
-        if "video_observation" in self._json_data:
-            weather_sea_dict = {
-                k: v for k, v in self._json_data["video_observation"].items()
-                if k in self.weather_sea_keys
-            }
-            self._display_weather_data(weather_sea_dict)
+    # ── Data updates ─────────────────────────────────────────────────────
 
-    def _update_value(self, block_key: str, field_id: str, new_value: str, source_widget=None):
+    def _update_value(self, block_key: str, field_id: str, new_value: str,
+                      source_widget: QtWidgets.QLineEdit | None = None):
         if source_widget and isinstance(source_widget, QtWidgets.QLineEdit) and new_value:
-            source_widget.setStyleSheet("background-color: #2b2b2b; color: #ffaa00;")
+            source_widget.setStyleSheet(_FIELD_STYLE)
 
         if block_key in self._json_data and field_id in self._json_data[block_key]:
             self._json_data[block_key][field_id]["value"] = new_value
 
-        if block_key in ["survey", "system"]:
+        if block_key in ("survey", "system"):
             for row in range(self.video_model.rowCount()):
                 item = self.video_model.item(row, 0)
                 if not item:
@@ -445,27 +519,55 @@ class MetadonneesController:
             except Exception as e:
                 print(f"[ERROR] Failed writing JSON: {e}")
 
-    def refresh_statistics(self):
-        if not hasattr(self, 'ax'):
+    def inject_weather_data(self, data=None):
+        if "video_observation" in self._json_data:
+            weather = {k: v for k, v in self._json_data["video_observation"].items()
+                       if k in self.weather_sea_keys}
+            self._display_weather_in_scroll(weather)
+
+    # ── Weather web compare ───────────────────────────────────────────────
+
+    def action_compare_weather_web(self):
+        lat, lon, raw_date = None, None, None
+        for block_content in self._json_data.values():
+            if not isinstance(block_content, dict):
+                continue
+            if "date" in block_content and block_content["date"].get("value"):
+                raw_date = block_content["date"]["value"]
+            if not lat and "latitude" in block_content and block_content["latitude"].get("value"):
+                lat = block_content["latitude"]["value"]
+            if not lon and "longitude" in block_content and block_content["longitude"].get("value"):
+                lon = block_content["longitude"]["value"]
+
+        formatted_date = None
+        if raw_date:
+            date_str = str(raw_date).strip()
+            if len(date_str) == 8 and date_str.isdigit():
+                formatted_date = f"{date_str[0:4]}-{date_str[4:6]}-{date_str[6:8]}"
+            elif "-" in date_str:
+                formatted_date = date_str.split(" ")[0].split("T")[0]
+
+        if not lat or not lon:
+            QtWidgets.QMessageBox.warning(self.widget, "Missing Coordinates",
+                                          f"Latitude ({lat}) or Longitude ({lon}) is missing.")
             return
-        video_count = self.video_model.rowCount()
-        trash_count = self.trash_model.rowCount()
-        self.ax.clear()
-        if video_count + trash_count == 0:
-            self.ax.pie([1], colors=['#3d3d3d'], wedgeprops=dict(width=0.25))
-        else:
-            self.ax.pie(
-                [video_count, trash_count],
-                labels=["Exploitable", "Trash"],
-                autopct='%1.1f%%',
-                colors=['#2778a2', '#ff5555'],
-                startangle=90,
-                textprops={'color': "white"},
-                wedgeprops=dict(width=0.25, edgecolor='#1a1a1a')
-            )
-        self.ax.axis('equal')
-        self.figure.tight_layout()
-        self.canvas.draw()
+        if not formatted_date:
+            QtWidgets.QMessageBox.warning(self.widget, "Missing or Invalid Date",
+                                          f"The read date is: '{raw_date}'.")
+            return
+
+        self.weather_worker = WeatherWorker(lat, lon, formatted_date)
+        self.weather_worker.weather_fetched.connect(self._open_web_weather_popup)
+        self.weather_worker.start()
+
+    def _open_web_weather_popup(self, fetched_api_data, relevant_date):
+        if not fetched_api_data:
+            QtWidgets.QMessageBox.critical(self.widget, "Connection Error", "Unable to retrieve data.")
+            return
+        dialog = WeatherWebDialog(web_data=fetched_api_data, lang=self.current_language, parent=self.widget)
+        dialog.exec()
+
+    # ── Slate compare ─────────────────────────────────────────────────────
 
     def on_compare_slate_clicked(self):
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -475,7 +577,6 @@ class MetadonneesController:
             QtWidgets.QMessageBox.warning(self.widget, "Slate Not Found",
                                           "Please input the slate record entry inside the events timeline view first.")
             return
-
         try:
             with open(self.current_template_json, 'r', encoding='utf-8') as f:
                 self._json_data = json.load(f)
@@ -483,13 +584,13 @@ class MetadonneesController:
             print(f"[SLATE] Failed reloading JSON: {e}")
 
         slate_frame = None
-        video_obs = self._json_data.get("video_observation", {})
-        for json_key in ["events_deployment", "events_interesting_images", "events_animal"]:
-            if json_key in video_obs and isinstance(video_obs[json_key], list) and video_obs[json_key]:
-                for event_item in video_obs[json_key][0].get("values", []):
-                    val_string = str(event_item.get("value", "")).lower().strip()
-                    if any(kw in val_string for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
-                        slate_frame = event_item.get("frame_number_start")
+        obs = self._json_data.get("video_observation", {})
+        for key in ["events_deployment", "events_interesting_images", "events_animal"]:
+            if key in obs and isinstance(obs[key], list) and obs[key]:
+                for evt in obs[key][0].get("values", []):
+                    if any(kw in str(evt.get("value", "")).lower()
+                           for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
+                        slate_frame = evt.get("frame_number_start")
                         break
             if slate_frame is not None:
                 break
@@ -498,7 +599,6 @@ class MetadonneesController:
             QtWidgets.QMessageBox.warning(self.widget, "Slate Not Found",
                                           "Please input the slate record entry inside the events timeline view first.")
             return
-
         self._display_slate_window(slate_frame)
 
     def _display_slate_window(self, frame_number: int):
@@ -513,15 +613,13 @@ class MetadonneesController:
             QtWidgets.QMessageBox.warning(self.widget, "Error", f"Unable to read frame {frame_number}.")
             return
 
-        import cv2 as _cv2
-        frame_rgb = _cv2.cvtColor(frame, _cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = frame_rgb.shape
-        from PyQt6.QtGui import QImage, QPixmap
-        q_img = QImage(frame_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_img)
+        q_img = QtGui.QImage(frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+        pixmap = QtGui.QPixmap.fromImage(q_img)
 
         dialog = QtWidgets.QDialog(self.widget)
-        dialog.setWindowTitle(f"Slate - Frame {frame_number}")
+        dialog.setWindowTitle(f"Slate — Frame {frame_number}")
         dialog.setMinimumSize(800, 600)
         layout = QtWidgets.QVBoxLayout(dialog)
         lbl = QtWidgets.QLabel()
@@ -529,7 +627,7 @@ class MetadonneesController:
                                     QtCore.Qt.TransformationMode.SmoothTransformation))
         lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl)
-        btn = QtWidgets.QPushButton("Close")
+        btn = QtWidgets.QPushButton("Fermer")
         btn.clicked.connect(dialog.accept)
         layout.addWidget(btn)
         dialog.show()

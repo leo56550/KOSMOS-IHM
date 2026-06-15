@@ -88,6 +88,26 @@ class ValidationController:
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
 
+    def select_video_by_name(self, video_name: str):
+        """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
+        if not self.video_tree or not self.video_model:
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.text() == video_name:
+                source_index = self.video_model.indexFromItem(item)
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                if not proxy_index.isValid():
+                    return
+                self.video_tree.selectionModel().setCurrentIndex(
+                    proxy_index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.video_tree.scrollTo(proxy_index)
+                self.on_video_selected(proxy_index)
+                break
+
     def on_video_selected(self, index: QtCore.QModelIndex):
         source_index = self.proxy_model.mapToSource(index)
         item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))

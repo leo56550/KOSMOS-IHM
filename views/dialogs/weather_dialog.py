@@ -16,17 +16,20 @@ class WeatherWebDialog(QtWidgets.QDialog):
         self.resize(450, 420)
 
         self.setStyleSheet("""
-            QDialog { background-color: #1a1a1a; }
-            QLabel { color: #ccc; font-weight: bold; font-size: 12px; }
+            QDialog { background-color: #111820; }
+            QLabel { color: #b0c8d8; font-weight: bold; font-size: 12px;
+                     font-family: "Segoe UI", sans-serif; }
             QLineEdit {
-                background-color: #2b2b2b; color: #00ffaa;
-                border: 1px solid #555; border-radius: 4px; padding: 4px; font-weight: bold;
+                background-color: #162433; color: #F2BFB4;
+                border: 1px solid #2a4057; border-radius: 4px;
+                padding: 4px 8px; font-weight: bold; font-family: "Segoe UI", sans-serif;
             }
             QPushButton {
-                background-color: #3a3a3a; color: white;
-                border: 1px solid #555; border-radius: 4px; padding: 6px 12px; font-weight: bold;
+                background-color: #20415D; color: white; font-weight: bold;
+                border: 1px solid #2778A2; border-radius: 4px;
+                padding: 6px 14px; font-family: "Segoe UI", sans-serif;
             }
-            QPushButton:hover { background-color: #4a4a4a; border-color: #00ffaa; }
+            QPushButton:hover { background-color: #2778A2; }
         """)
 
         self._setup_ui()
@@ -46,7 +49,9 @@ class WeatherWebDialog(QtWidgets.QDialog):
             header_text = "Données trouvées sur Open-Meteo" if self.lang == "fr" else "Data captured on Open-Meteo"
 
         header_label = QtWidgets.QLabel(header_text)
-        header_label.setStyleSheet("font-size: 13px; color: #00ffaa; border-bottom: 2px solid #555; padding-bottom: 5px;")
+        header_label.setStyleSheet(
+            "font-size: 13px; color: #F2BFB4; border-bottom: 1px solid #2778A2; padding-bottom: 5px;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;")
         main_layout.addWidget(header_label)
 
         form_widget = QtWidgets.QWidget()
