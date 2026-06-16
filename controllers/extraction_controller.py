@@ -185,6 +185,8 @@ class ExtractionController:
                 self.video_player.load_dynamic_metadata(csv_telemetry)
             else:
                 self.video_player.df_telemetry = None
+                self.video_player.btn_telemetry.setEnabled(False)
+                self.video_player.btn_telemetry.setChecked(False)
 
             if hasattr(self.video_player, 'load_video_and_events'):
                 self.video_player.load_video_and_events(video_payload, motor_events, is_stereo=is_stereo)

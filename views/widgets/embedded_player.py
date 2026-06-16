@@ -292,6 +292,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.setStyleSheet(_BTN_STYLE)
             buttons_layout.addWidget(btn)
 
+        buttons_layout.addStretch()
+
+        self.btn_telemetry = QtWidgets.QPushButton("Télémétrie")
+        self.btn_telemetry.setCheckable(True)
+        self.btn_telemetry.setStyleSheet(_TOGGLE_STYLE)
+        self.btn_telemetry.setEnabled(False)
+        self.btn_telemetry.setToolTip("Afficher / masquer le graphe de télémétrie")
+        self.btn_telemetry.toggled.connect(self._on_telemetry_toggled)
+        buttons_layout.addWidget(self.btn_telemetry)
 
         # ── Corrections panel ─────────────────────────────────────────────
         self.corrections_panel = QtWidgets.QFrame()
@@ -358,6 +367,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         # ── Telemetry dialog ──────────────────────────────────────────────
         self.telemetry_dialog = TelemetryDialog(self)
+        self.telemetry_dialog.finished.connect(lambda _: self.btn_telemetry.setChecked(False))
 
         # ── Splitter ──────────────────────────────────────────────────────
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -417,6 +427,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.set_language(self.current_language)
 
         # Raccourcis clavier (actifs quand le player ou l'un de ses enfants a le focus)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         _ctx = QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut
         sc_space = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Space), self)
         sc_space.setContext(_ctx)
@@ -858,7 +869,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.display_stack.setCurrentIndex(0)
 
     def load_dynamic_metadata(self, csv_path: str):
-        """Charge le CSV de télémétrie et ouvre le dialogue TelemetryDialog."""
+        """Charge le CSV de télémétrie. Met à jour le dialog s'il était déjà ouvert."""
         try:
             df = pd.read_csv(csv_path, sep=None, engine='python')
             df.columns = df.columns.str.strip()
@@ -869,9 +880,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                     df['Delta'] = df['Delta'].str.replace(',', '.').astype(float)
                 self.df_telemetry = df
                 self.telemetry_dialog.update_data(df)
-                self.telemetry_dialog.show()
+                self.btn_telemetry.setEnabled(True)
+                if self.telemetry_dialog.isVisible():
+                    pass  # déjà ouvert → update_data suffit
         except Exception as e:
             print(f"Erreur chargement télémétrie : {e}")
+
+    def _on_telemetry_toggled(self, checked: bool):
+        if checked:
+            self.telemetry_dialog.show()
+        else:
+            self.telemetry_dialog.hide()
 
     def play_all(self):
         """Lance la lecture sur le flux L et (en stéréo) le flux R."""

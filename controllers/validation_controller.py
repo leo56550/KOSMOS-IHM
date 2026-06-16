@@ -151,6 +151,8 @@ class ValidationController:
             self.player.load_dynamic_metadata(csv_telemetry)
         else:
             self.player.df_telemetry = None
+            self.player.btn_telemetry.setEnabled(False)
+            self.player.btn_telemetry.setChecked(False)
 
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
 

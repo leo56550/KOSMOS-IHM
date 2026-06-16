@@ -335,6 +335,7 @@ class AppController:
             w.update_nav_highlight(page)
             if page == w.page_extraction:
                 self.extraction_ctrl.refresh_video_list()
+            self._focus_page_player(page)
             return
 
         if not w.actionQualification.isEnabled():
@@ -348,3 +349,19 @@ class AppController:
 
         w.stackedWidget.setCurrentWidget(page)
         w.update_nav_highlight(page)
+        self._focus_page_player(page)
+
+    def _focus_page_player(self, page):
+        """Donne le focus clavier au player embarqué de la page, si présent."""
+        w = self.window
+        player_map = {
+            w.page_validation: (self.validation_ctrl, 'player'),
+            w.page_evenements: (self.evenements_ctrl, 'event_player'),
+            w.page_extraction: (self.extraction_ctrl, 'video_player'),
+        }
+        entry = player_map.get(page)
+        if entry:
+            ctrl, attr = entry
+            player = getattr(ctrl, attr, None)
+            if player is not None:
+                QtCore.QTimer.singleShot(0, player.setFocus)

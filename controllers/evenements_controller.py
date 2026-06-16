@@ -777,6 +777,8 @@ class EvenementsController:
                 self.event_player.load_dynamic_metadata(csv_telemetry)
             else:
                 self.event_player.df_telemetry = None
+                self.event_player.btn_telemetry.setEnabled(False)
+                self.event_player.btn_telemetry.setChecked(False)
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
 
     def charger_evenements_du_json(self):
