@@ -45,6 +45,56 @@ QPushButton:hover:checked {
 """
 
 
+class _FullscreenWindow(QtWidgets.QWidget):
+    """Fenêtre plein écran — double-clic ou Échap pour quitter."""
+
+    exit_requested = QtCore.pyqtSignal()
+
+    def __init__(self):
+        super().__init__(None, QtCore.Qt.WindowType.Window)
+        self.setStyleSheet("background: black;")
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.video_L = QVideoWidget()
+        self.video_L.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        layout.addWidget(self.video_L)
+
+        self.video_R = QVideoWidget()
+        self.video_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_R.setVisible(False)
+        layout.addWidget(self.video_R)
+
+        sc = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), self)
+        sc.activated.connect(self.exit_requested)
+
+        self._hint = QtWidgets.QLabel("Double-clic ou Échap pour quitter le plein écran", self)
+        self._hint.setStyleSheet(
+            "color: rgba(255,255,255,200); background: rgba(0,0,0,140);"
+            " font-size: 13px; padding: 6px 16px; border-radius: 6px;"
+        )
+        self._hint.adjustSize()
+        self._hint_timer = QtCore.QTimer(self)
+        self._hint_timer.setSingleShot(True)
+        self._hint_timer.timeout.connect(self._hint.hide)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._hint.show()
+        self._hint.adjustSize()
+        self._hint.move((self.width() - self._hint.width()) // 2, 24)
+        self._hint_timer.start(3000)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._hint.isVisible():
+            self._hint.move((self.width() - self._hint.width()) // 2, 24)
+
+    def mouseDoubleClickEvent(self, event):
+        self.exit_requested.emit()
+
+
 class _VideoLabel(QtWidgets.QWidget):
     """Widget d'affichage vidéo — stocke un QImage et le scale dans paintEvent sans passer par QPixmap."""
 
@@ -426,6 +476,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._update_corrections_enabled(is_playing=False)
         self.set_language(self.current_language)
 
+        self._fs_window: _FullscreenWindow | None = None
+
         # Raccourcis clavier (actifs quand le player ou l'un de ses enfants a le focus)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         _ctx = QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut
@@ -557,6 +609,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.left_display.setCurrentIndex(1)
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Type.MouseButtonDblClick:
+            if self.current_video_path:
+                self._toggle_fullscreen()
+                return True
         if event.type() == QtCore.QEvent.Type.Wheel:
             if self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
                 self._handle_zoom_wheel(event)
@@ -580,6 +636,33 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         delta = event.angleDelta().y()
         cursor = self.correction_overlay.mapFromGlobal(event.globalPosition().toPoint())
         self.correction_overlay.zoom_at_cursor(delta, cursor)
+
+    def _toggle_fullscreen(self):
+        if self._fs_window is not None:
+            self._exit_fullscreen()
+        else:
+            self._enter_fullscreen()
+
+    def _enter_fullscreen(self):
+        win = _FullscreenWindow()
+        win.exit_requested.connect(self._exit_fullscreen)
+        self.player.setVideoOutput(win.video_L)
+        if self.is_stereo:
+            self.player_R.setVideoOutput(win.video_R)
+            win.video_R.setVisible(True)
+        # Repasser en rendu hardware (pas de corrections en plein écran)
+        self.left_display.setCurrentIndex(0)
+        win.showFullScreen()
+        self._fs_window = win
+
+    def _exit_fullscreen(self):
+        if self._fs_window is None:
+            return
+        self.player.setVideoOutput(self.video_widget)
+        if self.is_stereo:
+            self.player_R.setVideoOutput(self.video_widget_R)
+        self._fs_window.close()
+        self._fs_window = None
 
     def _on_corr_he_toggled(self, checked: bool):
         """Active/désactive l'égalisation d'histogramme et rafraîchit la frame."""
@@ -791,6 +874,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def load_video_and_events(self, video_data, events: list, is_stereo: bool = False):
         """Charge une vidéo (mono ou stéréo), configure la timeline et démarre la lecture."""
+        if self._fs_window is not None:
+            self._exit_fullscreen()
         self.player.stop()
         self.player_R.stop()
         self.is_stereo = is_stereo
