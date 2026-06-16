@@ -188,7 +188,16 @@ class SftpDialog(QtWidgets.QDialog):
         row2 = QtWidgets.QHBoxLayout()
         row2.addWidget(QtWidgets.QLabel("Dossier distant :"))
         self.edit_remote = QtWidgets.QLineEdit("kosmos_local_sd")
+        self.edit_remote.setPlaceholderText("Ex : kosmos_local_sd  ou  /home/kosmos/data")
+        self.edit_remote.returnPressed.connect(self._on_refresh_remote)
         row2.addWidget(self.edit_remote)
+        self.btn_refresh_remote = QtWidgets.QPushButton("Actualiser")
+        self.btn_refresh_remote.setToolTip(
+            "Relister le dossier distant (chemin modifiable même après connexion)")
+        self.btn_refresh_remote.setMinimumWidth(90)
+        self.btn_refresh_remote.setEnabled(False)
+        self.btn_refresh_remote.clicked.connect(self._on_refresh_remote)
+        row2.addWidget(self.btn_refresh_remote)
         self.btn_connect = QtWidgets.QPushButton("  Se connecter")
         self.btn_connect.setIcon(
             self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DriveNetIcon))
@@ -296,12 +305,12 @@ class SftpDialog(QtWidgets.QDialog):
     def _set_connected(self, connected: bool):
         self.btn_connect.setEnabled(not connected)
         self.btn_disconnect.setEnabled(connected)
+        self.btn_refresh_remote.setEnabled(connected)
         self.btn_select_all.setEnabled(connected)
         self.btn_deselect_all.setEnabled(connected)
         self.btn_download.setEnabled(connected)
         self.btn_browse.setEnabled(connected)
-        for field in [self.edit_ip, self.edit_port, self.edit_user,
-                      self.edit_pwd, self.edit_remote]:
+        for field in [self.edit_ip, self.edit_port, self.edit_user, self.edit_pwd]:
             field.setEnabled(not connected)
         self.btn_show_pwd.setEnabled(not connected)
 
@@ -348,6 +357,33 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_connect.setEnabled(True)
         self.lbl_conn_status.setText(f"Erreur : {msg}")
         self.lbl_conn_status.setStyleSheet("color: #D94F38; font-weight: bold;")
+
+    def _on_refresh_remote(self):
+        """Reliste le dossier distant avec le chemin saisi, sans rouvrir la session credentials."""
+        remote = self.edit_remote.text().strip()
+        if not remote:
+            return
+        self._sftp_cfg['remote_dir'] = remote
+        self.btn_refresh_remote.setEnabled(False)
+        self.conn_progress.setVisible(True)
+        self.lbl_conn_status.setText(f"Listage de {remote}…")
+        self.lbl_conn_status.setStyleSheet("color: #b0c8d8;")
+        self.file_tree.clear()
+
+        cfg = self._sftp_cfg
+        self._connect_worker = SftpConnectWorker(
+            cfg['ip'], cfg['port'], cfg['user'], cfg['password'], remote)
+        self._connect_worker.connected.connect(self._on_refreshed)
+        self._connect_worker.error.connect(self._on_connect_error)
+        self._connect_worker.start()
+
+    def _on_refreshed(self, entries: list):
+        self.conn_progress.setVisible(False)
+        self.btn_refresh_remote.setEnabled(True)
+        self.lbl_conn_status.setText(
+            f"Connecté à {self._sftp_cfg['ip']} — {self.edit_remote.text()}")
+        self.lbl_conn_status.setStyleSheet("color: #5ecf80; font-weight: bold;")
+        self._populate_tree(entries)
 
     def _on_disconnect(self):
         if self._connect_worker and self._connect_worker.isRunning():
