@@ -48,6 +48,7 @@ class EventModel:
     """
 
     def __init__(self):
+        """Initialise la liste d'événements, le chemin JSON et le FPS par défaut."""
         self._events: List[Event] = []
         self._json_path: Optional[str] = None
         self._fps: float = 25.0

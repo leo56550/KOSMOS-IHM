@@ -11,7 +11,10 @@ from views.dialogs.capture_dialog import CaptureDialog
 
 
 class ExtractionController:
+    """Contrôleur de la page Extraction : découpe vidéo, capture d'image et gestion des livrables."""
+
     def __init__(self, widget: QtWidgets.QWidget, video_model):
+        """Initialise le player, l'arbre vidéo, le panneau de paramètres et le modèle de livrables."""
         self.widget = widget
         self.video_model = video_model
         self.current_is_stereo = False
@@ -42,6 +45,7 @@ class ExtractionController:
         self._setup_ui()
 
     def _setup_ui(self):
+        """Monte le player, connecte l'arbre vidéo et construit le panneau de paramètres."""
         if self.lecteur_timeline_container_2:
             layout = self.lecteur_timeline_container_2.layout() or QtWidgets.QVBoxLayout(self.lecteur_timeline_container_2)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -63,6 +67,7 @@ class ExtractionController:
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
 
     def load_campaign_videos(self, model):
+        """Remplace le modèle vidéo après changement de campagne."""
         self.video_model = model
         if self.tree_videos_2:
             self.tree_videos_2.setModel(self.video_model)
@@ -88,6 +93,7 @@ class ExtractionController:
                 break
 
     def refresh_video_list(self):
+        """Rafraîchit l'arbre vidéo (appelé lors des changements de page)."""
         if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
             if self.video_model and self.video_model.rowCount() > 0:
                 self.tree_videos_2.setModel(self.video_model)
@@ -96,6 +102,7 @@ class ExtractionController:
                 self.show_no_campaign_message()
 
     def on_video_selected_treeview(self, index: QtCore.QModelIndex):
+        """Charge la vidéo sélectionnée, la télémétrie CSV et les événements moteur."""
         if not index.isValid():
             return
         model = self.tree_videos_2.model()
@@ -140,6 +147,7 @@ class ExtractionController:
             self.update_segmentation_display()
 
     def _fill_param_container(self):
+        """Construit le panneau de paramètres (groupes Découpe, Capture, Export)."""
         if not self.param_container.layout():
             QtWidgets.QVBoxLayout(self.param_container)
 
@@ -184,6 +192,7 @@ class ExtractionController:
         self.update_export_buttons_visibility()
 
     def on_export_segment(self, side="mono"):
+        """Lance le VideoSegmentationWorker pour exporter le segment dans segments/."""
         if not self.current_video_path or self.start_ms >= self.end_ms:
             return
 
@@ -214,6 +223,7 @@ class ExtractionController:
             self.segmentation_worker.start()
 
     def update_export_buttons_visibility(self):
+        """Affiche le bouton mono ou les boutons L/R selon le mode stéréo."""
         is_stereo = getattr(self, 'current_is_stereo', False)
         if hasattr(self, 'btn_export_main'):
             self.btn_export_main.setVisible(not is_stereo)
@@ -221,6 +231,7 @@ class ExtractionController:
             self.btn_export_R.setVisible(is_stereo)
 
     def on_segment_finished(self, message):
+        """Réactive le panneau export et ajoute le segment aux livrables."""
         self.group_export.setEnabled(True)
         # Le worker génère le nom automatiquement — on le retrouve dans le message
         # ou on le reconstruit depuis le chemin réel dans segments/
@@ -231,13 +242,16 @@ class ExtractionController:
         self.lbl_export_status.setText("Export terminé.")
 
     def on_export_progress(self, progress):
+        """Met à jour le label de statut avec la progression de l'export."""
         self.lbl_export_status.setText(f"Export en cours : {progress}%")
 
     def on_export_error(self, err):
+        """Réactive l'UI et affiche un message d'erreur critique."""
         self.group_export.setEnabled(True)
         QtWidgets.QMessageBox.critical(self.widget, "Erreur", err)
 
     def _group_segmentation(self):
+        """Construit le groupe de widgets Découpe (timecodes début/fin, boutons)."""
         g = QtWidgets.QGroupBox("Découpe")
         f = QtWidgets.QFormLayout(g)
 
@@ -268,6 +282,7 @@ class ExtractionController:
         return g
 
     def _group_frame_capture(self):
+        """Construit le groupe de widgets Capture (boutons mono/L/R et miniature)."""
         g = QtWidgets.QGroupBox("Capture")
         l = QtWidgets.QVBoxLayout(g)
 
@@ -299,12 +314,14 @@ class ExtractionController:
         return g
 
     def ms_to_timecode(self, ms):
+        """Convertit des millisecondes en chaîne HH:MM:SS."""
         s = ms // 1000
         m, s = divmod(s, 60)
         h, m = divmod(m, 60)
         return f"{h:02d}:{m:02d}:{s:02d}"
 
     def timecode_to_ms(self, timecode):
+        """Convertit une chaîne HH:MM:SS en millisecondes."""
         try:
             parts = timecode.split(':')
             if len(parts) != 3:
@@ -315,6 +332,7 @@ class ExtractionController:
             return 0
 
     def on_manual_time_change(self):
+        """Met à jour start_ms/end_ms depuis les champs texte et synchronise les marqueurs timeline."""
         self.start_ms = self.timecode_to_ms(self.edit_start_time.text())
         self.end_ms = self.timecode_to_ms(self.edit_end_time.text())
         duration_s = max(0, (self.end_ms - self.start_ms) // 1000)
@@ -325,6 +343,7 @@ class ExtractionController:
             self.video_player.timeline.update()
 
     def update_segmentation_display(self):
+        """Rafraîchit les champs timecode et la durée affichée depuis start_ms/end_ms."""
         self.edit_start_time.setText(self.ms_to_timecode(self.start_ms))
         self.edit_end_time.setText(self.ms_to_timecode(self.end_ms))
         duration_s = max(0, (self.end_ms - self.start_ms) // 1000)
@@ -335,6 +354,7 @@ class ExtractionController:
             self.video_player.timeline.update()
 
     def on_timeline_markers_moved(self, start_ms, end_ms):
+        """Reçoit les marqueurs déplacés depuis la timeline et met à jour les champs texte."""
         self.start_ms = start_ms
         self.end_ms = end_ms
         self.edit_start_time.blockSignals(True)
@@ -348,14 +368,17 @@ class ExtractionController:
             self.lbl_segment_duration.setText(f"Durée : {duration_sec}s")
 
     def on_set_start_frame(self):
+        """Fixe le marqueur de début à la position courante du player."""
         self.start_ms = self.video_player.player.position()
         self.update_segmentation_display()
 
     def on_set_end_frame(self):
+        """Fixe le marqueur de fin à la position courante du player."""
         self.end_ms = self.video_player.player.position()
         self.update_segmentation_display()
 
     def execute_capture(self, side="mono"):
+        """Extrait la frame courante, ouvre CaptureDialog et sauvegarde si validé."""
         if not self.current_video_path:
             return
         pos = self.video_player.player.position()
@@ -387,6 +410,7 @@ class ExtractionController:
                     self.apply_live_corrections()
 
     def apply_live_corrections(self):
+        """Affiche la dernière frame brute dans la miniature du panneau."""
         if self.last_raw_frame is None:
             return
         rgb = cv2.cvtColor(self.last_raw_frame, cv2.COLOR_BGR2RGB)
@@ -395,6 +419,7 @@ class ExtractionController:
         self.lbl_thumbnail.setPixmap(QtGui.QPixmap.fromImage(qimg))
 
     def save_processed_image(self):
+        """Écrit la frame traitée dans captures/ et l'ajoute aux livrables."""
         if self.current_processed_frame is None:
             return
         out_dir = os.path.join(os.path.dirname(self.current_video_path), "captures")
@@ -404,6 +429,7 @@ class ExtractionController:
         self.add_to_deliverables_tree(path)
 
     def add_to_deliverables_tree(self, file_path):
+        """Ajoute un fichier livrable (vidéo ou image) avec icône miniature dans l'arbre."""
         if not os.path.exists(file_path):
             return
 
@@ -446,6 +472,7 @@ class ExtractionController:
             self.tree_segment_capture_container.setModel(self.deliverables_model)
 
     def show_no_campaign_message(self):
+        """Affiche un message d'absence de campagne dans l'arbre vidéo."""
         if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
             placeholder = QtGui.QStandardItemModel()
             placeholder.setHorizontalHeaderLabels(["Statut"])
@@ -456,6 +483,7 @@ class ExtractionController:
             self.tree_videos_2.setModel(placeholder)
 
     def show_no_cap_seg_message(self):
+        """Affiche un message d'absence de livrables dans l'arbre segments/captures."""
         if self.deliverables_model:
             self.deliverables_model.clear()
             self.deliverables_model.setHorizontalHeaderLabels(["Nom", "Taille", "Type"])

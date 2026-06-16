@@ -9,6 +9,7 @@ from views.style import APP_STYLESHEET
 
 
 def main():
+    """Point d'entrée de l'application KOSMOS IHM : crée la QApplication, la fenêtre et le contrôleur principal."""
     app = QApplication(sys.argv)
 
     # Police de base pour tous les widgets

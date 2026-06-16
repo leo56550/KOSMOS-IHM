@@ -18,6 +18,20 @@ class ExportWorker(QThread):
                  target_fps: float, events: list, apply_he: bool = False,
                  apply_dh: bool = False, is_water: bool = False,
                  is_stereo: bool = False, apply_rectify: bool = False, json_path: str = None):
+        """
+        Args:
+            video_path: Chemin de la vidéo source (flux R en stéréo).
+            base_output_dir: Dossier racine d'export (img/LEFT et img/RIGHT y seront créés).
+            start_ms, end_ms: Fenêtre temporelle d'export en millisecondes.
+            target_fps: Cadence cible pour l'échantillonnage des frames.
+            events: Liste d'événements (non utilisée dans le run actuel, réservé).
+            apply_he: Active l'égalisation d'histogramme.
+            apply_dh: Active le débrumage CLAHE.
+            is_water: Mode sous-marin (ajustements de canaux avant CLAHE).
+            is_stereo: Exporte les deux flux L et R.
+            apply_rectify: Applique la rectification stéréo via matrices.json.
+            json_path: Chemin vers le fichier de calibration stéréo (matrices.json).
+        """
         super().__init__()
         self.video_path = video_path
         self.base_output_dir = base_output_dir
@@ -35,6 +49,7 @@ class ExportWorker(QThread):
         self.maps_R = None
 
     def run(self):
+        """Extrait les frames dans img/LEFT (et img/RIGHT en stéréo), émet progress_updated puis export_finished."""
         try:
             print(f"\n--- DÉBUT DE L'EXPORT ---")
             print(f"Mode Stéréo: {self.is_stereo} | Rectification: {self.apply_rectify}")
@@ -125,6 +140,7 @@ class ExportWorker(QThread):
             self.export_error.emit(f"Erreur Export : {str(e)}")
 
     def _apply_image_filters(self, frame: np.ndarray) -> np.ndarray:
+        """Applique HE et/ou dehaze sur une frame BGR selon les options de l'instance."""
         processed = frame.copy()
         try:
             if self.apply_he:
@@ -138,6 +154,7 @@ class ExportWorker(QThread):
         return processed
 
     def _dehaze_image(self, img: np.ndarray, strength: float = 1.0) -> np.ndarray:
+        """Débrume via CLAHE sur le canal L (LAB), avec ajustement de canaux en mode sous-marin."""
         try:
             img_float = img.astype(np.float32) / 255.0
             if self.is_water:
@@ -163,6 +180,12 @@ class VideoSegmentationWorker(QThread):
     export_error = pyqtSignal(str)
 
     def __init__(self, video_path: str, start_ms: int, end_ms: int, output_dir: str):
+        """
+        Args:
+            video_path: Chemin de la vidéo source.
+            start_ms, end_ms: Fenêtre temporelle à découper en millisecondes.
+            output_dir: Dossier de destination du segment MP4.
+        """
         super().__init__()
         self.video_path = video_path
         self.start_ms = max(0, start_ms)
@@ -170,6 +193,7 @@ class VideoSegmentationWorker(QThread):
         self.output_dir = output_dir
 
     def run(self):
+        """Découpe la vidéo entre start_ms et end_ms et écrit le résultat dans output_dir."""
         try:
             cap = cv2.VideoCapture(self.video_path)
             if not cap.isOpened():

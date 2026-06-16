@@ -18,7 +18,14 @@ from views.dialogs.map_dialog import MapDialog, MapBridge
 
 
 class QualifController:
+    """Contrôleur de la page Qualification : gestion de l'arbre vidéo, de la poubelle et de la carte."""
+
     def __init__(self, widget: QtWidgets.QWidget, parent=None, on_before_delete=None):
+        """
+        Args:
+            on_before_delete: Callback appelé avec le chemin vidéo avant tout shutil.move
+                              (libère les handles fichiers des autres controllers).
+        """
         self.widget = widget
         self.parent = parent
         self._on_before_delete = on_before_delete
@@ -65,9 +72,11 @@ class QualifController:
     # --- Language ---
 
     def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
     def set_language(self, language: str):
+        """Traduit les en-têtes des modèles et les titres de section."""
         self.current_language = language
         if hasattr(self, 'lbl_section_title'):
             self.lbl_section_title.setText(self.translate("Propriétés de campagne", "Campaign Properties"))
@@ -88,6 +97,7 @@ class QualifController:
     # --- Init helpers ---
 
     def _init_video_list(self):
+        """Configure le QTreeView vidéo avec ses en-têtes, drag-drop et menu contextuel."""
         self.video_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size", "Date"])
         self.video_tree.setModel(self.video_model)
 
@@ -123,6 +133,7 @@ class QualifController:
         self.video_tree.dropEvent = self.video_drop_event
 
     def _init_trash_list(self):
+        """Configure le QTreeView poubelle avec drag-drop bidirectionnel."""
         if not self.trash_video_tree:
             return
         self.trash_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size"])
@@ -156,6 +167,7 @@ class QualifController:
         self.trash_video_tree.dropEvent = self.trash_drop_event
 
     def _init_minimap(self):
+        """Crée le MapBridge WebChannel et le MapDialog pour la carte de campagne."""
         self.bridge = MapBridge()
         self.channel = QWebChannel()
         self.channel.registerObject("backend", self.bridge)
@@ -164,6 +176,7 @@ class QualifController:
         self.map_initialized = False
 
     def _init_miniature_area(self):
+        """Initialise la zone de miniatures scrollable dans frame_miniature."""
         if not self.frame_miniature:
             return
         if self.frame_miniature.layout():
@@ -192,6 +205,7 @@ class QualifController:
     # --- Campaign opening ---
 
     def open_system_explorer(self, derusher_name: str):
+        """Ouvre un sélecteur de dossier, scanne les MP4, charge la poubelle et patch le dérusher dans les JSON."""
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self.parent or self.widget, "Select Campaign Folder"
         )
@@ -316,11 +330,13 @@ class QualifController:
         fallback_layout.addWidget(lbl_error)
 
     def on_campaign_field_modified(self, key: str):
+        """Synchronise un champ campagne dans tous les JSON vidéo quand l'utilisateur l'édite."""
         widget = self.campaign_fields.get(key)
         if widget:
             self.synchronize_campaign_field(key, widget.text())
 
     def synchronize_campaign_field(self, key: str, value: str):
+        """Écrit value dans le champ key de la section survey de chaque JSON vidéo de la campagne."""
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
@@ -343,6 +359,7 @@ class QualifController:
     # --- Video selection ---
 
     def on_video_selected(self, index: QtCore.QModelIndex):
+        """Ouvre le lecteur détaché et met à jour la minimap quand l'utilisateur clique sur une vidéo."""
         item = self.video_model.itemFromIndex(index.siblingAtColumn(0))
         if not item:
             return
@@ -372,6 +389,7 @@ class QualifController:
     # --- Minimap ---
 
     def update_minimap(self, selected_name=None):
+        """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge."""
         valid_coords = {}
         if self.all_coords:
             for name, coords in self.all_coords.items():
@@ -466,6 +484,7 @@ class QualifController:
                 self.apply_red_marker_js(selected_name)
 
     def apply_red_marker_js(self, selected_name: str):
+        """Exécute le JS changeMarkerColorJS pour passer le marqueur selected_name en rouge."""
         if not selected_name:
             return
         script = f"""
@@ -479,6 +498,7 @@ class QualifController:
         self.map_dialog.map_view.page().runJavaScript(script)
 
     def select_video_by_name(self, video_name: str):
+        """Sélectionne programmatiquement une vidéo par son nom (appelé depuis la carte ou un autre controller)."""
         if self.selected_video_name == video_name:
             return
         for row in range(self.video_model.rowCount()):
@@ -514,6 +534,7 @@ class QualifController:
     # --- Camera views / thumbnails ---
 
     def update_camera_views(self, video_path: str, csv_path: str):
+        """Remplit la zone miniatures avec des captures aux timestamps de rotation moteur détectés dans csv_path."""
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             if item.widget():
@@ -572,6 +593,7 @@ class QualifController:
             print(f"Error updating camera views: {e}")
 
     def _display_in_frame(self, widget: QtWidgets.QFrame, cv_img, angle_degrees: int, ts_seconds: float):
+        """Affiche cv_img dans widget avec des overlays angle et timestamp."""
         h, w, ch = cv_img.shape
         q_img = QtGui.QImage(cv_img.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
         pixmap = QtGui.QPixmap.fromImage(q_img)
@@ -603,6 +625,7 @@ class QualifController:
     # --- Context menu / drag-drop ---
 
     def show_context_menu(self, position: QtCore.QPoint):
+        """Affiche un menu contextuel avec l'action Supprimer sur la ligne pointée."""
         index = self.video_tree.indexAt(position)
         if not index.isValid():
             return
@@ -624,6 +647,7 @@ class QualifController:
             self.detached_player = None
 
     def delete_video_by_index(self, index: QtCore.QModelIndex):
+        """Déplace le dossier vidéo dans .trash et transfère la ligne dans trash_model."""
         row = index.row()
         name_item = self.video_model.item(row, 0)
         if not name_item:
@@ -705,6 +729,7 @@ class QualifController:
                 ])
 
     def restore_video_by_index(self, index: QtCore.QModelIndex):
+        """Restaure un dossier vidéo depuis .trash vers la campagne et le transfère dans video_model."""
         row = index.row()
         item_name = self.trash_model.item(row, 0)
         if not item_name:
@@ -736,12 +761,14 @@ class QualifController:
         self.trash_model.removeRow(row)
 
     def trash_drag_enter_event(self, event: QtGui.QDragEnterEvent):
+        """Accepte le glisser-déposer depuis video_tree vers la poubelle."""
         if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist") and event.source() == self.video_tree:
             event.acceptProposedAction()
         else:
             event.ignore()
 
     def trash_drop_event(self, event: QtGui.QDropEvent):
+        """Supprime les vidéos déposées sur la poubelle (en les déplaçant dans .trash)."""
         if event.source() == self.video_tree:
             selected = self.video_tree.selectionModel().selectedRows()
             if selected:
@@ -754,12 +781,14 @@ class QualifController:
             event.ignore()
 
     def video_drag_enter_event(self, event: QtGui.QDragEnterEvent):
+        """Accepte le glisser-déposer depuis trash_video_tree vers la liste vidéo."""
         if event.mimeData().hasFormat("application/x-qabstractitemmodeldatalist") and event.source() == self.trash_video_tree:
             event.acceptProposedAction()
         else:
             event.ignore()
 
     def video_drop_event(self, event: QtGui.QDropEvent):
+        """Restaure les vidéos déposées depuis la poubelle vers la liste principale."""
         if event.source() == self.trash_video_tree:
             selected = self.trash_video_tree.selectionModel().selectedRows()
             if selected:

@@ -5,6 +5,7 @@ class EvenementsView:
     """Vue de la page Événements."""
 
     def __init__(self, widget: QtWidgets.QWidget):
+        """Expose les widgets de la page Événements (arbres, lecteur, combos, boutons capture)."""
         self.widget = widget
 
         # TreeView des vidéos (liste filtrée)

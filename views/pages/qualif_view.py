@@ -8,6 +8,7 @@ class QualifView:
     """
 
     def __init__(self, widget: QtWidgets.QWidget):
+        """Trouve les widgets du .ui et initialise les zones formulaire et miniatures."""
         self.widget = widget
 
         # --- Arbres de vidéos ---
@@ -30,6 +31,7 @@ class QualifView:
         self._setup_miniature_area()
 
     def _setup_campaign_form(self):
+        """Crée le QScrollArea et le formulaire dynamique de propriétés campagne dans frame_campaign."""
         if not self.frame_campaign:
             return
         layout = QtWidgets.QVBoxLayout(self.frame_campaign)
@@ -53,6 +55,7 @@ class QualifView:
         layout.addWidget(self.scroll_campaign)
 
     def _setup_miniature_area(self):
+        """Crée le QScrollArea de miniatures de rotation dans frame_miniature et expose scroll_layout."""
         if not self.frame_miniature:
             return
         if self.frame_miniature.layout():

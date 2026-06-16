@@ -15,6 +15,7 @@ class VideoTimeline(QtWidgets.QWidget):
     markersChanged = QtCore.pyqtSignal(int, int)
 
     def __init__(self, events=None, parent=None, zone_definitions=None):
+        """Initialise la timeline avec des événements et des définitions de zones optionnelles."""
         super().__init__(parent)
         self.events = events if events is not None else []
         self.zone_definitions = zone_definitions if zone_definitions is not None else []
@@ -45,6 +46,7 @@ class VideoTimeline(QtWidgets.QWidget):
         self.setMouseTracking(True)
 
     def _clamp_int(self, value):
+        """Clamp value dans l'intervalle des entiers 32 bits signés, retourne 0 si invalide."""
         try:
             val = int(value)
         except (TypeError, ValueError, OverflowError):
@@ -54,35 +56,43 @@ class VideoTimeline(QtWidgets.QWidget):
         return val
 
     def set_zoom(self, factor):
+        """Applique le facteur de zoom et déclenche un repaint."""
         self.zoom_factor = max(1.0, factor)
         self.updateGeometry()
         self.update()
 
     def min_zoomed_width(self):
+        """Retourne la largeur effective en pixels (largeur parent × zoom_factor)."""
         base_width = self.parent().width() if self.parent() else self.width()
         return int(base_width * self.zoom_factor)
 
     def sizeHint(self):
+        """Indique à Qt la taille souhaitée pour que le QScrollArea horizontal soit correct."""
         return QtCore.QSize(self.min_zoomed_width(), self.height())
 
     def set_total_duration(self, duration_ms):
+        """Fixe la durée totale et force un repaint."""
         self.total_duration = duration_ms
         self.updateGeometry()
         self.update()
 
     def set_current_position(self, position_ms):
+        """Met à jour la position du curseur de lecture (ignoré si un drag/resize est en cours)."""
         if not self.is_dragging and not self.active_resize_event and not self.active_move_event:
             self.current_pos = position_ms
             self.update()
 
     def get_current_position(self) -> int:
+        """Retourne la position courante du curseur en millisecondes."""
         return self.current_pos
 
     def set_selected_event(self, event_dict):
+        """Sélectionne un événement (ou None) et rafraîchit l'affichage."""
         self.selected_event_dict = event_dict
         self.update()
 
     def calculate_segments(self):
+        """Construit la liste des segments atterrissage→décollage à partir des événements."""
         self.segments = []
         takeoffs = []
         landings = []
@@ -111,6 +121,7 @@ class VideoTimeline(QtWidgets.QWidget):
                 })
 
     def paintEvent(self, event):
+        """Dessine les zones, segments, événements, curseur de lecture et marqueurs d'export."""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
@@ -293,6 +304,7 @@ class VideoTimeline(QtWidgets.QWidget):
         painter.end()
 
     def mousePressEvent(self, event):
+        """Démarre un drag timeline, un redimensionnement ou un déplacement d'événement selon la position."""
         if event.button() != QtCore.Qt.MouseButton.LeftButton or self.total_duration <= 0:
             return
 
@@ -343,6 +355,7 @@ class VideoTimeline(QtWidgets.QWidget):
         self.calculate_and_emit_position(pos_x)
 
     def mouseMoveEvent(self, event):
+        """Gère le redimensionnement, déplacement d'événement, drag curseur et curseur souris."""
         pos_x = event.position().x()
         width = self.min_zoomed_width()
         total_duration = self.total_duration if self.total_duration > 0 else 1
@@ -407,6 +420,7 @@ class VideoTimeline(QtWidgets.QWidget):
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
 
     def mouseReleaseEvent(self, event):
+        """Finalise le redimensionnement/déplacement et émet les signaux appropriés."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             if self.active_resize_event:
                 self.eventResized.emit(self.active_resize_event)
@@ -423,6 +437,7 @@ class VideoTimeline(QtWidgets.QWidget):
             self.update()
 
     def wheelEvent(self, event):
+        """Zoom la timeline à la molette et conserve l'ancre temporelle sous le curseur."""
         if self.total_duration <= 0:
             return
 
@@ -467,6 +482,7 @@ class VideoTimeline(QtWidgets.QWidget):
         self.update()
 
     def calculate_and_emit_position(self, mouse_x):
+        """Convertit la position souris en millisecondes et émet timeChanged."""
         w = self.min_zoomed_width()
         if w <= 0:
             return
@@ -477,6 +493,7 @@ class VideoTimeline(QtWidgets.QWidget):
         self.update()
 
     def _format_ms(self, ms):
+        """Formate un entier en millisecondes au format MM:SS ou HH:MM:SS."""
         if callable(ms):
             ms = ms()
         try:
@@ -491,6 +508,7 @@ class VideoTimeline(QtWidgets.QWidget):
         return f"{minutes:02d}:{seconds:02d}"
 
     def get_event_at_position(self, pos: QtCore.QPoint) -> dict | None:
+        """Retourne le dict d'événement sous pos, ou None si aucun ne contient ce point."""
         if not hasattr(self, 'rects_evenements') or not self.rects_evenements:
             return None
         for idx, (evt, rect) in self.rects_evenements.items():

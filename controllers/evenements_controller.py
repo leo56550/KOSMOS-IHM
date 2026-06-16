@@ -16,7 +16,10 @@ from models.video_model import VideoFilterProxyModel
 
 
 class EvenementsController:
+    """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
+
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel):
+        """Initialise les widgets de la page et connecte les signaux de capture et d'export."""
         self.page = page_widget
         self.video_model = shared_model
         self.current_language = 'en'
@@ -93,16 +96,19 @@ class EvenementsController:
     # --- Language ---
 
     def _get_tree_headers(self):
+        """Retourne les en-têtes de l'arbre événements selon la langue active."""
         if self.current_language == 'en':
             return ["Start / Capture time", "End", "Event type", "Value", "Comment", "Preview"]
         return ["Début / Heure Capture", "Fin", "Type d'événement", "Valeur", "Commentaire", "Aperçu"]
 
     def set_language(self, language: str):
+        """Met à jour la langue et rafraîchit les en-têtes de l'arbre."""
         self.current_language = language
         if hasattr(self, 'tree_captures') and self.tree_captures:
             self.tree_captures.setHeaderLabels(self._get_tree_headers())
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
+        """Remplace le modèle vidéo partagé après ouverture d'une nouvelle campagne."""
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
 
@@ -129,6 +135,7 @@ class EvenementsController:
     # --- Tree layout ---
 
     def _initialize_list_event_layout(self):
+        """Crée ou recrée le QTreeWidget d'événements dans list_event_container."""
         if not self.list_event_container:
             return
         if self.list_event_container.layout() is not None:
@@ -165,6 +172,7 @@ class EvenementsController:
     # --- Two-way tree/timeline sync ---
 
     def on_tree_event_selected(self):
+        """Propage la sélection de l'arbre vers la timeline (synchronisation bidirectionnelle)."""
         if not hasattr(self, 'event_player') or not self.event_player or not self.event_player.timeline:
             return
         self.event_player.timeline.blockSignals(True)
@@ -194,6 +202,7 @@ class EvenementsController:
             self.event_player.timeline.blockSignals(False)
 
     def on_timeline_event_selected(self, event_dict):
+        """Propage la sélection de la timeline vers l'arbre (synchronisation bidirectionnelle)."""
         if not hasattr(self, 'tree_captures') or not self.tree_captures:
             return
         self.tree_captures.blockSignals(True)
@@ -217,6 +226,7 @@ class EvenementsController:
     # --- JSON key helpers ---
 
     def _get_json_key_from_label(self, display_label: str) -> str:
+        """Convertit un label affiché (ex. 'Deployment') en clé JSON (ex. 'events_deployment')."""
         if not display_label:
             return "events_custom"
         if hasattr(self, 'event_key_by_label') and display_label in self.event_key_by_label:
@@ -231,6 +241,7 @@ class EvenementsController:
         return "events_custom"
 
     def _get_label_from_json_key(self, json_key: str) -> str:
+        """Convertit une clé JSON en label localisé selon la langue active."""
         if hasattr(self, 'event_category_labels') and json_key in self.event_category_labels:
             return self.event_category_labels[json_key]
         if self.current_language == 'en':
@@ -248,14 +259,17 @@ class EvenementsController:
         return mapping.get(json_key, json_key)
 
     def _generate_event_uid(self) -> str:
+        """Génère un identifiant unique pour un événement."""
         return str(uuid.uuid4())
 
     def _ensure_event_uid(self, event_dict: dict) -> str:
+        """Garantit qu'event_dict possède un _event_uid, en en créant un si absent."""
         if not event_dict.get("_event_uid"):
             event_dict["_event_uid"] = self._generate_event_uid()
         return event_dict["_event_uid"]
 
     def _build_event_categories_from_json(self, data: dict):
+        """Peuple event_dictionary et les tables de correspondance label↔clé depuis le JSON vidéo."""
         self.event_category_labels = {}
         self.event_key_by_label = {}
         self.event_dictionary.clear()
@@ -286,6 +300,7 @@ class EvenementsController:
             self.event_dictionary[label] = [str(v) for v in authorized_values if v is not None]
 
     def _get_video_fps(self) -> float:
+        """Retourne le FPS du lecteur actif, ou 25.0 par défaut."""
         if hasattr(self, 'event_player') and self.event_player:
             if hasattr(self.event_player, 'video_fps') and isinstance(self.event_player.video_fps, (int, float)):
                 if self.event_player.video_fps > 0:
@@ -293,11 +308,13 @@ class EvenementsController:
         return 25.0
 
     def _ms_to_frame(self, ms: int, fps: float) -> int:
+        """Convertit un timestamp en millisecondes en numéro de frame (base 1)."""
         if fps <= 0:
             return 0
         return max(1, int(round((ms / 1000.0) * fps)))
 
     def _zone_index_for_event_type(self, type_label: str) -> int:
+        """Retourne l'index de zone timeline (0=Déploiement, 1=Faune, 2=Images) selon le label."""
         if not type_label:
             return 0
         label = type_label.lower()
@@ -312,6 +329,7 @@ class EvenementsController:
     # --- Dropdown menus ---
 
     def _initialize_event_dropdown_menus(self):
+        """Crée les combos de type/valeur, le champ commentaire et les boutons Capturer/Finir."""
         if not self.choose_event_container:
             return
         if self.choose_event_container.layout() is None:
@@ -396,6 +414,7 @@ class EvenementsController:
     # --- Export UI ---
 
     def _initialize_export_ui(self):
+        """Crée le bouton d'export, la barre de progression et le label de statut."""
         if not self.export_container:
             return
         layout = self.export_container.layout() or QtWidgets.QVBoxLayout(self.export_container)
@@ -433,6 +452,7 @@ class EvenementsController:
         self.export_worker = None
 
     def _update_export_button_state(self):
+        """Active le bouton Export seulement si une vidéo est chargée."""
         has_video = bool(self.current_video_path)
         if hasattr(self, 'export_button') and self.export_button:
             self.export_button.setEnabled(has_video)
@@ -440,6 +460,7 @@ class EvenementsController:
     # --- Capture mode helpers ---
 
     def on_event_type_changed(self, selected_type: str):
+        """Recharge combo_valeur_event et met à jour le mode de capture quand le type change."""
         if not selected_type or selected_type not in self.event_dictionary:
             return
         self.combo_valeur_event.blockSignals(True)
@@ -451,9 +472,11 @@ class EvenementsController:
         self._update_capture_mode()
 
     def on_event_value_changed(self, selected_value: str):
+        """Met à jour le mode de capture quand la valeur d'événement change."""
         self._update_capture_mode()
 
     def _is_single_frame_event(self, selected_type: str, value: str = "") -> bool:
+        """Retourne True si la combinaison type/valeur correspond à un événement ponctuel (une frame)."""
         if not selected_type:
             return False
         type_lower = selected_type.lower()
@@ -465,14 +488,17 @@ class EvenementsController:
         return False
 
     def _is_landing_event(self, value: str) -> bool:
+        """Retourne True si value correspond à un événement d'atterrissage."""
         v = (value or "").strip().lower()
         return any(kw in v for kw in ["atterrissage", "atterissage", "landing"])
 
     def _is_takeoff_event(self, value: str) -> bool:
+        """Retourne True si value correspond à un événement de décollage."""
         v = (value or "").strip().lower()
         return any(kw in v for kw in ["décollage", "decollage", "takeoff", "take_off"])
 
     def _single_frame_event_conflict(self, selected_type: str, value: str):
+        """Détecte si un atterrissage ou décollage existe déjà dans la timeline (conflit unicité)."""
         if not self._is_single_frame_event(selected_type, value):
             return None
         if not hasattr(self, 'event_player') or not getattr(self.event_player, 'timeline', None):
@@ -488,6 +514,7 @@ class EvenementsController:
         return None
 
     def _update_capture_mode(self):
+        """Adapte le libellé et l'état des boutons Capturer/Finir selon le type d'événement sélectionné."""
         current_type = self.combo_type_event.currentText()
         current_value = self.combo_valeur_event.currentText() if hasattr(self, 'combo_valeur_event') else ""
         if self._is_single_frame_event(current_type, current_value):
@@ -504,6 +531,7 @@ class EvenementsController:
     # --- Capture button handlers ---
 
     def on_capturer_clicked(self):
+        """Enregistre un événement ponctuel ou démarre la capture d'un événement avec durée."""
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
         current_type = self.combo_type_event.currentText()
@@ -552,6 +580,7 @@ class EvenementsController:
             self.btn_finir.setText(f"FINISH EVENT (Start: {time_str})")
 
     def on_finir_clicked(self):
+        """Clôture la capture en cours et enregistre l'événement avec sa durée start→end."""
         if not hasattr(self, 'event_player') or self.capture_start_time is None:
             return
         current_type = self.combo_type_event.currentText()
@@ -599,6 +628,7 @@ class EvenementsController:
     # --- Video selection ---
 
     def on_video_selected(self, index: QtCore.QModelIndex):
+        """Charge la vidéo sélectionnée, reconstruit la timeline avec les événements JSON et moteur."""
         original_index = self.proxy_model.mapToSource(index)
         item = self.video_model.itemFromIndex(original_index.siblingAtColumn(0))
         if not item or not item.data(QtCore.Qt.ItemDataRole.UserRole):
@@ -718,6 +748,7 @@ class EvenementsController:
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
 
     def charger_evenements_du_json(self):
+        """Lit le JSON vidéo courant et peuple les combos de type/valeur avec les catégories disponibles."""
         self.event_dictionary.clear()
         self.combo_type_event.blockSignals(True)
         self.combo_type_event.clear()
@@ -736,6 +767,7 @@ class EvenementsController:
     # --- JSON persistence ---
 
     def save_event_to_json(self, event_dict: dict, display_type: str):
+        """Persiste un événement dans la section video_observation du JSON vidéo courant."""
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
         try:
@@ -799,6 +831,7 @@ class EvenementsController:
             print(f"[BACKEND] Exception writing JSON: {e}")
 
     def delete_event_from_json(self, event_dict: dict):
+        """Supprime l'événement correspondant du JSON vidéo courant (tolérance d'un quart de seconde)."""
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
         try:
@@ -824,6 +857,7 @@ class EvenementsController:
             print(f"[BACKEND] Error purging event: {e}")
 
     def refresh_event_list(self, modified_event: dict):
+        """Met à jour les timestamps d'un événement dans l'arbre après redimensionnement sur la timeline."""
         if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return
         self.tree_captures.blockSignals(True)
@@ -850,6 +884,7 @@ class EvenementsController:
         self.save_event_to_json(modified_event, display_type)
 
     def on_arbre_item_changed(self, item: QtWidgets.QTreeWidgetItem, column: int):
+        """Persiste le commentaire édité directement dans l'arbre (colonne 4) vers le JSON."""
         if column != 4:
             return
         if not self.current_json_path or not os.path.exists(self.current_json_path):
@@ -886,6 +921,7 @@ class EvenementsController:
     # --- Context menu ---
 
     def open_context_menu(self, position, emitter):
+        """Affiche un menu contextuel Supprimer sur un clic droit dans l'arbre ou la timeline."""
         event_dict = None
         target_tree_item = None
 
@@ -923,6 +959,7 @@ class EvenementsController:
             self.delete_event_unified(event_dict, target_tree_item)
 
     def delete_event_unified(self, event_dict: dict, tree_item: QtWidgets.QTreeWidgetItem):
+        """Supprime un événement de la timeline, de l'arbre et du JSON en une seule opération."""
         if event_dict in self.event_player.timeline.events:
             self.event_player.timeline.events.remove(event_dict)
             self.event_player.timeline.update()
@@ -935,6 +972,7 @@ class EvenementsController:
     # --- Thumbnails ---
 
     def add_tree_thumbnail(self, tree_item: QtWidgets.QTreeWidgetItem, timestamp_ms: int):
+        """Extrait une miniature vidéo et l'insère dans la colonne Aperçu de tree_item."""
         thumbnail_label = QtWidgets.QLabel()
         thumbnail_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         thumbnail_label.setStyleSheet("background-color: black; margin: 2px; border-radius: 2px;")
@@ -958,6 +996,7 @@ class EvenementsController:
     # --- JSON cleanup ---
 
     def _nettoyer_json_misplaced_events(self):
+        """Déplace les événements atterrissage/décollage mal classés vers events_deployment dans le JSON."""
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
         try:
@@ -1002,6 +1041,7 @@ class EvenementsController:
     # --- Export ---
 
     def _get_export_segment_bounds(self):
+        """Lit les frames atterrissage et décollage du JSON et retourne (start_ms, end_ms), ou None."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
         template_path = get_video_json_path(self.current_video_path)
@@ -1036,6 +1076,7 @@ class EvenementsController:
             return None
 
     def on_export_segment_clicked(self):
+        """Lance le dialogue d'options puis démarre ExportWorker sur le segment atterrissage→décollage."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             QtWidgets.QMessageBox.warning(self.page, "Export Impossible", "Aucune source vidéo active.")
             return
@@ -1095,10 +1136,12 @@ class EvenementsController:
         self.export_worker.start()
 
     def _on_export_progress(self, progress: int):
+        """Met à jour la barre de progression pendant l'export."""
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setValue(progress)
 
     def _on_export_finished(self, saved_count: int):
+        """Affiche le résultat de l'export et génère le CSV d'événements."""
         message = f"Image export completed: {saved_count} images saved."
         if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms):
             message += "\nEvents CSV generated."
@@ -1110,6 +1153,7 @@ class EvenementsController:
             self.export_progress.setVisible(False)
 
     def _on_export_error(self, error_message: str):
+        """Affiche le message d'erreur de l'export et réactive le bouton."""
         if hasattr(self, 'export_status_label') and self.export_status_label:
             self.export_status_label.setText(f"Error: {error_message}")
         if hasattr(self, 'export_button') and self.export_button:
@@ -1118,6 +1162,7 @@ class EvenementsController:
             self.export_progress.setVisible(False)
 
     def _generate_events_csv(self, video_path, start_ms, end_ms):
+        """Génère events.csv dans le dossier vidéo en associant événements JSON et rotations moteur aux images exportées."""
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         template_json_path = get_video_json_path(video_path)
         events_csv_path = os.path.normpath(os.path.join(parent_dir, "events.csv"))

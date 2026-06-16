@@ -11,7 +11,16 @@ from services.image_service import (
 
 
 class CaptureDialog(QtWidgets.QDialog):
+    """Dialog de validation d'une capture image avec prévisualisation et traitements optionnels."""
+
     def __init__(self, parent, frame, current_name, brightness, contrast, sharpen, is_stereo=False):
+        """
+        Args:
+            frame: Image BGR (numpy) extraite de la vidéo.
+            current_name: Nom de fichier par défaut.
+            brightness, contrast, sharpen: Valeurs initiales des sliders.
+            is_stereo: Affiche deux vignettes L/R si True.
+        """
         super().__init__(parent)
         self.is_stereo = is_stereo
         self.setWindowTitle("Validation de la capture " + ("(Stéréo)" if is_stereo else "(Mono)"))
@@ -127,6 +136,7 @@ class CaptureDialog(QtWidgets.QDialog):
         self.update_preview()
 
     def _create_image_label(self, text=""):
+        """Crée un QLabel stylé pour l'affichage d'une vignette image."""
         lbl = QtWidgets.QLabel(text)
         lbl.setMinimumSize(400 if self.is_stereo else 480, 270)
         lbl.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
@@ -136,10 +146,12 @@ class CaptureDialog(QtWidgets.QDialog):
         return lbl
 
     def on_dehaze_toggled(self):
+        """Active/désactive le mode sous-marin en fonction de l'état du checkbox dehaze."""
         self.chk_water.setEnabled(self.chk_dh.isChecked())
         self.update_preview()
 
     def update_preview(self):
+        """Applique les traitements actifs et met à jour la prévisualisation."""
         processed = self.raw_frame.copy()
 
         if self.chk_dh.isChecked():

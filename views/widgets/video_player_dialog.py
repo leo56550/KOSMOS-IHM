@@ -103,32 +103,39 @@ class VideoPlayerWindow(QtWidgets.QDialog):
             self.player_R.setSource(QtCore.QUrl.fromLocalFile(video_data[1]))
 
     def play_all(self):
+        """Lance la lecture sur les deux flux (L et R en stéréo)."""
         self.player.play()
         if self.is_stereo:
             self.player_R.play()
 
     def pause_all(self):
+        """Met en pause les deux flux."""
         self.player.pause()
         if self.is_stereo:
             self.player_R.pause()
 
     def set_rate(self, rate: float):
+        """Applique une vitesse de lecture sur les deux flux."""
         self.player.setPlaybackRate(rate)
         if self.is_stereo:
             self.player_R.setPlaybackRate(rate)
 
     def skip_time(self, ms: int):
+        """Avance ou recule de ms millisecondes."""
         self.set_position(self.player.position() + ms)
 
     def on_position_changed(self, position: int):
+        """Synchronise la timeline et le flux R à la position du flux L."""
         self.timeline.set_current_position(position)
         if self.is_stereo and abs(self.player.position() - self.player_R.position()) > 100:
             self.player_R.setPosition(position)
 
     def on_duration_changed(self, duration: int):
+        """Propage la durée totale à la timeline."""
         self.timeline.set_total_duration(duration)
 
     def set_position(self, position: int):
+        """Positionne les deux lecteurs en ms, clampé dans [0, durée]."""
         target = max(0, min(position, self.player.duration()))
         self.player.setPosition(target)
         if self.is_stereo:
@@ -143,5 +150,6 @@ class VideoPlayerWindow(QtWidgets.QDialog):
         self.player_R.setSource(QtCore.QUrl())
 
     def closeEvent(self, event: QtGui.QCloseEvent):
+        """Libère les fichiers avant la fermeture de la fenêtre."""
         self.release_files()
         event.accept()

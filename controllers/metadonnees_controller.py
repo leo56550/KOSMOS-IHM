@@ -22,8 +22,11 @@ _SECTION_LINE_STYLE  = "border-bottom: 1px solid #2778A2; margin-bottom: 6px;"
 
 
 class MetadonneesController:
+    """Contrôleur de la page Métadonnées : affichage et édition des JSON vidéo, météo et statistiques."""
+
     def __init__(self, widget: QtWidgets.QWidget, video_model: QtGui.QStandardItemModel,
                  trash_model: QtGui.QStandardItemModel):
+        """Connecte les modèles, crée les scroll areas et initialise la jauge statistique."""
         self.widget = widget
         self.video_model = video_model
         self.trash_model = trash_model
@@ -71,6 +74,7 @@ class MetadonneesController:
     # ── Setup ─────────────────────────────────────────────────────────────
 
     def _setup_ui(self):
+        """Configure le mode de sélection de l'arbre vidéo."""
         if self.tree_videos:
             self.tree_videos.setModel(self.video_model)
             self.tree_videos.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
@@ -116,6 +120,7 @@ class MetadonneesController:
         self._scroll_video = self._make_scroll_area(self.specific_container_data)
 
     def _init_trash_gauge(self):
+        """Crée le camembert matplotlib et les labels de statistiques vidéo/poubelle."""
         if not self.graph_trash_container:
             return
 
@@ -173,11 +178,13 @@ class MetadonneesController:
     # ── Public interface ─────────────────────────────────────────────────
 
     def set_language(self, language: str):
+        """Change la langue et recharge l'affichage des données si un JSON est actif."""
         self.current_language = language
         if self.current_template_json and os.path.exists(self.current_template_json):
             self.load_all_data(self.current_template_json)
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
+        """Remplace le modèle vidéo et reconnecte le signal de sélection au nouveau selectionModel."""
         self.video_model = model
         if self.tree_videos:
             self.tree_videos.setModel(self.video_model)
@@ -202,6 +209,7 @@ class MetadonneesController:
                 break
 
     def on_selection_changed(self, selected, deselected):
+        """Charge le JSON de la vidéo sélectionnée et rafraîchit tous les panneaux de données."""
         indexes = selected.indexes()
         if not indexes:
             return
@@ -219,6 +227,7 @@ class MetadonneesController:
             self.load_all_data(json_path)
 
     def load_global_campaign_metadata(self, campaign_folder: str):
+        """Charge les sections système et campagne depuis le premier JSON trouvé dans campaign_folder."""
         from services.campaign_service import get_campaign_json_data
         if get_campaign_json_data(campaign_folder, extract_system=False):
             for root, _, _files in os.walk(campaign_folder):
@@ -230,6 +239,7 @@ class MetadonneesController:
                     break
 
     def _load_common_data(self, json_path=None):
+        """Affiche les blocs system et survey d'un JSON dans leurs scroll areas respectives."""
         if not json_path or not os.path.isfile(json_path):
             return
         try:
@@ -245,6 +255,7 @@ class MetadonneesController:
             self._display_block_in_scroll("survey", data["survey"], self._scroll_survey, "Campagne")
 
     def load_all_data(self, json_path: str):
+        """Lit json_path et peuple tous les panneaux (système, campagne, vidéo, météo)."""
         if not os.path.isfile(json_path):
             return
         try:
@@ -368,6 +379,7 @@ class MetadonneesController:
         scroll.setWidget(form)
 
     def _display_weather_in_scroll(self, weather_sea_dict: dict):
+        """Construit le panneau météo/mer avec bouton de comparaison web et l'insère dans _scroll_weather."""
         if not self._scroll_weather:
             return
 
@@ -447,6 +459,7 @@ class MetadonneesController:
     # ── Statistics chart ──────────────────────────────────────────────────
 
     def refresh_statistics(self):
+        """Met à jour le camembert et les compteurs vidéo/poubelle."""
         if not hasattr(self, 'ax'):
             return
         video_count = self.video_model.rowCount()
@@ -474,6 +487,7 @@ class MetadonneesController:
 
     def _update_value(self, block_key: str, field_id: str, new_value: str,
                       source_widget: QtWidgets.QLineEdit | None = None):
+        """Écrit new_value dans _json_data et propage le changement aux JSON sur disque."""
         if source_widget and isinstance(source_widget, QtWidgets.QLineEdit) and new_value:
             source_widget.setStyleSheet(_FIELD_STYLE)
 
@@ -512,6 +526,7 @@ class MetadonneesController:
                     print(f"[SAVE ERROR] {e}")
 
     def save_metadata_to_json(self):
+        """Persiste _json_data dans current_template_json (appelé via timer debounce)."""
         if self.current_template_json:
             try:
                 with open(self.current_template_json, 'w', encoding='utf-8') as f:
@@ -520,6 +535,7 @@ class MetadonneesController:
                 print(f"[ERROR] Failed writing JSON: {e}")
 
     def inject_weather_data(self, data=None):
+        """Rafraîchit le panneau météo depuis _json_data (appelé après réponse WeatherWorker)."""
         if "video_observation" in self._json_data:
             weather = {k: v for k, v in self._json_data["video_observation"].items()
                        if k in self.weather_sea_keys}
@@ -528,6 +544,7 @@ class MetadonneesController:
     # ── Weather web compare ───────────────────────────────────────────────
 
     def action_compare_weather_web(self):
+        """Extrait lat/lon/date du JSON et lance WeatherWorker pour comparer avec les données web."""
         lat, lon, raw_date = None, None, None
         for block_content in self._json_data.values():
             if not isinstance(block_content, dict):
@@ -561,6 +578,7 @@ class MetadonneesController:
         self.weather_worker.start()
 
     def _open_web_weather_popup(self, fetched_api_data, relevant_date):
+        """Ouvre WeatherWebDialog avec les données API récupérées par WeatherWorker."""
         if not fetched_api_data:
             QtWidgets.QMessageBox.critical(self.widget, "Connection Error", "Unable to retrieve data.")
             return
@@ -570,6 +588,7 @@ class MetadonneesController:
     # ── Slate compare ─────────────────────────────────────────────────────
 
     def on_compare_slate_clicked(self):
+        """Cherche l'événement 'slate' dans le JSON et affiche la frame correspondante."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             QtWidgets.QMessageBox.warning(self.widget, "Error", "Please select a valid video sequence first.")
             return
@@ -602,6 +621,7 @@ class MetadonneesController:
         self._display_slate_window(slate_frame)
 
     def _display_slate_window(self, frame_number: int):
+        """Extrait frame_number de la vidéo et l'affiche dans une boîte de dialogue."""
         cap = cv2.VideoCapture(self.current_video_path)
         if not cap.isOpened():
             QtWidgets.QMessageBox.warning(self.widget, "Error", "Unable to open video file.")

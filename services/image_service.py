@@ -35,10 +35,12 @@ def extract_frame_at_time(video_path: str, timestamp_seconds: float) -> np.ndarr
 # ============================================================================
 
 def bgr_to_float(src: np.ndarray) -> np.ndarray:
+    """Convertit une image uint8 BGR en float64 [0, 1]."""
     return src.astype('float64') / 255.0
 
 
 def float_to_bgr(img: np.ndarray) -> np.ndarray:
+    """Convertit une image float64 [0, 1] en uint8 BGR."""
     return np.clip(img * 255, 0, 255).astype('uint8')
 
 
@@ -47,6 +49,7 @@ def float_to_bgr(img: np.ndarray) -> np.ndarray:
 # ============================================================================
 
 def _analyze_histogram(img: np.ndarray) -> tuple:
+    """Retourne les médianes et écarts-types par canal BGR."""
     mean_b = np.median(img[:, :, 0])
     mean_g = np.median(img[:, :, 1])
     mean_r = np.median(img[:, :, 2])
@@ -81,6 +84,7 @@ def process_image_he(img: np.ndarray, v_b: float = 2.0, v_g: float = 2.0, v_r: f
 # ============================================================================
 
 def dark_channel(im: np.ndarray, size: int) -> np.ndarray:
+    """Calcule le canal sombre (minimum des trois canaux) érodé sur un voisinage size×size."""
     b, g, r = cv2.split(im)
     dc = cv2.min(cv2.min(r, g), b)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size, size))
@@ -88,6 +92,7 @@ def dark_channel(im: np.ndarray, size: int) -> np.ndarray:
 
 
 def dark_channel_water(im: np.ndarray, size: int) -> np.ndarray:
+    """Variante sous-marine du canal sombre : utilise uniquement les canaux B et G."""
     b, g, _ = cv2.split(im)
     dc = cv2.min(g, b)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size, size))
@@ -95,6 +100,7 @@ def dark_channel_water(im: np.ndarray, size: int) -> np.ndarray:
 
 
 def atm_light(im: np.ndarray, dark: np.ndarray) -> np.ndarray:
+    """Estime la lumière atmosphérique à partir du 0,1 % des pixels les plus brillants du canal sombre."""
     h, w = im.shape[:2]
     total_pixels = h * w
     num_pixels = int(max(math.floor(total_pixels / 1000), 1))
@@ -105,18 +111,21 @@ def atm_light(im: np.ndarray, dark: np.ndarray) -> np.ndarray:
 
 
 def calculate_atmospheric_light(img: np.ndarray) -> np.ndarray:
+    """Calcule le vecteur de lumière atmosphérique pour un environnement aérien."""
     floated = bgr_to_float(img)
     dark = dark_channel(floated, 15)
     return atm_light(floated, dark)
 
 
 def calculate_water_light(img: np.ndarray) -> np.ndarray:
+    """Calcule le vecteur de lumière atmosphérique adapté aux environnements sous-marins."""
     floated = bgr_to_float(img)
     dark = dark_channel_water(floated, 15)
     return atm_light(floated, dark)
 
 
 def _transmission_estimate(im: np.ndarray, a_vector: np.ndarray, size: int, is_water: bool = False) -> np.ndarray:
+    """Estime la carte de transmission brute (1 - omega * dark_channel(I/A))."""
     omega = 0.6
     a_safe = np.where(a_vector == 0, 1e-5, a_vector)
     normalized = im / a_safe
@@ -128,6 +137,7 @@ def _transmission_estimate(im: np.ndarray, a_vector: np.ndarray, size: int, is_w
 
 
 def _guided_filter(guide: np.ndarray, source_p: np.ndarray, radius: int, eps: float) -> np.ndarray:
+    """Applique un filtre guidé (affinage de bords) sur source_p en utilisant guide comme référence."""
     mean_i = cv2.boxFilter(guide, cv2.CV_64F, (radius, radius))
     mean_p = cv2.boxFilter(source_p, cv2.CV_64F, (radius, radius))
     mean_ip = cv2.boxFilter(guide * source_p, cv2.CV_64F, (radius, radius))
@@ -142,12 +152,14 @@ def _guided_filter(guide: np.ndarray, source_p: np.ndarray, radius: int, eps: fl
 
 
 def _transmission_refine(im: np.ndarray, estimated_t: np.ndarray) -> np.ndarray:
+    """Affine la carte de transmission par filtre guidé sur la version grise de im."""
     gray = np.float64(cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)) / 255.0
     return _guided_filter(gray, estimated_t, 60, 0.0001)
 
 
 def _recover_radiance(im: np.ndarray, transmission_map: np.ndarray, a_vector: np.ndarray,
                       t_floor: float = 0.1) -> np.ndarray:
+    """Récupère la radiance J = (I - A) / max(t, t_floor) + A pour chaque canal."""
     res = np.empty(im.shape, im.dtype)
     bounded_t = cv2.max(transmission_map, t_floor)
     for ind in range(3):

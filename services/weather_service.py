@@ -193,6 +193,7 @@ class WeatherWorker(QThread):
     weather_fetched = pyqtSignal(dict, str)
 
     def __init__(self, lat, lon, iso_date=None, language="fr"):
+        """Prépare le worker avec les coordonnées GPS, la date optionnelle et la langue."""
         super().__init__()
         self.lat = lat
         self.lon = lon
@@ -200,6 +201,7 @@ class WeatherWorker(QThread):
         self.language = language
 
     def run(self):
+        """Appelle l'API Open-Meteo en arrière-plan et émet `weather_fetched` avec le résultat."""
         result = fetch_marine_weather_metadata(self.lat, self.lon, self.iso_date, self.language)
         resolved_date = self.iso_date if self.iso_date else datetime.now().strftime("%Y-%m-%d")
         self.weather_fetched.emit(result if result else {}, resolved_date)

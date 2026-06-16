@@ -2,7 +2,10 @@ from PyQt6 import QtWidgets
 
 
 class AccueilController:
+    """Contrôleur de la page Accueil : saisie du dérusher et ouverture de campagne."""
+
     def __init__(self, page_widget, open_campaign_callback):
+        """Connecte le bouton d'ouverture au callback AppController."""
         self.widget = page_widget
         self.open_campaign_callback = open_campaign_callback
         self.derusher_name = ""
@@ -15,14 +18,17 @@ class AccueilController:
         self.set_language(self.current_language)
 
     def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
     def set_language(self, language: str):
+        """Met à jour la langue et le libellé du bouton."""
         self.current_language = language
         if self.btn_open:
             self.btn_open.setText(self.translate("Ouvrir campagne", "Open campaign"))
 
     def request_derusher_name(self):
+        """Ouvre un dialog de saisie du nom dérusher, puis déclenche l'ouverture de campagne."""
         dialog = QtWidgets.QInputDialog(self.widget)
         dialog.setWindowTitle(self.translate("Identification", "Identification"))
         dialog.setLabelText(self.translate("Nom du dérusher :", "Derusher name:"))

@@ -16,7 +16,10 @@ _GRAPH_H   = 180
 
 
 class TelemetryDialog(QtWidgets.QDialog):
+    """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, pression, exposition, luminosité)."""
+
     def __init__(self, parent=None):
+        """Initialise les graphes pyqtgraph et les curseurs dynamiques pour chaque métrique."""
         super().__init__(parent)
         self.setWindowTitle("Analyse Télémétrie")
         self.resize(900, 800)
@@ -97,6 +100,7 @@ class TelemetryDialog(QtWidgets.QDialog):
     # ── Chargement des données (une seule fois) ───────────────────────────
 
     def update_data(self, df):
+        """Charge le DataFrame de télémétrie et trace les courbes (ou affiche 'manquant')."""
         if df is None or df.empty:
             for key, stack in self.stacks.items():
                 self._show_missing(key, stack)
@@ -122,6 +126,7 @@ class TelemetryDialog(QtWidgets.QDialog):
             v_line.setValue(0)
 
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
+        """Bascule le stack sur la page 'données manquantes' et ajuste la hauteur."""
         stack.setCurrentIndex(1)
         if key in _STATIC_METRICS:
             stack.setMaximumHeight(_COMPACT_H)
@@ -130,11 +135,13 @@ class TelemetryDialog(QtWidgets.QDialog):
             stack.setMaximumHeight(16777215)
 
     def _show_graph(self, key: str, stack: QtWidgets.QStackedWidget):
+        """Bascule le stack sur la page graphe et restaure la hauteur maximale."""
         stack.setCurrentIndex(0)
         stack.setMaximumHeight(16777215)
 
     # ── Curseur dynamique (ExpTime + Lux seulement) ───────────────────────
 
     def update_cursor(self, current_seconds):
+        """Déplace les curseurs verticaux dynamiques à la position temporelle courante."""
         for v_line in self.v_lines:
             v_line.setValue(current_seconds)

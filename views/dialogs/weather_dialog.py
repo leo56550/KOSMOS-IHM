@@ -5,6 +5,7 @@ class WeatherWebDialog(QtWidgets.QDialog):
     """Dialogue de comparaison des données météo web (Open-Meteo)."""
 
     def __init__(self, web_data: dict, lang: str = "fr", display_date: str = None, parent=None):
+        """Initialise le dialogue avec les données météo web et la langue d'affichage."""
         super().__init__(parent)
         self.web_data = web_data
         self.lang = lang
@@ -35,6 +36,7 @@ class WeatherWebDialog(QtWidgets.QDialog):
         self._setup_ui()
 
     def _setup_ui(self):
+        """Construit le formulaire en lecture seule avec les champs météo traduits."""
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(12)

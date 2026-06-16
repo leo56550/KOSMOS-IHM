@@ -12,6 +12,7 @@ class MetadataModel:
     ]
 
     def __init__(self):
+        """Initialise les données JSON et le chemin à vide."""
         self._json_data: dict = {}
         self._json_path: str = ""
 
@@ -52,6 +53,7 @@ class MetadataModel:
     # ------------------------------------------------------------------
 
     def get_block(self, block_key: str) -> dict:
+        """Retourne le bloc JSON identifié par block_key (ex. 'system', 'survey')."""
         return self._json_data.get(block_key, {})
 
     def get_weather_sea_data(self) -> dict:
@@ -97,6 +99,7 @@ class MetadataModel:
                 print(f"[MetadataModel] Erreur sync {json_video_path} : {e}")
 
     def _save_to_file(self, path: str, data: dict = None):
+        """Sérialise *data* (ou les données en mémoire) en JSON sur *path*."""
         if data is None:
             data = self._json_data
         if not path:

@@ -5,6 +5,7 @@ class MetadonneesView:
     """Vue de la page Métadonnées."""
 
     def __init__(self, widget: QtWidgets.QWidget):
+        """Expose les widgets de la page Métadonnées (arbre, conteneurs système/campagne/météo/vidéo)."""
         self.widget = widget
 
         self.tree_videos = widget.findChild(QtWidgets.QTreeView, "tree_videos")

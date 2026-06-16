@@ -11,10 +11,13 @@ from controllers.extraction_controller import ExtractionController
 
 
 class AProposController:
+    """Contrôleur minimal de la page À propos (pas de logique métier)."""
+
     def __init__(self, widget, *args, **kwargs):
         self.widget = widget
 
     def set_language(self, language: str):
+        """Stub de traduction (page statique)."""
         pass
 
 
@@ -22,6 +25,7 @@ class AppController:
     """Orchestrates navigation, campaign lifecycle, and page controllers."""
 
     def __init__(self, window):
+        """Instancie tous les controllers de page, connecte les signaux de navigation et les boutons workflow."""
         self.window = window
         self.qualification_completed = False
         self.validation_completed = False
@@ -96,6 +100,7 @@ class AppController:
     # --- Language ---
 
     def set_language(self, language: str):
+        """Propage la langue à tous les controllers et met à jour les boutons workflow."""
         w = self.window
         if language not in w.translations:
             return
@@ -113,6 +118,7 @@ class AppController:
     # --- Campaign opening ---
 
     def handle_campaign_opening(self, nom_derusher: str):
+        """Ouvre la campagne sélectionnée, rafraîchit tous les modèles et déverrouille la navigation."""
         w = self.window
         self.qualification_completed = False
         self.validation_completed = False
@@ -181,6 +187,7 @@ class AppController:
                 self.lock_navigation(True)
 
     def _refresh_all_page_models(self):
+        """Recharge le VideoModel dans tous les controllers de page après ouverture de campagne."""
         updated_model = self.qualif_ctrl.video_model
         for ctrl, method in [
             (self.validation_ctrl, 'load_campaign_videos'),
@@ -194,6 +201,7 @@ class AppController:
     # --- Qualification / Validation completion ---
 
     def complete_qualification(self):
+        """Marque la qualification terminée, déverrouille Validation/Événements et bascule vers Validation."""
         self.qualification_completed = True
         w = self.window
         w.actionValidation.setEnabled(True)
@@ -205,6 +213,7 @@ class AppController:
         self.switch_page(w.page_validation)
 
     def complete_validation(self):
+        """Marque la validation terminée, déverrouille Événements et bascule vers Métadonnées."""
         self.validation_completed = True
         w = self.window
         w.actionEvenements.setEnabled(True)
@@ -217,6 +226,7 @@ class AppController:
     # --- Navigation ---
 
     def lock_navigation(self, locked: bool):
+        """Active ou désactive les actions de navigation selon l'état du workflow."""
         w = self.window
         w.actionQualification.setEnabled(not locked)
         w.actionMetadonnees.setEnabled(not locked)
@@ -249,6 +259,7 @@ class AppController:
             self.qualif_ctrl._close_detached_player()
 
     def switch_page(self, page):
+        """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
         w = self.window
         free_pages = [w.page_accueil, w.page_apropos, w.page_extraction]
 

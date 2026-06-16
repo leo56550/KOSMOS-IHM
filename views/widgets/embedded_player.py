@@ -17,10 +17,12 @@ _TOGGLE_STYLE = BTN_TOGGLE
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
+    """Lecteur vidéo embarqué avec timeline, corrections image, overlay télémétrie et support stéréo."""
 
     playback_state_changed = QtCore.pyqtSignal(bool)
 
     def __init__(self, parent=None, zone_definitions=None):
+        """Construit l'interface complète : affichage vidéo, timeline, panneaux corrections et télémétrie."""
         super().__init__(parent)
 
         self.player = QMediaPlayer()
@@ -308,6 +310,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     @staticmethod
     def _make_corr_label(text: str, min_w: int = 0) -> QtWidgets.QLabel:
+        """Crée un QLabel stylisé pour le panneau corrections."""
         lbl = QtWidgets.QLabel(text)
         style = f"color: #b0c8d8; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;"
         if min_w:
@@ -317,6 +320,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     @staticmethod
     def _vline() -> QtWidgets.QFrame:
+        """Crée un séparateur vertical pour les barres de boutons."""
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         sep.setStyleSheet("color: #2a4057;")
@@ -325,9 +329,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     # ── Language ──────────────────────────────────────────────────────────
 
     def translate(self, fr: str, en: str) -> str:
+        """Retourne la chaîne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
     def set_language(self, language: str):
+        """Met à jour la langue et rafraîchit les tooltips et labels de temps."""
         self.current_language = language
         self.lbl_zoom.setText(self.translate("Zoom :", "Zoom:"))
         self.btn_start.setToolTip(self.translate("LIRE", "PLAY"))
@@ -338,14 +344,17 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     # ── Frame rendering ───────────────────────────────────────────────────
 
     def process_realtime_frame(self, frame: QVideoFrame):
+        """Traite et affiche une frame du flux gauche (avec overlay télémétrie)."""
         self._render_dual_view(frame, self.video_widget, with_overlay=True)
 
     def process_realtime_frame_R(self, frame: QVideoFrame):
+        """Traite et affiche une frame du flux droit (mode stéréo uniquement, sans overlay)."""
         if self.is_stereo:
             self._render_dual_view(frame, self.video_widget_R, with_overlay=False)
 
     def _render_dual_view(self, frame: QVideoFrame,
                           target_label: QtWidgets.QLabel, with_overlay: bool = False):
+        """Décode, corrige et affiche frame dans target_label (throttlé à ~30 fps en lecture)."""
         if not frame.isValid():
             return
 
@@ -440,10 +449,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     # ── Image corrections ─────────────────────────────────────────────────
 
     def _has_active_corrections(self) -> bool:
+        """Retourne True si au moins une correction (HE, dehaze, contraste, luminosité) est active."""
         return (self._corr_he or self._corr_dehaze
                 or self._corr_contrast != 1.0 or self._corr_brightness != 0)
 
     def _apply_corrections(self, frame_bgr: np.ndarray) -> np.ndarray:
+        """Applique les corrections actives (HE, dehaze, contraste, luminosité) sur frame_bgr."""
         result = frame_bgr.copy()
         if self._corr_he:
             hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
@@ -458,6 +469,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         return result
 
     def _dehaze(self, img: np.ndarray) -> np.ndarray:
+        """Applique un CLAHE sur le canal L (LAB) pour réduire le voile sous-marin."""
         try:
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -483,6 +495,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                            QtCore.Qt.TransformationMode.SmoothTransformation))  # pause → qualité
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        """Redimensionne le pixmap stocké quand les QLabels vidéo sont redimensionnés."""
         if event.type() == QtCore.QEvent.Type.Resize:
             if obj is self.video_widget and self._last_pixmap_L is not None:
                 obj.setPixmap(
@@ -499,24 +512,29 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         return super().eventFilter(obj, event)
 
     def _on_corr_he_toggled(self, checked: bool):
+        """Active/désactive l'égalisation d'histogramme et rafraîchit la frame."""
         self._corr_he = checked
         self._refresh_corrections()
 
     def _on_corr_dehaze_toggled(self, checked: bool):
+        """Active/désactive le débrumage et rafraîchit la frame."""
         self._corr_dehaze = checked
         self._refresh_corrections()
 
     def _on_contrast_changed(self, value: int):
+        """Met à jour le facteur de contraste et rafraîchit la frame."""
         self._corr_contrast = value / 100.0
         self.lbl_contrast_val.setText(f"{self._corr_contrast:.1f}×")
         self._refresh_corrections()
 
     def _on_brightness_changed(self, value: int):
+        """Met à jour l'offset de luminosité et rafraîchit la frame."""
         self._corr_brightness = value
         self.lbl_brightness_val.setText(str(value))
         self._refresh_corrections()
 
     def _reset_corrections(self):
+        """Réinitialise toutes les corrections (HE, dehaze, contraste, luminosité) à leurs valeurs par défaut."""
         for w in [self.btn_corr_he, self.btn_corr_dehaze,
                   self.slider_contrast, self.slider_brightness]:
             w.blockSignals(True)
@@ -536,6 +554,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._refresh_corrections()
 
     def _update_corrections_enabled(self, is_playing: bool):
+        """Active/grise les contrôles de correction selon l'état de lecture."""
         enabled = not is_playing
         for w in [self.btn_corr_he, self.btn_corr_dehaze,
                   self.slider_contrast, self.slider_brightness, self.btn_reset_corr]:
@@ -550,9 +569,11 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.pause_all()
 
     def pause(self):
+        """Met en pause le flux principal."""
         self.player.pause()
 
     def _on_playback_state_changed(self, state):
+        """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
         if is_playing and (self.apply_histogram or self.apply_dehaze):
             self.apply_histogram = False
@@ -561,6 +582,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.playback_state_changed.emit(is_playing)
 
     def apply_filter(self, correction_type: str):
+        """Active une correction HR ou DEHAZE (API de compatibilité legacy)."""
         if correction_type == "HR":
             self.apply_histogram = True
             self.apply_dehaze = False
@@ -570,36 +592,43 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._force_frame_refresh()
 
     def apply_fixed_correction(self, correction_type: str):
+        """Met en pause puis applique une correction (API legacy)."""
         self.pause()
         self.apply_filter(correction_type)
 
     def remove_filters(self):
+        """Désactive toutes les corrections legacy et rafraîchit la frame."""
         if self.apply_histogram or self.apply_dehaze:
             self.apply_histogram = False
             self.apply_dehaze = False
             self._force_frame_refresh()
 
     def _force_frame_refresh(self):
+        """Force le décodage d'une nouvelle frame en déplaçant la position d'un ms."""
         pos = self.player.position()
         if pos > 0:
             self.player.setPosition(pos - 1)
             self.player.setPosition(pos)
 
     def on_zoom_changed(self, value):
+        """Applique le niveau de zoom du slider à la timeline."""
         self.timeline.set_zoom(float(value))
 
     def on_timeline_zoom_changed(self, zoom_factor: float):
+        """Synchronise le slider de zoom quand la timeline change son facteur de zoom."""
         self.slider_zoom.blockSignals(True)
         self.slider_zoom.setValue(int(round(zoom_factor)))
         self.slider_zoom.blockSignals(False)
 
     def jump_time_offset(self, ms: int):
+        """Déplace la position de lecture de ms millisecondes (positif ou négatif)."""
         target = max(0, min(self.player.position() + ms, self.player.duration()))
         self.player.setPosition(target)
         if self.is_stereo:
             self.player_R.setPosition(target)
 
     def on_timeline_pressed(self, target_ms: int):
+        """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""
         if self.timeline.is_dragging and not self.slider_was_playing:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self.slider_was_playing = True
@@ -611,6 +640,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.telemetry_dialog.update_cursor(target_ms / 1000.0)
 
     def on_timeline_released(self, target_ms: int):
+        """Reprend la lecture si elle était active avant le drag timeline."""
         self.player.setPosition(target_ms)
         if self.slider_was_playing:
             self.player.play()
@@ -618,6 +648,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.center_scroll_on_cursor()
 
     def on_player_position_changed(self, position_ms: int):
+        """Synchronise le flux R, la timeline, le curseur télémétrie et les labels de temps."""
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
@@ -634,6 +665,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.update_frame_label(position_ms)
 
     def center_scroll_on_cursor(self):
+        """Fait défiler la timeline pour garder le curseur de lecture visible au centre."""
         if self.player.duration() <= 0 or self.slider_zoom.value() == 1:
             return
         ratio = self.player.position() / self.player.duration()
@@ -642,16 +674,19 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 
     def on_player_duration_changed(self, duration_ms: int):
+        """Propage la durée totale à la timeline et rafraîchit les labels."""
         self.timeline.set_total_duration(duration_ms)
         self.update_top_time_label(self.player.position(), duration_ms)
         self.update_frame_label(self.player.position())
 
     def update_top_time_label(self, position_ms: int, duration_ms: int):
+        """Met à jour le label de temps position/durée au format MM:SS."""
         self.lbl_top_time.setText(
             f"{self.timeline._format_ms(position_ms)} / {self.timeline._format_ms(duration_ms)}"
         )
 
     def update_frame_label(self, position_ms: int):
+        """Met à jour le label de numéro de frame courant."""
         if self.video_fps and self.video_fps > 0:
             self.lbl_frame_number.setText(
                 f"Frame: {int(position_ms * self.video_fps / 1000.0) + 1}")
@@ -659,6 +694,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.lbl_frame_number.setText("Frame: -")
 
     def _get_video_fps(self, video_path: str) -> float:
+        """Lit le FPS de video_path via OpenCV, retourne 0.0 en cas d'échec."""
         if not video_path or not os.path.exists(video_path):
             return 0.0
         cap = cv2.VideoCapture(video_path)
@@ -672,6 +708,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             return 0.0
 
     def load_video_and_events(self, video_data, events: list, is_stereo: bool = False):
+        """Charge une vidéo (mono ou stéréo), configure la timeline et démarre la lecture."""
         self.player.stop()
         self.player_R.stop()
         self.is_stereo = is_stereo
@@ -721,6 +758,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.timeline.update()
 
     def _on_cam_L_toggled(self, checked: bool):
+        """Masque/affiche la caméra gauche tout en garantissant qu'au moins une caméra reste visible."""
         if not checked and not self.btn_cam_R.isChecked():
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(True)
@@ -729,6 +767,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.video_widget.setVisible(checked)
 
     def _on_cam_R_toggled(self, checked: bool):
+        """Masque/affiche la caméra droite tout en garantissant qu'au moins une caméra reste visible."""
         if not checked and not self.btn_cam_L.isChecked():
             self.btn_cam_R.blockSignals(True)
             self.btn_cam_R.setChecked(True)
@@ -750,6 +789,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.display_stack.setCurrentIndex(0)
 
     def load_dynamic_metadata(self, csv_path: str):
+        """Charge le CSV de télémétrie et ouvre le dialogue TelemetryDialog."""
         try:
             df = pd.read_csv(csv_path, sep=None, engine='python')
             df.columns = df.columns.str.strip()
@@ -765,16 +805,19 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             print(f"Erreur chargement télémétrie : {e}")
 
     def play_all(self):
+        """Lance la lecture sur le flux L et (en stéréo) le flux R."""
         self.player.play()
         if self.is_stereo:
             self.player_R.play()
 
     def pause_all(self):
+        """Met en pause le flux L et (en stéréo) le flux R."""
         self.player.pause()
         if self.is_stereo:
             self.player_R.pause()
 
     def set_playback_rate_all(self, rate: float):
+        """Applique une vitesse de lecture sur les deux flux."""
         self.player.setPlaybackRate(rate)
         if self.is_stereo:
             self.player_R.setPlaybackRate(rate)

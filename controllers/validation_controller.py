@@ -11,7 +11,10 @@ from models.video_model import VideoFilterProxyModel
 
 
 class ValidationController:
+    """Contrôleur de la page Validation : lecture vidéo et saisie de l'exploitabilité."""
+
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel):
+        """Initialise le player embarqué, l'arbre vidéo et le combo exploitabilité."""
         self.page = page_widget
         self.video_model = shared_model
         self.current_language = 'en'
@@ -75,9 +78,11 @@ class ValidationController:
             self.combo_exploitable.currentTextChanged.connect(self.on_exploitable_changed)
 
     def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
     def set_language(self, language: str):
+        """Met à jour la langue et rafraîchit les libellés."""
         self.current_language = language
         if hasattr(self, 'lbl_exploitable'):
             self.lbl_exploitable.setText(self.translate("Vidéo Exploitable ? ", "Video Exploitable?"))
@@ -85,6 +90,7 @@ class ValidationController:
             self.refresh_combobox_values()
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
+        """Remplace le modèle source du proxy après un changement de campagne."""
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
 
@@ -109,6 +115,7 @@ class ValidationController:
                 break
 
     def on_video_selected(self, index: QtCore.QModelIndex):
+        """Charge la vidéo sélectionnée, les événements moteur et la télémétrie CSV."""
         source_index = self.proxy_model.mapToSource(index)
         item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
         if not item:
@@ -146,6 +153,7 @@ class ValidationController:
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
 
     def refresh_combobox_values(self):
+        """Recharge les valeurs autorisées du combo exploitabilité depuis le JSON."""
         if not hasattr(self, 'combo_exploitable') or not self.current_json_path:
             return
         if os.path.exists(self.current_json_path):
@@ -165,6 +173,7 @@ class ValidationController:
                 self.combo_exploitable.blockSignals(False)
 
     def on_exploitable_changed(self, text: str):
+        """Persiste la valeur d'exploitabilité dans le JSON et met à jour l'icône de l'item."""
         if not self.current_json_path or not text:
             return
         try:
@@ -185,6 +194,7 @@ class ValidationController:
             pass
 
     def refresh_item_indicator(self, item, video_path):
+        """Met à jour l'icône et la couleur d'un item selon son statut exploitabilité."""
         json_path = get_video_json_path(video_path)
         is_processed = False
         if os.path.exists(json_path):
@@ -205,6 +215,7 @@ class ValidationController:
             item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
 
     def initialize_tree_indicators(self):
+        """Initialise les icônes de tout l'arbre au chargement d'une campagne."""
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item:

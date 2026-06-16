@@ -10,6 +10,7 @@ class CampaignModel(QObject):
     campaign_changed = pyqtSignal(str, str)  # (campaign_folder, derusher_name)
 
     def __init__(self, parent=None):
+        """Initialise la campagne avec un dossier et un dérusher vides."""
         super().__init__(parent)
         self._campaign_folder: str = ""
         self._derusher_name: str = ""
@@ -29,4 +30,5 @@ class CampaignModel(QObject):
         self.campaign_changed.emit(folder, derusher_name)
 
     def is_open(self) -> bool:
+        """Retourne True si un dossier de campagne est actif."""
         return bool(self._campaign_folder)

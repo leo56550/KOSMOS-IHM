@@ -10,6 +10,7 @@ class MainWindow(QtWidgets.QMainWindow):
     """
 
     def __init__(self):
+        """Charge ihm2.ui, configure la toolbar de navigation et initialise les traductions."""
         super().__init__()
         self.base_path = os.path.dirname(os.path.dirname(__file__))
         ui_path = os.path.join(self.base_path, "ihm2.ui")
@@ -45,6 +46,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_language = 'fr'
 
     def _setup_toolbar(self):
+        """Reconstruit la QToolBar avec les boutons de navigation, les drapeaux de langue et le label dérusher."""
         if not self.nav_toolbar:
             return
         self.nav_toolbar.setMovable(False)
@@ -169,12 +171,14 @@ class MainWindow(QtWidgets.QMainWindow):
         """)
 
     def _load_flag_icon(self, filename: str) -> QtGui.QIcon:
+        """Charge l'icône drapeau depuis img/filename, retourne une icône vide si absent."""
         path = os.path.join(self.base_path, "img", filename)
         if os.path.exists(path):
             return QtGui.QIcon(path)
         return QtGui.QIcon()
 
     def update_nav_highlight(self, page):
+        """Surligne le bouton de navigation correspondant à la page active."""
         if self.nav_toolbar:
             self.nav_toolbar.clearFocus()
         for page_widget, action in self.button_mapping.items():
@@ -185,6 +189,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 btn.style().polish(btn)
 
     def update_language_buttons(self, language: str):
+        """Met à jour l'état des boutons langue et traduit les textes des actions de navigation."""
         self.btn_lang_fr.setChecked(language == 'fr')
         self.btn_lang_en.setChecked(language == 'en')
         trans = self.translations.get(language, {})

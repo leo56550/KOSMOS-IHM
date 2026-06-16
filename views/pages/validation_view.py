@@ -5,6 +5,7 @@ class ValidationView:
     """Vue de la page Validation."""
 
     def __init__(self, widget: QtWidgets.QWidget):
+        """Expose les widgets de la page Validation (arbre, lecteur, combo exploitable)."""
         self.widget = widget
 
         self.tree_videos = widget.findChild(QtWidgets.QTreeView, "tree_videos_valid")

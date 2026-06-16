@@ -6,6 +6,7 @@ class VideoItem(QtGui.QStandardItem):
     """Item représentant une vidéo dans le VideoModel."""
 
     def __init__(self, text: str, video_path: str):
+        """Crée l'item avec son libellé et le chemin vidéo stocké dans UserRole."""
         super().__init__(text)
         self.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
         self.setEditable(False)
@@ -20,6 +21,7 @@ class VideoModel(QtGui.QStandardItemModel):
     COLUMNS = ["Nom", "Durée", "FPS", "Résolution", "Taille", "Date"]
 
     def __init__(self, parent=None):
+        """Initialise le modèle avec les en-têtes de colonnes vidéo."""
         super().__init__(parent)
         self.setHorizontalHeaderLabels(self.COLUMNS)
 
@@ -61,6 +63,7 @@ class TrashModel(QtGui.QStandardItemModel):
     COLUMNS = ["Nom", "Durée", "FPS", "Résolution", "Taille", "Date"]
 
     def __init__(self, parent=None):
+        """Initialise le modèle corbeille avec les en-têtes de colonnes vidéo."""
         super().__init__(parent)
         self.setHorizontalHeaderLabels(self.COLUMNS)
 
@@ -82,6 +85,7 @@ class TrashModel(QtGui.QStandardItemModel):
             self.appendRow(row)
 
     def get_video_path(self, row: int) -> str:
+        """Retourne le chemin vidéo de la corbeille associé à une ligne."""
         item = self.item(row, 0)
         if item:
             return item.data(QtCore.Qt.ItemDataRole.UserRole)
@@ -94,14 +98,17 @@ class VideoFilterProxyModel(QtCore.QSortFilterProxyModel):
     """
 
     def __init__(self, parent=None):
+        """Initialise le proxy avec le filtre non-exploitables désactivé."""
         super().__init__(parent)
         self._filter_non_exploitable = False
 
     def set_filter_non_exploitable(self, enabled: bool):
+        """Active ou désactive le masquage des vidéos marquées non-exploitables."""
         self._filter_non_exploitable = enabled
         self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QtCore.QModelIndex) -> bool:
+        """Exclut les vidéos dans .trash et, si activé, les non-exploitables."""
         model = self.sourceModel()
         if model is None:
             return True

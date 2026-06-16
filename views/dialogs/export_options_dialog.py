@@ -2,7 +2,13 @@ from PyQt6 import QtWidgets, QtCore
 
 
 class ExportOptionsDialog(QtWidgets.QDialog):
+    """Dialog de configuration des options d'export image (FPS, filtres, rectification stéréo)."""
+
     def __init__(self, parent=None, is_stereo=False):
+        """
+        Args:
+            is_stereo: Active la case rectification stéréo si True.
+        """
         super().__init__(parent)
 
         self.is_stereo = is_stereo
@@ -94,9 +100,11 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.set_language(self.current_language)
 
     def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
     def set_language(self, language: str):
+        """Traduit tous les libellés du dialog."""
         self.current_language = language
         self.setWindowTitle(self.translate("Options d'exportation", "Export Options"))
         self.fps_group.setTitle(self.translate("Configuration de la cadence (FPS)", "Framerate Configuration (FPS)"))

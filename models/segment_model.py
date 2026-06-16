@@ -9,6 +9,7 @@ class SegmentModel(QtGui.QStandardItemModel):
     COLUMNS = ["Nom", "Taille", "Type"]
 
     def __init__(self, parent=None):
+        """Initialise le modèle livrables avec les en-têtes Nom/Taille/Type."""
         super().__init__(parent)
         self.setHorizontalHeaderLabels(self.COLUMNS)
 
@@ -60,6 +61,7 @@ class SegmentModel(QtGui.QStandardItemModel):
 
     @staticmethod
     def _make_icon(file_path: str, file_type: str) -> QtGui.QIcon:
+        """Génère une icône miniature 64×48 px depuis une image ou la première frame d'une vidéo."""
         try:
             if file_type == "Image":
                 pixmap = QtGui.QPixmap(file_path).scaled(
