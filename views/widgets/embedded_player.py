@@ -4,7 +4,8 @@ import cv2
 import numpy as np
 import pandas as pd
 from PyQt6 import QtCore, QtGui, QtWidgets
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink, QVideoFrame
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 from views.widgets.timeline_widget import VideoTimeline
 from views.dialogs.telemetry_dialog import TelemetryDialog
@@ -14,6 +15,33 @@ from views.style import (C_INDIGO, C_CERULEAN, C_JASPER, C_MELON,
 _SLIDER_STYLE = SLIDER
 _BTN_STYLE = BTN_PRIMARY
 _TOGGLE_STYLE = BTN_TOGGLE
+
+
+class _VideoLabel(QtWidgets.QWidget):
+    """Widget d'affichage vidéo — stocke un QImage et le scale dans paintEvent sans passer par QPixmap."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self._image: QtGui.QImage | None = None
+
+    def set_image(self, image: QtGui.QImage):
+        self._image = image
+        self.update()
+
+    def clear(self):
+        self._image = None
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtCore.Qt.GlobalColor.black)
+        if self._image is not None and not self._image.isNull():
+            scaled = self._image.size().scaled(
+                self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
@@ -41,12 +69,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.apply_histogram = False
         self.he_params = {"vB": 3, "vG": 3, "vR": 3}
 
-        # Performance: throttle rendering to ~30fps display
-        self._last_render_ms: int = 0
-
-        # Stored pixmaps for resize-aware rescaling
-        self._last_pixmap_L: QtGui.QPixmap | None = None
-        self._last_pixmap_R: QtGui.QPixmap | None = None
+        # Throttle UI updates (timeline, labels) pendant la lecture
+        self._last_ui_update_ms: int = 0
 
         # Image corrections (active only when paused)
         self._last_raw_frame: np.ndarray | None = None
@@ -83,29 +107,27 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         vc_layout.setContentsMargins(0, 0, 0, 0)
         vc_layout.setSpacing(2)
 
-        self.video_widget = QtWidgets.QLabel()
-        self.video_widget.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.video_widget.setStyleSheet("background-color: black;")
+        # Caméra gauche : QVideoWidget (rendu hardware) + overlay corrections (_VideoLabel)
+        self.video_widget = QVideoWidget()
+        self.video_widget.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.correction_overlay = _VideoLabel()
+        self.left_display = QtWidgets.QStackedWidget()
+        self.left_display.addWidget(self.video_widget)      # index 0 → lecture hardware
+        self.left_display.addWidget(self.correction_overlay)  # index 1 → corrections OpenCV
+        self.left_display.setCurrentIndex(0)
 
-        self.video_widget_R = QtWidgets.QLabel()
-        self.video_widget_R.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.video_widget_R.setStyleSheet("background-color: black;")
+        # Caméra droite (stéréo uniquement)
+        self.video_widget_R = QVideoWidget()
+        self.video_widget_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
         self.video_widget_R.setVisible(False)
 
-        self.video_widget.installEventFilter(self)
-        self.video_widget_R.installEventFilter(self)
-
-        vc_layout.addWidget(self.video_widget)
+        vc_layout.addWidget(self.left_display)
         vc_layout.addWidget(self.video_widget_R)
         self.display_stack.addWidget(self.video_container)
 
-        self.video_sink = QVideoSink()
-        self.player.setVideoSink(self.video_sink)
-        self.video_sink.videoFrameChanged.connect(self.process_realtime_frame)
-
-        self.video_sink_R = QVideoSink()
-        self.player_R.setVideoSink(self.video_sink_R)
-        self.video_sink_R.videoFrameChanged.connect(self.process_realtime_frame_R)
+        # Connecter les players à leurs QVideoWidget (rendu natif, 0 CPU)
+        self.player.setVideoOutput(self.video_widget)
+        self.player_R.setVideoOutput(self.video_widget_R)
 
         # Time bar
         self.time_layout = QtWidgets.QHBoxLayout()
@@ -354,72 +376,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     # ── Frame rendering ───────────────────────────────────────────────────
 
-    def process_realtime_frame(self, frame: QVideoFrame):
-        """Traite et affiche une frame du flux gauche (avec overlay télémétrie)."""
-        self._render_dual_view(frame, self.video_widget, with_overlay=True)
-
-    def process_realtime_frame_R(self, frame: QVideoFrame):
-        """Traite et affiche une frame du flux droit (mode stéréo uniquement, sans overlay)."""
-        if self.is_stereo:
-            self._render_dual_view(frame, self.video_widget_R, with_overlay=False)
-
-    def _render_dual_view(self, frame: QVideoFrame,
-                          target_label: QtWidgets.QLabel, with_overlay: bool = False):
-        """Décode, corrige et affiche frame dans target_label (throttlé à ~30 fps en lecture)."""
-        if not frame.isValid():
-            return
-
-        is_paused = (self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState)
-
-        # Throttle to 30 fps display when playing — keeps the main thread free
-        now_ms = int(time.monotonic() * 1000)
-        if not is_paused and (now_ms - self._last_render_ms) < 33:
-            return
-
-        if not frame.map(QVideoFrame.MapMode.ReadOnly):
-            return
-
-        try:
-            q_img = frame.toImage().convertToFormat(QtGui.QImage.Format.Format_RGB888)
-            if q_img.isNull() or q_img.width() == 0 or q_img.height() == 0:
-                return
-
-            # ── Paused: extract numpy frame for correction controls ────────
-            if is_paused and with_overlay:
-                w2, h2 = q_img.width(), q_img.height()
-                ptr = q_img.bits()
-                ptr.setsize(q_img.sizeInBytes())
-                arr = np.frombuffer(ptr, np.uint8).reshape((h2, w2, 3))
-                self._last_raw_frame = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-            # ── Apply corrections (paused + main stream only) ─────────────
-            if is_paused and with_overlay and self._has_active_corrections() and self._last_raw_frame is not None:
-                corrected = self._apply_corrections(self._last_raw_frame)
-                h2, w2 = corrected.shape[:2]
-                rgb = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
-                q_img = QtGui.QImage(rgb.data, w2, h2, 3 * w2,
-                                     QtGui.QImage.Format.Format_RGB888).copy()
-
-
-            self._last_render_ms = now_ms
-
-            # FastTransformation during playback (no visible diff at 25+ fps),
-            # SmoothTransformation when paused (corrections need quality).
-            transform = (QtCore.Qt.TransformationMode.SmoothTransformation if is_paused
-                         else QtCore.Qt.TransformationMode.FastTransformation)
-
-            pix = QtGui.QPixmap.fromImage(q_img)
-            if target_label is self.video_widget:
-                self._last_pixmap_L = pix
-            elif target_label is self.video_widget_R:
-                self._last_pixmap_R = pix
-            target_label.setPixmap(
-                pix.scaled(target_label.size(),
-                           QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                           transform))
-        finally:
-            frame.unmap()
-
     # ── Image corrections ─────────────────────────────────────────────────
 
     def _has_active_corrections(self) -> bool:
@@ -452,37 +408,38 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         except Exception:
             return img
 
+    def _grab_frame_opencv(self) -> np.ndarray | None:
+        """Lit la frame courante via OpenCV (uniquement en pause, pour les corrections)."""
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            return None
+        cap = cv2.VideoCapture(self.current_video_path)
+        cap.set(cv2.CAP_PROP_POS_MSEC, self.player.position())
+        ret, frame = cap.read()
+        cap.release()
+        return frame if ret else None
+
     def _refresh_corrections(self):
-        """Re-render the stored raw frame with current correction settings."""
-        if (self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState
-                and self._last_raw_frame is not None):
-            corrected = self._apply_corrections(self._last_raw_frame)
-            h, w = corrected.shape[:2]
-            rgb = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
-            out_img = QtGui.QImage(rgb.data, w, h, 3 * w,
-                                   QtGui.QImage.Format.Format_RGB888).copy()
-            pix = QtGui.QPixmap.fromImage(out_img)
-            self._last_pixmap_L = pix
-            self.video_widget.setPixmap(
-                pix.scaled(self.video_widget.size(),
-                           QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                           QtCore.Qt.TransformationMode.SmoothTransformation))  # pause → qualité
+        """Applique les corrections à la frame courante (pause uniquement) via OpenCV."""
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            return
+        if not self._has_active_corrections():
+            # Aucune correction active → repasser au rendu hardware
+            self.left_display.setCurrentIndex(0)
+            return
+        frame = self._grab_frame_opencv()
+        if frame is None:
+            return
+        self._last_raw_frame = frame
+        corrected = self._apply_corrections(frame)
+        h, w = corrected.shape[:2]
+        rgb = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
+        out_img = QtGui.QImage(rgb.data, w, h, 3 * w,
+                               QtGui.QImage.Format.Format_RGB888).copy()
+        self.correction_overlay.set_image(out_img)
+        self.left_display.setCurrentIndex(1)
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        """Redimensionne le pixmap stocké quand les QLabels vidéo sont redimensionnés."""
-        if event.type() == QtCore.QEvent.Type.Resize:
-            if obj is self.video_widget and self._last_pixmap_L is not None:
-                obj.setPixmap(
-                    self._last_pixmap_L.scaled(
-                        obj.size(),
-                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                        QtCore.Qt.TransformationMode.SmoothTransformation))
-            elif obj is self.video_widget_R and self._last_pixmap_R is not None:
-                obj.setPixmap(
-                    self._last_pixmap_R.scaled(
-                        obj.size(),
-                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                        QtCore.Qt.TransformationMode.SmoothTransformation))
+        # _VideoLabel gère son propre rescaling via paintEvent — plus besoin d'intercepter Resize
         return super().eventFilter(obj, event)
 
     def _on_corr_he_toggled(self, checked: bool):
@@ -549,9 +506,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _on_playback_state_changed(self, state):
         """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
-        if is_playing and (self.apply_histogram or self.apply_dehaze):
-            self.apply_histogram = False
-            self.apply_dehaze = False
+        if is_playing:
+            # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
+            self.left_display.setCurrentIndex(0)
+            self._last_raw_frame = None
+            if self.apply_histogram or self.apply_dehaze:
+                self.apply_histogram = False
+                self.apply_dehaze = False
         self._update_corrections_enabled(is_playing)
         self.playback_state_changed.emit(is_playing)
 
@@ -626,6 +587,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.is_stereo and abs(self.player_R.position() - position_ms) > 50:
             self.player_R.setPosition(position_ms)
 
+        # Throttler les mises à jour UI à ~15 fps pendant la lecture (positionChanged fire à la cadence native)
+        now_ms = int(time.monotonic() * 1000)
+        is_playing = (self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState)
+        if is_playing and (now_ms - self._last_ui_update_ms) < 66:
+            return
+        self._last_ui_update_ms = now_ms
+
         if (self.current_video_path
                 and hasattr(self, 'telemetry_dialog')
                 and self.telemetry_dialog.isVisible()):
@@ -697,7 +665,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
-                self.video_widget.setVisible(True)
+                self.left_display.setVisible(True)
                 self.video_widget_R.setVisible(True)
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
@@ -713,7 +681,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 w.setVisible(True)
         else:
             self.is_stereo = False
-            self.video_widget.setVisible(True)
+            self.left_display.setVisible(True)
             self.video_widget_R.setVisible(False)
             for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
                 w.setVisible(False)
@@ -737,7 +705,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.btn_cam_L.setChecked(True)
             self.btn_cam_L.blockSignals(False)
             return
-        self.video_widget.setVisible(checked)
+        self.left_display.setVisible(checked)
 
     def _on_cam_R_toggled(self, checked: bool):
         """Masque/affiche la caméra droite tout en garantissant qu'au moins une caméra reste visible."""
