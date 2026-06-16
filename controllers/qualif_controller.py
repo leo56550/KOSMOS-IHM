@@ -65,6 +65,7 @@ class QualifController:
 
         self._init_video_list()
         self._init_trash_list()
+        self._configure_left_splitter()
         self._init_minimap()
         self._init_miniature_area()
         self.set_language(self.current_language)
@@ -165,6 +166,45 @@ class QualifController:
         self.trash_video_tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DragDrop)
         self.trash_video_tree.dragEnterEvent = self.trash_drag_enter_event
         self.trash_video_tree.dropEvent = self.trash_drop_event
+
+    def _configure_left_splitter(self):
+        """Abaisse les minimums du splitter vertical gauche et fixe les facteurs d'étirement."""
+        if not self.frame_campaign:
+            return
+        splitter = self.frame_campaign.parentWidget()
+        if not isinstance(splitter, QtWidgets.QSplitter):
+            return
+
+        # Le .ui impose minimumHeight=430 sur frame_campagne et 200 sur chaque arbre,
+        # soit 830 px minimum — infaisable sur la plupart des écrans.
+        # On abaisse ces minimums : le contenu reste accessible via les scrollbars.
+        self.frame_campaign.setMinimumHeight(120)
+        if self.video_tree:
+            self.video_tree.setMinimumHeight(80)
+        if self.trash_video_tree:
+            self.trash_video_tree.setMinimumHeight(60)
+
+        # Facteurs : frame_campagne fixe (stretch 0), arbres se partagent le reste
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(2, 1)
+
+    def _reset_left_splitter_sizes(self):
+        """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible)."""
+        if not self.frame_campaign:
+            return
+        splitter = self.frame_campaign.parentWidget()
+        if not isinstance(splitter, QtWidgets.QSplitter):
+            return
+        total = splitter.height()
+        if total <= 0:
+            return
+        # 40 % pour les propriétés de campagne, 40 % pour les vidéos, 20 % pour la poubelle
+        campaign_h = max(120, int(total * 0.40))
+        remaining = total - campaign_h
+        video_h = max(80, int(remaining * 0.65))
+        trash_h = max(60, remaining - video_h)
+        splitter.setSizes([campaign_h, video_h, trash_h])
 
     def _init_minimap(self):
         """Crée le MapBridge WebChannel et le MapDialog pour la carte de campagne."""
@@ -279,6 +319,8 @@ class QualifController:
             except Exception as e:
                 print(f"[ERROR] Could not read system data: {e}")
             self.load_and_display_campaign_json(first_loaded_json)
+
+        self._reset_left_splitter_sizes()
 
     def load_and_display_campaign_json(self, json_path: str):
         if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:

@@ -164,7 +164,6 @@ class AppController:
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session
-        print(f"[CAMPAIGN] dossier={dossier!r}  name={self._current_campaign_name!r}  has_label={hasattr(w, 'campaign_label')}")
         self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
 
         data_systeme = get_campaign_json_data(dossier, extract_system=True)
