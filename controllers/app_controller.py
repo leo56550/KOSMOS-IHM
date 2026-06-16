@@ -1,6 +1,7 @@
-from PyQt6 import QtWidgets
+from PyQt6 import QtWidgets, QtCore
 
 from services.campaign_service import get_campaign_json_data
+from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController
@@ -32,6 +33,7 @@ class AppController:
         self.validation_completed = False
         self._current_campaign_name: str = ""
         self._current_derusher_name: str = ""
+        self._current_campaign_mode: str = ""  # "MONO" | "STEREO" | ""
 
         # Instantiate page controllers
         self.accueil_ctrl = AccueilController(
@@ -133,6 +135,21 @@ class AppController:
                 )
             else:
                 w.campaign_label.setText("")
+        if hasattr(w, '_campaign_mode_action'):
+            mode = self._current_campaign_mode
+            if mode:
+                is_stereo = (mode == "STEREO")
+                color = "#f0c040" if is_stereo else "#a0b8c8"
+                border = "#c89a10" if is_stereo else "#607080"
+                w.campaign_mode_label.setText(mode)
+                w.campaign_mode_label.setStyleSheet(
+                    f"color: {color}; font-weight: bold; font-family: 'Segoe UI', sans-serif;"
+                    f" font-size: 10px; padding: 2px 6px; border: 1px solid {border};"
+                    f" border-radius: 3px; letter-spacing: 0.5px;"
+                )
+                w._campaign_mode_action.setVisible(True)
+            else:
+                w._campaign_mode_action.setVisible(False)
         if self._current_campaign_name:
             w.setWindowTitle(f"KOSMOS IHM — {self._current_campaign_name}")
 
@@ -143,6 +160,7 @@ class AppController:
         w = self.window
         self.qualification_completed = False
         self.validation_completed = False
+        self._current_campaign_mode = ""
 
         trans = w.translations.get(w.current_language, w.translations['fr'])
         if self.btn_finir_qualif:
@@ -156,6 +174,7 @@ class AppController:
 
         self.qualif_ctrl.open_system_explorer(nom_derusher)
         self._refresh_all_page_models()
+        self._detect_campaign_mode()
 
         dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
         if not dossier:
@@ -205,6 +224,23 @@ class AppController:
                 self.switch_page(w.page_qualification)
             else:
                 self.lock_navigation(True)
+
+    def _detect_campaign_mode(self):
+        """Détermine si la campagne est MONO ou STEREO à partir de la première vidéo du modèle."""
+        model = self.qualif_ctrl.video_model
+        if model.rowCount() == 0:
+            self._current_campaign_mode = ""
+            return
+        first_item = model.item(0, 0)
+        if first_item is None:
+            self._current_campaign_mode = ""
+            return
+        first_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if first_path:
+            is_stereo, _ = check_stereo_status(first_path)
+            self._current_campaign_mode = "STEREO" if is_stereo else "MONO"
+        else:
+            self._current_campaign_mode = ""
 
     def _refresh_all_page_models(self):
         """Recharge le VideoModel dans tous les controllers de page après ouverture de campagne."""

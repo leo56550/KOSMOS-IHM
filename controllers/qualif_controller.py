@@ -512,6 +512,23 @@ class QualifController:
                 </script>"""
                 m.get_root().html.add_child(folium.Element(js_reg))
 
+            if not valid_coords:
+                no_gps_html = """
+                <div style="
+                    position: fixed; top: 50%; left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(20,41,61,0.90);
+                    color: #F2BFB4;
+                    font-family: 'Segoe UI', sans-serif;
+                    font-size: 14px; font-weight: bold;
+                    padding: 16px 24px; border-radius: 8px;
+                    border: 1px solid #2778A2;
+                    z-index: 9999; text-align: center;
+                    pointer-events: none;">
+                    Aucune donnée GPS disponible pour cette campagne
+                </div>"""
+                m.get_root().html.add_child(folium.Element(no_gps_html))
+
             data = io.BytesIO()
             m.save(data, close_file=False)
             self.map_dialog.map_view.setHtml(data.getvalue().decode())

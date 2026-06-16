@@ -24,6 +24,9 @@ class _VideoLabel(QtWidgets.QWidget):
         super().__init__(parent)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self._image: QtGui.QImage | None = None
+        self._zoom = 1.0
+        self._zoom_cx = 0.5  # centre normalisé x (0–1)
+        self._zoom_cy = 0.5  # centre normalisé y (0–1)
 
     def set_image(self, image: QtGui.QImage):
         self._image = image
@@ -33,15 +36,57 @@ class _VideoLabel(QtWidgets.QWidget):
         self._image = None
         self.update()
 
+    def reset_zoom(self):
+        self._zoom = 1.0
+        self._zoom_cx = 0.5
+        self._zoom_cy = 0.5
+        self.update()
+
+    def zoom_at_cursor(self, delta: int, cursor_pos: QtCore.QPoint):
+        """Zoom numérique centré sur le curseur. delta>0 = zoom in, <0 = zoom out."""
+        if self._image is None or self._image.isNull():
+            return
+        factor = 1.2 if delta > 0 else (1.0 / 1.2)
+        new_zoom = max(1.0, min(self._zoom * factor, 8.0))
+        iw, ih = self._image.width(), self._image.height()
+        ww, wh = self.width(), self.height()
+        mx, my = cursor_pos.x(), cursor_pos.y()
+        if self._zoom <= 1.0:
+            scaled = self._image.size().scaled(self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+            img_x = (ww - scaled.width()) // 2
+            img_y = (wh - scaled.height()) // 2
+            cx = (mx - img_x) / scaled.width() if scaled.width() > 0 else 0.5
+            cy = (my - img_y) / scaled.height() if scaled.height() > 0 else 0.5
+        else:
+            crop_w = iw / self._zoom
+            crop_h = ih / self._zoom
+            x0 = max(0.0, min(self._zoom_cx * iw - crop_w / 2, iw - crop_w))
+            y0 = max(0.0, min(self._zoom_cy * ih - crop_h / 2, ih - crop_h))
+            cx = (x0 + (mx / ww) * crop_w) / iw if ww > 0 else 0.5
+            cy = (y0 + (my / wh) * crop_h) / ih if wh > 0 else 0.5
+        self._zoom = new_zoom
+        self._zoom_cx = max(0.0, min(cx, 1.0))
+        self._zoom_cy = max(0.0, min(cy, 1.0))
+        self.update()
+
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.fillRect(self.rect(), QtCore.Qt.GlobalColor.black)
         if self._image is not None and not self._image.isNull():
-            scaled = self._image.size().scaled(
-                self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
-            x = (self.width() - scaled.width()) // 2
-            y = (self.height() - scaled.height()) // 2
-            painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
+            if self._zoom <= 1.0:
+                scaled = self._image.size().scaled(
+                    self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                x = (self.width() - scaled.width()) // 2
+                y = (self.height() - scaled.height()) // 2
+                painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
+            else:
+                iw, ih = self._image.width(), self._image.height()
+                crop_w = max(1, int(iw / self._zoom))
+                crop_h = max(1, int(ih / self._zoom))
+                x0 = int(max(0, min(self._zoom_cx * iw - crop_w / 2, iw - crop_w)))
+                y0 = int(max(0, min(self._zoom_cy * ih - crop_h / 2, ih - crop_h)))
+                painter.drawImage(self.rect(), self._image,
+                                  QtCore.QRect(x0, y0, crop_w, crop_h))
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):
@@ -128,6 +173,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # Connecter les players à leurs QVideoWidget (rendu natif, 0 CPU)
         self.player.setVideoOutput(self.video_widget)
         self.player_R.setVideoOutput(self.video_widget_R)
+
+        # Event filters pour zoom molette en pause
+        self.video_widget.installEventFilter(self)
+        self.correction_overlay.installEventFilter(self)
 
         # Time bar
         self.time_layout = QtWidgets.QHBoxLayout()
@@ -422,8 +471,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Applique les corrections à la frame courante (pause uniquement) via OpenCV."""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             return
-        if not self._has_active_corrections():
-            # Aucune correction active → repasser au rendu hardware
+        if not self._has_active_corrections() and self.correction_overlay._zoom <= 1.0:
+            # Aucune correction et pas de zoom → repasser au rendu hardware
             self.left_display.setCurrentIndex(0)
             return
         frame = self._grab_frame_opencv()
@@ -439,8 +488,29 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.left_display.setCurrentIndex(1)
 
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        # _VideoLabel gère son propre rescaling via paintEvent — plus besoin d'intercepter Resize
+        if event.type() == QtCore.QEvent.Type.Wheel:
+            if self.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
+                self._handle_zoom_wheel(event)
+                return True
         return super().eventFilter(obj, event)
+
+    def _handle_zoom_wheel(self, event: QtCore.QEvent):
+        """Zoom numérique à la molette sur la frame courante (pause uniquement)."""
+        if self.left_display.currentIndex() == 0:
+            frame = self._grab_frame_opencv()
+            if frame is None:
+                return
+            self._last_raw_frame = frame
+            corrected = self._apply_corrections(frame)
+            h, w = corrected.shape[:2]
+            rgb = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
+            out_img = QtGui.QImage(rgb.data, w, h, 3 * w,
+                                   QtGui.QImage.Format.Format_RGB888).copy()
+            self.correction_overlay.set_image(out_img)
+            self.left_display.setCurrentIndex(1)
+        delta = event.angleDelta().y()
+        cursor = self.correction_overlay.mapFromGlobal(event.globalPosition().toPoint())
+        self.correction_overlay.zoom_at_cursor(delta, cursor)
 
     def _on_corr_he_toggled(self, checked: bool):
         """Active/désactive l'égalisation d'histogramme et rafraîchit la frame."""
@@ -510,6 +580,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
             self.left_display.setCurrentIndex(0)
             self._last_raw_frame = None
+            self.correction_overlay.reset_zoom()
             if self.apply_histogram or self.apply_dehaze:
                 self.apply_histogram = False
                 self.apply_dehaze = False
@@ -656,6 +727,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.is_stereo = is_stereo
         self.slider_was_playing = False
         self._last_raw_frame = None
+        self.correction_overlay.reset_zoom()
         self.timeline.events = events
         self.slider_zoom.setValue(1)
         self.timeline.set_zoom(1.0)

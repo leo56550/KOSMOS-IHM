@@ -122,16 +122,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.campaign_label = QtWidgets.QLabel("")
         self.campaign_label.setStyleSheet(
             "color: #7ec8e3; font-family: 'Segoe UI', sans-serif;"
-            " font-size: 11px; padding-left:8px; padding-right:12px; letter-spacing: 0.3px;"
+            " font-size: 11px; padding-left:8px; padding-right:4px; letter-spacing: 0.3px;"
         )
         self.campaign_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.campaign_label.setMinimumWidth(0)
+
+        self.campaign_mode_label = QtWidgets.QLabel("")
+        self.campaign_mode_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.campaign_mode_label.setMinimumWidth(0)
 
         self.nav_toolbar.addWidget(language_widget)
         self.nav_toolbar.addWidget(left_spacer)
         self.nav_toolbar.addWidget(buttons_container)
         self.nav_toolbar.addWidget(self.derusher_label)
         self.nav_toolbar.addWidget(self.campaign_label)
+        self._campaign_mode_action = self.nav_toolbar.addWidget(self.campaign_mode_label)
+        self._campaign_mode_action.setVisible(False)
         self.nav_toolbar.addWidget(right_spacer)
 
         self.nav_toolbar.setStyleSheet("""
