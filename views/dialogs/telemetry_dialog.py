@@ -18,24 +18,34 @@ _GRAPH_H   = 180
 class TelemetryDialog(QtWidgets.QDialog):
     """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, pression, exposition, luminosité)."""
 
+    _METRIC_TRANSLATIONS = {
+        "température": ("Température (°C)",       "Temperature (°C)"),
+        "pression":    ("Pression (hPa)",          "Pressure (hPa)"),
+        "ExpTime":     ("Temps d'exposition (ms)", "Exposure Time (ms)"),
+        "Lux":         ("Luminosité (Lux)",        "Luminosity (Lux)"),
+    }
+
     def __init__(self, parent=None):
         """Initialise les graphes pyqtgraph et les curseurs dynamiques pour chaque métrique."""
         super().__init__(parent)
+        self.current_language = 'fr'
         self.setWindowTitle("Analyse Télémétrie")
         self.resize(900, 800)
 
         pg.setConfigOptions(antialias=False, useOpenGL=True)
 
         self.full_df = None
-        self.plots   = {}   # key → PlotDataItem
-        self.stacks  = {}   # key → QStackedWidget
-        self.v_lines = []   # InfiniteLines des métriques dynamiques seulement
+        self.plots        = {}   # key → PlotDataItem
+        self.stacks       = {}   # key → QStackedWidget
+        self.v_lines      = []   # InfiniteLines des métriques dynamiques seulement
+        self.plot_widgets = {}   # key → PlotWidget (for title updates)
+        self.missing_labels = {} # key → QLabel (for "données manquantes" text updates)
 
         self.metrics = {
-            "température": ("Température (°C)",  "#ff4d4d"),
-            "pression":    ("Pression (hPa)",     "#4dff88"),
-            "ExpTime":     ("Exposure Time (ms)", "#4da6ff"),
-            "Lux":         ("Luminosité (Lux)",   "#ffff4d"),
+            "température": ("Température (°C)",       "#ff4d4d"),
+            "pression":    ("Pression (hPa)",          "#4dff88"),
+            "ExpTime":     ("Temps d'exposition (ms)", "#4da6ff"),
+            "Lux":         ("Luminosité (Lux)",        "#ffff4d"),
         }
 
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -50,6 +60,7 @@ class TelemetryDialog(QtWidgets.QDialog):
 
             # --- Graphe ---
             pw = pg.PlotWidget(title=label)
+            self.plot_widgets[key] = pw
             pw.setBackground('#111820')
             pw.showGrid(x=True, y=True, alpha=0.3)
             pw.setMouseEnabled(x=True, y=True)
@@ -84,6 +95,7 @@ class TelemetryDialog(QtWidgets.QDialog):
             dot.setStyleSheet(f"color: {color}; font-size: 10px; border: none;")
             lbl = QtWidgets.QLabel(f"{label} — données manquantes")
             lbl.setStyleSheet(_MISSING_STYLE)
+            self.missing_labels[key] = lbl
             row.addWidget(dot)
             row.addWidget(lbl)
             row.addStretch()
@@ -96,6 +108,24 @@ class TelemetryDialog(QtWidgets.QDialog):
             self.plots[key]  = curve
             self.stacks[key] = stack
             main_layout.addWidget(stack, stretch=stretch)
+
+    # ── Language ──────────────────────────────────────────────────────────
+
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne la chaîne fr ou en selon la langue active."""
+        return fr if self.current_language == 'fr' else en
+
+    def set_language(self, language: str):
+        """Met à jour la langue, le titre et les libellés des métriques."""
+        self.current_language = language
+        self.setWindowTitle(self.translate("Analyse Télémétrie", "Telemetry Analysis"))
+        missing_suffix = self.translate("données manquantes", "missing data")
+        for key, (fr_label, en_label) in self._METRIC_TRANSLATIONS.items():
+            label = fr_label if language == 'fr' else en_label
+            if key in self.plot_widgets:
+                self.plot_widgets[key].setTitle(label)
+            if key in self.missing_labels:
+                self.missing_labels[key].setText(f"{label} — {missing_suffix}")
 
     # ── Chargement des données (une seule fois) ───────────────────────────
 

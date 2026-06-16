@@ -21,7 +21,7 @@ class ExportWorker(QThread):
         """
         Args:
             video_path: Chemin de la vidéo source (flux R en stéréo).
-            base_output_dir: Dossier racine d'export (img/LEFT et img/RIGHT y seront créés).
+            base_output_dir: Dossier racine d'export (img/ en mono, img/LEFT + img/RIGHT en stéréo).
             start_ms, end_ms: Fenêtre temporelle d'export en millisecondes.
             target_fps: Cadence cible pour l'échantillonnage des frames.
             events: Liste d'événements (non utilisée dans le run actuel, réservé).
@@ -49,15 +49,22 @@ class ExportWorker(QThread):
         self.maps_R = None
 
     def run(self):
-        """Extrait les frames dans img/LEFT (et img/RIGHT en stéréo), émet progress_updated puis export_finished."""
+        """Extrait les frames dans img/ (mono) ou img/LEFT + img/RIGHT (stéréo), émet progress_updated puis export_finished."""
         try:
             print(f"\n--- DÉBUT DE L'EXPORT ---")
             print(f"Mode Stéréo: {self.is_stereo} | Rectification: {self.apply_rectify}")
 
             img_dir = os.path.normpath(os.path.join(self.base_output_dir, "img"))
-            dirs = {"L": os.path.join(img_dir, "LEFT")}
+
             if self.is_stereo:
-                dirs["R"] = os.path.join(img_dir, "RIGHT")
+                dirs = {
+                    "R": os.path.join(img_dir, "RIGHT"),
+                    "L": os.path.join(img_dir, "LEFT"),
+                }
+                main_out_dir = dirs["R"]
+            else:
+                dirs = {"main": img_dir}
+                main_out_dir = img_dir
 
             for key, d in dirs.items():
                 os.makedirs(d, exist_ok=True)
@@ -112,8 +119,7 @@ class ExportWorker(QThread):
                             frameR = cv2.remap(frameR, self.maps_R[0], self.maps_R[1], cv2.INTER_LINEAR)
                         if self.apply_he or self.apply_dh:
                             frameR = self._apply_image_filters(frameR)
-                        save_path = os.path.join(dirs.get("R", dirs["L"]), f"{k+1:05d}.jpg")
-                        cv2.imwrite(save_path, frameR)
+                        cv2.imwrite(os.path.join(main_out_dir, f"{k+1:05d}.jpg"), frameR)
 
                 if self.is_stereo and idxL is not None:
                     capL.set(cv2.CAP_PROP_POS_FRAMES, idxL)

@@ -13,17 +13,20 @@ from services.image_service import (
 class CaptureDialog(QtWidgets.QDialog):
     """Dialog de validation d'une capture image avec prévisualisation et traitements optionnels."""
 
-    def __init__(self, parent, frame, current_name, brightness, contrast, sharpen, is_stereo=False):
+    def __init__(self, parent, frame, current_name, brightness, contrast, sharpen, is_stereo=False, lang='fr'):
         """
         Args:
             frame: Image BGR (numpy) extraite de la vidéo.
             current_name: Nom de fichier par défaut.
             brightness, contrast, sharpen: Valeurs initiales des sliders.
             is_stereo: Affiche deux vignettes L/R si True.
+            lang: Langue d'affichage ('fr' ou 'en').
         """
         super().__init__(parent)
         self.is_stereo = is_stereo
-        self.setWindowTitle("Validation de la capture " + ("(Stéréo)" if is_stereo else "(Mono)"))
+        self.lang = lang
+        stereo_label = self.translate("(Stéréo)", "(Stereo)") if is_stereo else self.translate("(Mono)", "(Mono)")
+        self.setWindowTitle(self.translate("Validation de la capture ", "Capture Validation ") + stereo_label)
 
         self.resize(1000 if is_stereo else 800, 600)
         self.setMinimumSize(600, 450)
@@ -75,8 +78,8 @@ class CaptureDialog(QtWidgets.QDialog):
         self.img_layout = QtWidgets.QHBoxLayout(self.img_container)
 
         if self.is_stereo:
-            self.lbl_img_left = self._create_image_label("GAUCHE")
-            self.lbl_img_right = self._create_image_label("DROITE")
+            self.lbl_img_left = self._create_image_label(self.translate("GAUCHE", "LEFT"))
+            self.lbl_img_right = self._create_image_label(self.translate("DROITE", "RIGHT"))
             self.img_layout.addWidget(self.lbl_img_left)
             self.img_layout.addWidget(self.lbl_img_right)
         else:
@@ -90,14 +93,14 @@ class CaptureDialog(QtWidgets.QDialog):
 
         form = QtWidgets.QFormLayout()
         self.edit_name = QtWidgets.QLineEdit(current_name)
-        form.addRow("Nom du fichier :", self.edit_name)
+        form.addRow(self.translate("Nom du fichier :", "File name:"), self.edit_name)
         self.controls_layout.addLayout(form)
 
-        group_algo = QtWidgets.QGroupBox("Traitements avancés")
+        group_algo = QtWidgets.QGroupBox(self.translate("Traitements avancés", "Advanced processing"))
         algo_layout = QtWidgets.QHBoxLayout(group_algo)
-        self.chk_he = QtWidgets.QCheckBox("Égalisation (HE)")
-        self.chk_dh = QtWidgets.QCheckBox("Débrumage (Dehaze)")
-        self.chk_water = QtWidgets.QCheckBox("Sous-marin")
+        self.chk_he = QtWidgets.QCheckBox(self.translate("Égalisation (HE)", "Equalization (HE)"))
+        self.chk_dh = QtWidgets.QCheckBox(self.translate("Débrumage (Dehaze)", "Dehazing (Dehaze)"))
+        self.chk_water = QtWidgets.QCheckBox(self.translate("Sous-marin", "Underwater"))
         self.chk_water.setEnabled(False)
         algo_layout.addWidget(self.chk_he)
         algo_layout.addWidget(self.chk_dh)
@@ -112,9 +115,9 @@ class CaptureDialog(QtWidgets.QDialog):
         self.sld_c.setRange(10, 30)
         self.sld_c.setValue(contrast)
 
-        grid_sliders.addWidget(QtWidgets.QLabel("Luminosité :"), 0, 0)
+        grid_sliders.addWidget(QtWidgets.QLabel(self.translate("Luminosité :", "Brightness:")), 0, 0)
         grid_sliders.addWidget(self.sld_b, 0, 1)
-        grid_sliders.addWidget(QtWidgets.QLabel("Contraste :"), 1, 0)
+        grid_sliders.addWidget(QtWidgets.QLabel(self.translate("Contraste :", "Contrast:")), 1, 0)
         grid_sliders.addWidget(self.sld_c, 1, 1)
         self.controls_layout.addLayout(grid_sliders)
 
@@ -134,6 +137,10 @@ class CaptureDialog(QtWidgets.QDialog):
         self.btns.rejected.connect(self.reject)
 
         self.update_preview()
+
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon self.lang."""
+        return fr if self.lang == 'fr' else en
 
     def _create_image_label(self, text=""):
         """Crée un QLabel stylé pour l'affichage d'une vignette image."""

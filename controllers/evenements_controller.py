@@ -95,6 +95,10 @@ class EvenementsController:
 
     # --- Language ---
 
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
+        return fr if self.current_language == 'fr' else en
+
     def _get_tree_headers(self):
         """Retourne les en-têtes de l'arbre événements selon la langue active."""
         if self.current_language == 'en':
@@ -104,8 +108,31 @@ class EvenementsController:
     def set_language(self, language: str):
         """Met à jour la langue et rafraîchit les en-têtes de l'arbre."""
         self.current_language = language
+        if hasattr(self, 'event_player'):
+            self.event_player.set_language(language)
         if hasattr(self, 'tree_captures') and self.tree_captures:
             self.tree_captures.setHeaderLabels(self._get_tree_headers())
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        """Met à jour tous les libellés de l'interface selon la langue active."""
+        if hasattr(self, 'lbl_title_event'):
+            self.lbl_title_event.setText(self.translate("Sélection d'événement", "Event Selection"))
+        if hasattr(self, 'lbl_type_event'):
+            self.lbl_type_event.setText(self.translate("Type d'événement", "Event Type"))
+        if hasattr(self, 'lbl_valeur_event'):
+            self.lbl_valeur_event.setText(self.translate("Caractéristiques", "Characteristics"))
+        if hasattr(self, 'lbl_commentaire_input'):
+            self.lbl_commentaire_input.setText(self.translate("Commentaire rapide", "Quick Comment"))
+        if hasattr(self, 'input_commentaire_event'):
+            self.input_commentaire_event.setPlaceholderText(
+                self.translate("Écrivez un commentaire...", "Write a comment here..."))
+        if hasattr(self, 'btn_capturer') and self.capture_start_time is None:
+            self._update_capture_mode()
+        if hasattr(self, 'btn_finir') and self.capture_start_time is None:
+            self.btn_finir.setText(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
+        if hasattr(self, 'export_button'):
+            self.export_button.setText(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle vidéo partagé après ouverture d'une nouvelle campagne."""
@@ -357,34 +384,35 @@ class EvenementsController:
         title_style = "font-size: 14px; font-weight: bold; color: #ffffff;"
 
         if not hasattr(self, 'combo_type_event') or self.combo_type_event is None:
-            self.lbl_title_event = QtWidgets.QLabel("Event Selection")
+            self.lbl_title_event = QtWidgets.QLabel(self.translate("Sélection d'événement", "Event Selection"))
             self.lbl_title_event.setStyleSheet(title_style)
             self.lbl_title_event.setMaximumHeight(75)
 
-            self.lbl_type_event = QtWidgets.QLabel("Event Type")
+            self.lbl_type_event = QtWidgets.QLabel(self.translate("Type d'événement", "Event Type"))
             self.lbl_type_event.setStyleSheet(label_style)
             self.combo_type_event = QtWidgets.QComboBox()
             self.combo_type_event.setStyleSheet(combo_style)
             self.combo_type_event.setMinimumWidth(220)
 
-            self.lbl_valeur_event = QtWidgets.QLabel("Characteristics")
+            self.lbl_valeur_event = QtWidgets.QLabel(self.translate("Caractéristiques", "Characteristics"))
             self.lbl_valeur_event.setStyleSheet(label_style)
             self.combo_valeur_event = QtWidgets.QComboBox()
             self.combo_valeur_event.setStyleSheet(combo_style)
             self.combo_valeur_event.setMinimumWidth(220)
 
-            self.lbl_commentaire_input = QtWidgets.QLabel("Quick Comment")
+            self.lbl_commentaire_input = QtWidgets.QLabel(self.translate("Commentaire rapide", "Quick Comment"))
             self.lbl_commentaire_input.setStyleSheet(label_style)
             self.input_commentaire_event = QtWidgets.QLineEdit()
-            self.input_commentaire_event.setPlaceholderText("Write a comment here...")
+            self.input_commentaire_event.setPlaceholderText(
+                self.translate("Écrivez un commentaire...", "Write a comment here..."))
             self.input_commentaire_event.setStyleSheet("""
                 QLineEdit { background-color: #212a35; color: white; border: 1px solid #2778a2;
                             border-radius: 8px; padding: 8px; }""")
 
-            self.btn_capturer = QtWidgets.QPushButton("CAPTURE EVENT")
+            self.btn_capturer = QtWidgets.QPushButton(self.translate("CAPTURER L'ÉVÉNEMENT", "CAPTURE EVENT"))
             self.btn_capturer.setStyleSheet(btn_style)
             self.btn_capturer.setMinimumHeight(38)
-            self.btn_finir = QtWidgets.QPushButton("END EVENT")
+            self.btn_finir = QtWidgets.QPushButton(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
             self.btn_finir.setStyleSheet(btn_style)
             self.btn_finir.setMinimumHeight(38)
             self.btn_finir.setEnabled(False)
@@ -421,7 +449,7 @@ class EvenementsController:
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(12)
 
-        self.export_button = QtWidgets.QPushButton("EXPORT EVENTS", self.export_container)
+        self.export_button = QtWidgets.QPushButton(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"), self.export_container)
         self.export_button.setStyleSheet(
             "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
             "border: 1px solid #f09624; border-radius: 8px; padding: 12px; }"
@@ -518,13 +546,13 @@ class EvenementsController:
         current_type = self.combo_type_event.currentText()
         current_value = self.combo_valeur_event.currentText() if hasattr(self, 'combo_valeur_event') else ""
         if self._is_single_frame_event(current_type, current_value):
-            self.btn_capturer.setText("CAPTURE")
+            self.btn_capturer.setText(self.translate("CAPTURER", "CAPTURE"))
             self.btn_finir.setVisible(False)
             self.btn_finir.setEnabled(False)
             if self.capture_start_time is not None:
                 self.capture_start_time = None
         else:
-            self.btn_capturer.setText("CAPTURE EVENT")
+            self.btn_capturer.setText(self.translate("CAPTURER L'ÉVÉNEMENT", "CAPTURE EVENT"))
             self.btn_finir.setVisible(True)
             self.btn_finir.setEnabled(False)
 
@@ -543,7 +571,11 @@ class EvenementsController:
         if self._is_single_frame_event(current_type, current_value):
             conflict = self._single_frame_event_conflict(current_type, current_value)
             if conflict:
-                QtWidgets.QMessageBox.warning(self.page, "Action impossible", f"A {conflict} already exists.")
+                QtWidgets.QMessageBox.warning(
+                    self.page,
+                    self.translate("Action impossible", "Impossible action"),
+                    self.translate(f"Un {conflict} existe déjà.", f"A {conflict} already exists.")
+                )
                 return
 
             clean_category_name = current_type.split(' ')[0]
@@ -577,7 +609,7 @@ class EvenementsController:
             self._current_comment = quick_comment
             self.btn_capturer.setEnabled(False)
             self.btn_finir.setEnabled(True)
-            self.btn_finir.setText(f"FINISH EVENT (Start: {time_str})")
+            self.btn_finir.setText(self.translate(f"FIN D'ÉVÉNEMENT (Début : {time_str})", f"END EVENT (Start: {time_str})"))
 
     def on_finir_clicked(self):
         """Clôture la capture en cours et enregistre l'événement avec sa durée start→end."""
@@ -623,7 +655,7 @@ class EvenementsController:
             self.input_commentaire_event.clear()
         self.btn_capturer.setEnabled(True)
         self.btn_finir.setEnabled(False)
-        self.btn_finir.setText("FINISH EVENT")
+        self.btn_finir.setText(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
 
     # --- Video selection ---
 
@@ -953,7 +985,7 @@ class EvenementsController:
             QMenu::item { padding: 6px 20px 6px 20px; }
             QMenu::item:selected { background-color: #20415d; color: #f09624; }
         """)
-        delete_action = menu.addAction("Delete event")
+        delete_action = menu.addAction(self.translate("Supprimer l'événement", "Delete event"))
         chosen_action = menu.exec(emitter.mapToGlobal(position))
         if chosen_action == delete_action:
             self.delete_event_unified(event_dict, target_tree_item)
@@ -1078,15 +1110,21 @@ class EvenementsController:
     def on_export_segment_clicked(self):
         """Lance le dialogue d'options puis démarre ExportWorker sur le segment atterrissage→décollage."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
-            QtWidgets.QMessageBox.warning(self.page, "Export Impossible", "Aucune source vidéo active.")
+            QtWidgets.QMessageBox.warning(self.page,
+                self.translate("Export Impossible", "Export Impossible"),
+                self.translate("Aucune source vidéo active.", "No active video source."))
             return
         if not hasattr(self, 'event_player') or not getattr(self.event_player, 'timeline', None):
-            QtWidgets.QMessageBox.warning(self.page, "Export Impossible", "Composants de tracking indisponibles.")
+            QtWidgets.QMessageBox.warning(self.page,
+                self.translate("Export Impossible", "Export Impossible"),
+                self.translate("Composants de tracking indisponibles.", "Tracking components unavailable."))
             return
 
         bounds = self._get_export_segment_bounds()
         if bounds is None:
-            QtWidgets.QMessageBox.warning(self.page, "Export Impossible", "Bornes temporelles manquantes.")
+            QtWidgets.QMessageBox.warning(self.page,
+                self.translate("Export Impossible", "Export Impossible"),
+                self.translate("Bornes temporelles manquantes.", "Missing time bounds."))
             return
 
         parent_video_directory = os.path.dirname(self.current_video_path)
@@ -1095,6 +1133,7 @@ class EvenementsController:
         is_stereo_mode = getattr(self.event_player, "is_stereo", False)
 
         dialog = ExportOptionsDialog(self.page, is_stereo=is_stereo_mode)
+        dialog.set_language(self.current_language)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
 
@@ -1107,8 +1146,12 @@ class EvenementsController:
 
         if apply_rectify and not os.path.exists(json_path):
             QtWidgets.QMessageBox.critical(
-                self.page, "Fichier Manquant",
-                f"La rectification est cochée mais le fichier est introuvable :\n{json_path}"
+                self.page,
+                self.translate("Fichier Manquant", "Missing File"),
+                self.translate(
+                    f"La rectification est cochée mais le fichier est introuvable :\n{json_path}",
+                    f"Rectification is checked but the file could not be found:\n{json_path}"
+                )
             )
             return
 
@@ -1118,7 +1161,7 @@ class EvenementsController:
 
         self.export_progress.setVisible(True)
         self.export_progress.setValue(0)
-        self.export_status_label.setText(f"Export en cours ({target_fps} FPS)...")
+        self.export_status_label.setText(self.translate(f"Export en cours ({target_fps} FPS)...", f"Exporting ({target_fps} FPS)..."))
         self.export_button.setEnabled(False)
 
         self.export_worker = ExportWorker(
@@ -1142,9 +1185,9 @@ class EvenementsController:
 
     def _on_export_finished(self, saved_count: int):
         """Affiche le résultat de l'export et génère le CSV d'événements."""
-        message = f"Image export completed: {saved_count} images saved."
+        message = self.translate(f"Export terminé : {saved_count} images sauvegardées.", f"Export complete: {saved_count} images saved.")
         if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms):
-            message += "\nEvents CSV generated."
+            message += self.translate("\nCSV d'événements généré.", "\nEvents CSV generated.")
         if hasattr(self, 'export_status_label') and self.export_status_label:
             self.export_status_label.setText(message)
         if hasattr(self, 'export_button') and self.export_button:
@@ -1155,7 +1198,7 @@ class EvenementsController:
     def _on_export_error(self, error_message: str):
         """Affiche le message d'erreur de l'export et réactive le bouton."""
         if hasattr(self, 'export_status_label') and self.export_status_label:
-            self.export_status_label.setText(f"Error: {error_message}")
+            self.export_status_label.setText(self.translate(f"Erreur : {error_message}", f"Error: {error_message}"))
         if hasattr(self, 'export_button') and self.export_button:
             self.export_button.setEnabled(bool(self.current_video_path))
         if hasattr(self, 'export_progress') and self.export_progress:

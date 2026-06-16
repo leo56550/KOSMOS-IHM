@@ -17,6 +17,7 @@ class ExtractionController:
         """Initialise le player, l'arbre vidéo, le panneau de paramètres et le modèle de livrables."""
         self.widget = widget
         self.video_model = video_model
+        self.current_language = 'en'
         self.current_is_stereo = False
         self.current_video_payload = None
         self.current_video_path = None
@@ -65,6 +66,50 @@ class ExtractionController:
             self.show_no_cap_seg_message()
 
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
+
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
+        return fr if self.current_language == 'fr' else en
+
+    def set_language(self, language: str):
+        """Met à jour la langue et retraduit toute l'interface."""
+        self.current_language = language
+        if hasattr(self, 'video_player'):
+            self.video_player.set_language(language)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        """Met à jour tous les libellés du panneau paramètres selon la langue active."""
+        if hasattr(self, 'group_decoupage'):
+            self.group_decoupage.setTitle(self.translate("Découpe", "Trim"))
+        if hasattr(self, 'group_capture'):
+            self.group_capture.setTitle(self.translate("Capture", "Capture"))
+        if hasattr(self, 'group_export'):
+            self.group_export.setTitle(self.translate("Export Vidéo", "Video Export"))
+        if hasattr(self, 'btn_start_segment'):
+            self.btn_start_segment.setText(self.translate("Début", "Start"))
+        if hasattr(self, 'btn_end_segment'):
+            self.btn_end_segment.setText(self.translate("Fin", "End"))
+        if hasattr(self, 'btn_export_main'):
+            self.btn_export_main.setText(self.translate("EXPORTER LE SEGMENT", "EXPORT SEGMENT"))
+        if hasattr(self, 'btn_export_L'):
+            self.btn_export_L.setText(self.translate("EXPORT GAUCHE", "EXPORT LEFT"))
+        if hasattr(self, 'btn_export_R'):
+            self.btn_export_R.setText(self.translate("EXPORT DROITE", "EXPORT RIGHT"))
+        if hasattr(self, 'btn_capture_main'):
+            self.btn_capture_main.setText(self.translate("CAPTURER", "CAPTURE"))
+        if hasattr(self, 'btn_capture_L'):
+            self.btn_capture_L.setText(self.translate("GAUCHE", "LEFT"))
+        if hasattr(self, 'btn_capture_R'):
+            self.btn_capture_R.setText(self.translate("DROITE", "RIGHT"))
+        if hasattr(self, 'lbl_thumbnail'):
+            self.lbl_thumbnail.setText(self.translate("Aperçu", "Preview"))
+        if hasattr(self, 'deliverables_model'):
+            self.deliverables_model.setHorizontalHeaderLabels([
+                self.translate("Nom", "Name"),
+                self.translate("Taille", "Size"),
+                self.translate("Type", "Type"),
+            ])
 
     def load_campaign_videos(self, model):
         """Remplace le modèle vidéo après changement de campagne."""
@@ -160,18 +205,18 @@ class ExtractionController:
         layout.addWidget(self._group_segmentation())
         layout.addWidget(self._group_frame_capture())
 
-        self.group_export = QtWidgets.QGroupBox("Export Vidéo")
+        self.group_export = QtWidgets.QGroupBox(self.translate("Export Vidéo", "Video Export"))
         export_vbox = QtWidgets.QVBoxLayout(self.group_export)
 
-        self.btn_export_main = QtWidgets.QPushButton("EXPORTER LE SEGMENT")
+        self.btn_export_main = QtWidgets.QPushButton(self.translate("EXPORTER LE SEGMENT", "EXPORT SEGMENT"))
         self.btn_export_main.setStyleSheet(
             "background-color: #27ae60; color: white; font-weight: bold; padding: 12px;"
         )
         self.btn_export_main.clicked.connect(lambda: self.on_export_segment("mono"))
 
         self.layout_stereo_export = QtWidgets.QHBoxLayout()
-        self.btn_export_L = QtWidgets.QPushButton("EXPORT GAUCHE")
-        self.btn_export_R = QtWidgets.QPushButton("EXPORT DROITE")
+        self.btn_export_L = QtWidgets.QPushButton(self.translate("EXPORT GAUCHE", "EXPORT LEFT"))
+        self.btn_export_R = QtWidgets.QPushButton(self.translate("EXPORT DROITE", "EXPORT RIGHT"))
         style_s = "background-color: #1e8449; color: white; font-weight: bold; padding: 10px;"
         self.btn_export_L.setStyleSheet(style_s)
         self.btn_export_R.setStyleSheet(style_s)
@@ -206,12 +251,17 @@ class ExtractionController:
             suffix = "_R"
 
         default_name = f"segment_{self.start_ms // 1000}s{suffix}"
-        name, ok = QtWidgets.QInputDialog.getText(self.widget, "Export", "Nom du fichier :", text=default_name)
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.widget,
+            self.translate("Export", "Export"),
+            self.translate("Nom du fichier :", "File name:"),
+            text=default_name
+        )
 
         if ok and name:
             self.last_segment_name = name
             self.group_export.setEnabled(False)
-            self.lbl_export_status.setText("Préparation de l'export...")
+            self.lbl_export_status.setText(self.translate("Préparation de l'export...", "Preparing export..."))
 
             segments_dir = os.path.join(os.path.dirname(self.current_video_path), "segments")
             self.segmentation_worker = VideoSegmentationWorker(
@@ -239,59 +289,59 @@ class ExtractionController:
         base = os.path.splitext(os.path.basename(self.current_video_path))[0]
         path = os.path.join(segments_dir, f"{base}_segment_{self.start_ms}_{self.end_ms}.mp4")
         self.add_to_deliverables_tree(path)
-        self.lbl_export_status.setText("Export terminé.")
+        self.lbl_export_status.setText(self.translate("Export terminé.", "Export complete."))
 
     def on_export_progress(self, progress):
         """Met à jour le label de statut avec la progression de l'export."""
-        self.lbl_export_status.setText(f"Export en cours : {progress}%")
+        self.lbl_export_status.setText(self.translate(f"Export en cours : {progress}%", f"Exporting: {progress}%"))
 
     def on_export_error(self, err):
         """Réactive l'UI et affiche un message d'erreur critique."""
         self.group_export.setEnabled(True)
-        QtWidgets.QMessageBox.critical(self.widget, "Erreur", err)
+        QtWidgets.QMessageBox.critical(self.widget, self.translate("Erreur", "Error"), err)
 
     def _group_segmentation(self):
         """Construit le groupe de widgets Découpe (timecodes début/fin, boutons)."""
-        g = QtWidgets.QGroupBox("Découpe")
-        f = QtWidgets.QFormLayout(g)
+        self.group_decoupage = QtWidgets.QGroupBox(self.translate("Découpe", "Trim"))
+        f = QtWidgets.QFormLayout(self.group_decoupage)
 
         self.edit_start_time = QtWidgets.QLineEdit("00:00:00")
         self.edit_end_time = QtWidgets.QLineEdit("00:00:00")
         self.edit_start_time.setInputMask("99:99:99")
         self.edit_end_time.setInputMask("99:99:99")
-        self.lbl_segment_duration = QtWidgets.QLabel("Durée: 00:00")
+        self.lbl_segment_duration = QtWidgets.QLabel(self.translate("Durée: 00:00", "Duration: 00:00"))
 
         self.edit_start_time.textChanged.connect(self.on_manual_time_change)
         self.edit_end_time.textChanged.connect(self.on_manual_time_change)
 
-        btn_s = QtWidgets.QPushButton("Début")
-        btn_s.setStyleSheet(
+        self.btn_start_segment = QtWidgets.QPushButton(self.translate("Début", "Start"))
+        self.btn_start_segment.setStyleSheet(
             "background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; padding: 5px;"
         )
-        btn_s.clicked.connect(self.on_set_start_frame)
+        self.btn_start_segment.clicked.connect(self.on_set_start_frame)
 
-        btn_e = QtWidgets.QPushButton("Fin")
-        btn_e.setStyleSheet(
+        self.btn_end_segment = QtWidgets.QPushButton(self.translate("Fin", "End"))
+        self.btn_end_segment.setStyleSheet(
             "background-color: #c0392b; color: white; font-weight: bold; border-radius: 4px; padding: 5px;"
         )
-        btn_e.clicked.connect(self.on_set_end_frame)
+        self.btn_end_segment.clicked.connect(self.on_set_end_frame)
 
-        f.addRow(btn_s, self.edit_start_time)
-        f.addRow(btn_e, self.edit_end_time)
+        f.addRow(self.btn_start_segment, self.edit_start_time)
+        f.addRow(self.btn_end_segment, self.edit_end_time)
         f.addRow(self.lbl_segment_duration)
-        return g
+        return self.group_decoupage
 
     def _group_frame_capture(self):
         """Construit le groupe de widgets Capture (boutons mono/L/R et miniature)."""
-        g = QtWidgets.QGroupBox("Capture")
-        l = QtWidgets.QVBoxLayout(g)
+        self.group_capture = QtWidgets.QGroupBox(self.translate("Capture", "Capture"))
+        l = QtWidgets.QVBoxLayout(self.group_capture)
 
-        self.btn_capture_main = QtWidgets.QPushButton("CAPTURER")
+        self.btn_capture_main = QtWidgets.QPushButton(self.translate("CAPTURER", "CAPTURE"))
         self.btn_capture_main.clicked.connect(lambda: self.execute_capture("mono"))
 
         self.layout_stereo_btns = QtWidgets.QHBoxLayout()
-        self.btn_capture_L = QtWidgets.QPushButton("GAUCHE")
-        self.btn_capture_R = QtWidgets.QPushButton("DROITE")
+        self.btn_capture_L = QtWidgets.QPushButton(self.translate("GAUCHE", "LEFT"))
+        self.btn_capture_R = QtWidgets.QPushButton(self.translate("DROITE", "RIGHT"))
         self.btn_capture_L.setStyleSheet("background-color: #34495e; color: white;")
         self.btn_capture_R.setStyleSheet("background-color: #34495e; color: white;")
         self.btn_capture_L.clicked.connect(lambda: self.execute_capture("left"))
@@ -302,7 +352,7 @@ class ExtractionController:
         l.addWidget(self.btn_capture_main)
         l.addLayout(self.layout_stereo_btns)
 
-        self.lbl_thumbnail = QtWidgets.QLabel("Aperçu")
+        self.lbl_thumbnail = QtWidgets.QLabel(self.translate("Aperçu", "Preview"))
         self.lbl_thumbnail.setFixedSize(160, 90)
         self.lbl_thumbnail.setScaledContents(True)
         self.lbl_thumbnail.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -311,7 +361,7 @@ class ExtractionController:
 
         self.btn_capture_L.setVisible(False)
         self.btn_capture_R.setVisible(False)
-        return g
+        return self.group_capture
 
     def ms_to_timecode(self, ms):
         """Convertit des millisecondes en chaîne HH:MM:SS."""
@@ -336,7 +386,7 @@ class ExtractionController:
         self.start_ms = self.timecode_to_ms(self.edit_start_time.text())
         self.end_ms = self.timecode_to_ms(self.edit_end_time.text())
         duration_s = max(0, (self.end_ms - self.start_ms) // 1000)
-        self.lbl_segment_duration.setText(f"Durée: {duration_s // 60:02d}:{duration_s % 60:02d}")
+        self.lbl_segment_duration.setText(self.translate(f"Durée: {duration_s // 60:02d}:{duration_s % 60:02d}", f"Duration: {duration_s // 60:02d}:{duration_s % 60:02d}"))
         if hasattr(self.video_player.timeline, 'start_marker_ms'):
             self.video_player.timeline.start_marker_ms = self.start_ms
             self.video_player.timeline.end_marker_ms = self.end_ms
@@ -347,7 +397,7 @@ class ExtractionController:
         self.edit_start_time.setText(self.ms_to_timecode(self.start_ms))
         self.edit_end_time.setText(self.ms_to_timecode(self.end_ms))
         duration_s = max(0, (self.end_ms - self.start_ms) // 1000)
-        self.lbl_segment_duration.setText(f"Durée: {duration_s // 60:02d}:{duration_s % 60:02d}")
+        self.lbl_segment_duration.setText(self.translate(f"Durée: {duration_s // 60:02d}:{duration_s % 60:02d}", f"Duration: {duration_s // 60:02d}:{duration_s % 60:02d}"))
         if hasattr(self.video_player.timeline, 'start_marker_ms'):
             self.video_player.timeline.start_marker_ms = self.start_ms
             self.video_player.timeline.end_marker_ms = self.end_ms
@@ -365,7 +415,7 @@ class ExtractionController:
         self.edit_end_time.blockSignals(False)
         duration_sec = (end_ms - start_ms) // 1000
         if hasattr(self, 'lbl_segment_duration'):
-            self.lbl_segment_duration.setText(f"Durée : {duration_sec}s")
+            self.lbl_segment_duration.setText(self.translate(f"Durée : {duration_sec}s", f"Duration: {duration_sec}s"))
 
     def on_set_start_frame(self):
         """Fixe le marqueur de début à la position courante du player."""
@@ -400,7 +450,7 @@ class ExtractionController:
             self.last_raw_frame = frame
             default_name = f"cap_{pos // 1000}s{suffix}"
             is_stereo_ui = (side == "mono" and self.current_is_stereo)
-            dialog = CaptureDialog(self.widget.window(), frame, default_name, 0, 10, False, is_stereo=is_stereo_ui)
+            dialog = CaptureDialog(self.widget.window(), frame, default_name, 0, 10, False, is_stereo=is_stereo_ui, lang=self.current_language)
             if dialog.exec():
                 name, final_frame = dialog.get_values()
                 if name:
@@ -435,9 +485,11 @@ class ExtractionController:
 
         if self.deliverables_model.rowCount() > 0:
             first_item = self.deliverables_model.item(0, 0)
-            if first_item and "Aucun segment ou capture" in first_item.text():
+            if first_item and ("Aucun segment" in first_item.text() or "No segment" in first_item.text()):
                 self.deliverables_model.clear()
-                self.deliverables_model.setHorizontalHeaderLabels(["Nom", "Taille", "Type"])
+                self.deliverables_model.setHorizontalHeaderLabels([
+                    self.translate("Nom", "Name"), self.translate("Taille", "Size"), self.translate("Type", "Type")
+                ])
 
         file_name = os.path.basename(file_path)
         size_bytes = os.path.getsize(file_path)
@@ -445,7 +497,7 @@ class ExtractionController:
                     else f"{size_bytes / 1024:.1f} KB")
 
         icon = QtGui.QIcon()
-        file_type = "Vidéo" if file_path.lower().endswith(('.mp4', '.avi')) else "Image"
+        file_type = self.translate("Vidéo", "Video") if file_path.lower().endswith(('.mp4', '.avi')) else self.translate("Image", "Image")
 
         try:
             if file_type == "Image":
@@ -475,8 +527,8 @@ class ExtractionController:
         """Affiche un message d'absence de campagne dans l'arbre vidéo."""
         if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
             placeholder = QtGui.QStandardItemModel()
-            placeholder.setHorizontalHeaderLabels(["Statut"])
-            item = QtGui.QStandardItem("Aucune campagne chargée")
+            placeholder.setHorizontalHeaderLabels([self.translate("Statut", "Status")])
+            item = QtGui.QStandardItem(self.translate("Aucune campagne chargée", "No campaign loaded"))
             item.setEditable(False)
             item.setForeground(QtGui.QColor("gray"))
             placeholder.appendRow(item)
@@ -486,8 +538,10 @@ class ExtractionController:
         """Affiche un message d'absence de livrables dans l'arbre segments/captures."""
         if self.deliverables_model:
             self.deliverables_model.clear()
-            self.deliverables_model.setHorizontalHeaderLabels(["Nom", "Taille", "Type"])
-            item = QtGui.QStandardItem("Aucun segment ou capture disponible")
+            self.deliverables_model.setHorizontalHeaderLabels([
+                self.translate("Nom", "Name"), self.translate("Taille", "Size"), self.translate("Type", "Type")
+            ])
+            item = QtGui.QStandardItem(self.translate("Aucun segment ou capture disponible", "No segment or capture available"))
             item.setEditable(False)
             item.setForeground(QtGui.QColor("gray"))
             self.deliverables_model.appendRow([item, QtGui.QStandardItem(""), QtGui.QStandardItem("")])

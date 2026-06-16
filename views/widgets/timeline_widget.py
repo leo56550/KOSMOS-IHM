@@ -101,7 +101,7 @@ class VideoTimeline(QtWidgets.QWidget):
             title = evt.get("title", "").lower()
             if "atterrissage" in title or "landing" in title:
                 landings.append(evt)
-            elif "décollage" in title or "takeoff" in title:
+            elif "décollage" in title or "takeoff" in title or "take_off" in title:
                 takeoffs.append(evt)
 
         for landing in landings:

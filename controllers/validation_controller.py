@@ -84,6 +84,8 @@ class ValidationController:
     def set_language(self, language: str):
         """Met à jour la langue et rafraîchit les libellés."""
         self.current_language = language
+        if hasattr(self, 'player'):
+            self.player.set_language(language)
         if hasattr(self, 'lbl_exploitable'):
             self.lbl_exploitable.setText(self.translate("Vidéo Exploitable ? ", "Video Exploitable?"))
         if self.current_json_path and os.path.exists(self.current_json_path):

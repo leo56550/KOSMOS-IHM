@@ -156,14 +156,14 @@ class MetadonneesController:
         stats_vbox.setContentsMargins(0, 10, 0, 10)
         stats_vbox.setSpacing(6)
 
-        self.lbl_stat_title = QtWidgets.QLabel("Campagne")
+        self.lbl_stat_title = QtWidgets.QLabel(self.translate("Campagne", "Campaign"))
         self.lbl_stat_title.setStyleSheet(
             "color: #F2BFB4; font-weight: bold; font-size: 11px; border: none;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;")
-        self.lbl_video_count = QtWidgets.QLabel("Vidéos : —")
+        self.lbl_video_count = QtWidgets.QLabel(self.translate("Vidéos : —", "Videos: —"))
         self.lbl_video_count.setStyleSheet(
             "color: #2778A2; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;")
-        self.lbl_trash_count = QtWidgets.QLabel("Poubelle : —")
+        self.lbl_trash_count = QtWidgets.QLabel(self.translate("Poubelle : —", "Trash: —"))
         self.lbl_trash_count.setStyleSheet(
             "color: #D94F38; font-size: 11px; border: none; font-family: 'Segoe UI', sans-serif;")
 
@@ -177,9 +177,16 @@ class MetadonneesController:
 
     # ── Public interface ─────────────────────────────────────────────────
 
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue active."""
+        return fr if self.current_language == 'fr' else en
+
     def set_language(self, language: str):
         """Change la langue et recharge l'affichage des données si un JSON est actif."""
         self.current_language = language
+        if hasattr(self, 'lbl_stat_title'):
+            self.lbl_stat_title.setText(self.translate("Campagne", "Campaign"))
+        self.refresh_statistics()
         if self.current_template_json and os.path.exists(self.current_template_json):
             self.load_all_data(self.current_template_json)
 
@@ -250,9 +257,9 @@ class MetadonneesController:
             return
 
         if "system" in data:
-            self._display_block_in_scroll("system", data["system"], self._scroll_system, "Système")
+            self._display_block_in_scroll("system", data["system"], self._scroll_system, self.translate("Système", "System"))
         if "survey" in data:
-            self._display_block_in_scroll("survey", data["survey"], self._scroll_survey, "Campagne")
+            self._display_block_in_scroll("survey", data["survey"], self._scroll_survey, self.translate("Campagne", "Campaign"))
 
     def load_all_data(self, json_path: str):
         """Lit json_path et peuple tous les panneaux (système, campagne, vidéo, météo)."""
@@ -268,17 +275,17 @@ class MetadonneesController:
 
         if "system" in self._json_data:
             self._display_block_in_scroll("system", self._json_data["system"],
-                                          self._scroll_system, "Système")
+                                          self._scroll_system, self.translate("Système", "System"))
         if "survey" in self._json_data:
             self._display_block_in_scroll("survey", self._json_data["survey"],
-                                          self._scroll_survey, "Campagne")
+                                          self._scroll_survey, self.translate("Campagne", "Campaign"))
         if "video_observation" in self._json_data:
             obs = self._json_data["video_observation"]
             weather = {k: v for k, v in obs.items() if k in self.weather_sea_keys}
             specific = {k: v for k, v in obs.items() if k not in self.weather_sea_keys}
             self._display_block_in_scroll("video_observation", specific,
-                                          self._scroll_video, "Vidéo",
-                                          extra_btn=("Compare with slate", self.on_compare_slate_clicked))
+                                          self._scroll_video, self.translate("Vidéo", "Video"),
+                                          extra_btn=(self.translate("Comparer avec l'ardoise", "Compare with slate"), self.on_compare_slate_clicked))
             self._display_weather_in_scroll(weather)
 
     # ── Rendering helpers ─────────────────────────────────────────────────
@@ -393,10 +400,10 @@ class MetadonneesController:
         hdr.setStyleSheet(_SECTION_LINE_STYLE)
         hdr_row = QtWidgets.QHBoxLayout(hdr)
         hdr_row.setContentsMargins(0, 0, 0, 4)
-        title_lbl = QtWidgets.QLabel("Météo & Mer")
+        title_lbl = QtWidgets.QLabel(self.translate("Météo & Mer", "Weather & Sea"))
         title_lbl.setStyleSheet(_SECTION_TITLE_STYLE)
         hdr_row.addWidget(title_lbl)
-        btn_web = QtWidgets.QPushButton("Comparer données web")
+        btn_web = QtWidgets.QPushButton(self.translate("Comparer données web", "Compare web data"))
         btn_web.setStyleSheet("""
             QPushButton { background-color: #20415d; color: #F2BFB4; border: 1px solid #2778a2;
                           border-radius: 4px; padding: 3px 8px; font-size: 11px; }
@@ -466,8 +473,8 @@ class MetadonneesController:
         trash_count = self.trash_model.rowCount()
 
         if hasattr(self, 'lbl_video_count'):
-            self.lbl_video_count.setText(f"Vidéos : {video_count}")
-            self.lbl_trash_count.setText(f"Poubelle : {trash_count}")
+            self.lbl_video_count.setText(self.translate(f"Vidéos : {video_count}", f"Videos: {video_count}"))
+            self.lbl_trash_count.setText(self.translate(f"Poubelle : {trash_count}", f"Trash: {trash_count}"))
 
         self.ax.clear()
         if video_count + trash_count == 0:
@@ -565,12 +572,15 @@ class MetadonneesController:
                 formatted_date = date_str.split(" ")[0].split("T")[0]
 
         if not lat or not lon:
-            QtWidgets.QMessageBox.warning(self.widget, "Missing Coordinates",
-                                          f"Latitude ({lat}) or Longitude ({lon}) is missing.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Coordonnées manquantes", "Missing Coordinates"),
+                self.translate(f"Latitude ({lat}) ou Longitude ({lon}) est manquante.",
+                               f"Latitude ({lat}) or Longitude ({lon}) is missing."))
             return
         if not formatted_date:
-            QtWidgets.QMessageBox.warning(self.widget, "Missing or Invalid Date",
-                                          f"The read date is: '{raw_date}'.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Date manquante ou invalide", "Missing or Invalid Date"),
+                self.translate(f"La date lue est : '{raw_date}'.", f"The read date is: '{raw_date}'."))
             return
 
         self.weather_worker = WeatherWorker(lat, lon, formatted_date)
@@ -580,7 +590,9 @@ class MetadonneesController:
     def _open_web_weather_popup(self, fetched_api_data, relevant_date):
         """Ouvre WeatherWebDialog avec les données API récupérées par WeatherWorker."""
         if not fetched_api_data:
-            QtWidgets.QMessageBox.critical(self.widget, "Connection Error", "Unable to retrieve data.")
+            QtWidgets.QMessageBox.critical(self.widget,
+                self.translate("Erreur de connexion", "Connection Error"),
+                self.translate("Impossible de récupérer les données.", "Unable to retrieve data."))
             return
         dialog = WeatherWebDialog(web_data=fetched_api_data, lang=self.current_language, parent=self.widget)
         dialog.exec()
@@ -590,11 +602,15 @@ class MetadonneesController:
     def on_compare_slate_clicked(self):
         """Cherche l'événement 'slate' dans le JSON et affiche la frame correspondante."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
-            QtWidgets.QMessageBox.warning(self.widget, "Error", "Please select a valid video sequence first.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate("Veuillez sélectionner une séquence vidéo valide.", "Please select a valid video sequence first."))
             return
         if not self.current_template_json or not os.path.exists(self.current_template_json):
-            QtWidgets.QMessageBox.warning(self.widget, "Slate Not Found",
-                                          "Please input the slate record entry inside the events timeline view first.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Ardoise introuvable", "Slate Not Found"),
+                self.translate("Veuillez saisir l'entrée ardoise dans la vue événements d'abord.",
+                               "Please input the slate record entry inside the events timeline view first."))
             return
         try:
             with open(self.current_template_json, 'r', encoding='utf-8') as f:
@@ -615,8 +631,10 @@ class MetadonneesController:
                 break
 
         if slate_frame is None:
-            QtWidgets.QMessageBox.warning(self.widget, "Slate Not Found",
-                                          "Please input the slate record entry inside the events timeline view first.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Ardoise introuvable", "Slate Not Found"),
+                self.translate("Veuillez saisir l'entrée ardoise dans la vue événements d'abord.",
+                               "Please input the slate record entry inside the events timeline view first."))
             return
         self._display_slate_window(slate_frame)
 
@@ -624,13 +642,17 @@ class MetadonneesController:
         """Extrait frame_number de la vidéo et l'affiche dans une boîte de dialogue."""
         cap = cv2.VideoCapture(self.current_video_path)
         if not cap.isOpened():
-            QtWidgets.QMessageBox.warning(self.widget, "Error", "Unable to open video file.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate("Impossible d'ouvrir le fichier vidéo.", "Unable to open video file."))
             return
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
         ret, frame = cap.read()
         cap.release()
         if not ret:
-            QtWidgets.QMessageBox.warning(self.widget, "Error", f"Unable to read frame {frame_number}.")
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate(f"Impossible de lire la frame {frame_number}.", f"Unable to read frame {frame_number}."))
             return
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -639,7 +661,7 @@ class MetadonneesController:
         pixmap = QtGui.QPixmap.fromImage(q_img)
 
         dialog = QtWidgets.QDialog(self.widget)
-        dialog.setWindowTitle(f"Slate — Frame {frame_number}")
+        dialog.setWindowTitle(self.translate(f"Ardoise — Frame {frame_number}", f"Slate — Frame {frame_number}"))
         dialog.setMinimumSize(800, 600)
         layout = QtWidgets.QVBoxLayout(dialog)
         lbl = QtWidgets.QLabel()
@@ -647,7 +669,7 @@ class MetadonneesController:
                                     QtCore.Qt.TransformationMode.SmoothTransformation))
         lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl)
-        btn = QtWidgets.QPushButton("Fermer")
+        btn = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
         btn.clicked.connect(dialog.accept)
         layout.addWidget(btn)
         dialog.show()

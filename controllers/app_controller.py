@@ -123,12 +123,13 @@ class AppController:
         self.qualification_completed = False
         self.validation_completed = False
 
+        trans = w.translations.get(w.current_language, w.translations['fr'])
         if self.btn_finir_qualif:
             self.btn_finir_qualif.setEnabled(True)
-            self.btn_finir_qualif.setText("Finir qualification")
+            self.btn_finir_qualif.setText(trans.get('Finir qualification', 'Finir qualification'))
         if self.btn_finir_validation:
             self.btn_finir_validation.setEnabled(True)
-            self.btn_finir_validation.setText("Finir validation")
+            self.btn_finir_validation.setText(trans.get('Finir validation', 'Finir validation'))
 
         self.qualif_ctrl.open_system_explorer(nom_derusher)
         self._refresh_all_page_models()
