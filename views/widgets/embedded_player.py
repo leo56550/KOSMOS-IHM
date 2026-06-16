@@ -370,6 +370,18 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._update_corrections_enabled(is_playing=False)
         self.set_language(self.current_language)
 
+        # Raccourcis clavier (actifs quand le player ou l'un de ses enfants a le focus)
+        _ctx = QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut
+        sc_space = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Space), self)
+        sc_space.setContext(_ctx)
+        sc_space.activated.connect(self._toggle_play_pause)
+        sc_right = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self)
+        sc_right.setContext(_ctx)
+        sc_right.activated.connect(lambda: self._step_frame(+1))
+        sc_left = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self)
+        sc_left.setContext(_ctx)
+        sc_left.activated.connect(lambda: self._step_frame(-1))
+
     # ── Helpers ───────────────────────────────────────────────────────────
 
     @staticmethod
@@ -834,3 +846,25 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.player.setPlaybackRate(rate)
         if self.is_stereo:
             self.player_R.setPlaybackRate(rate)
+
+    def _toggle_play_pause(self):
+        """Bascule entre lecture et pause (raccourci Espace)."""
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.pause_all()
+        else:
+            self.play_all()
+
+    def _step_frame(self, direction: int):
+        """Avance (+1) ou recule (-1) d'une frame (raccourcis ← →, pause uniquement)."""
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            return
+        if not self.video_fps or self.video_fps <= 0:
+            return
+        frame_ms = max(1, int(1000 / self.video_fps))
+        target = max(0, min(self.player.position() + direction * frame_ms,
+                            self.player.duration()))
+        self.player.setPosition(target)
+        if self.is_stereo:
+            self.player_R.setPosition(target)
+        if self.left_display.currentIndex() == 1:
+            QtCore.QTimer.singleShot(50, self._refresh_corrections)

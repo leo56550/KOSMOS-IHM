@@ -111,6 +111,12 @@ class MainWindow(QtWidgets.QMainWindow):
             buttons_layout.addWidget(button)
             action.setData(button)
 
+        self.btn_sftp = QtWidgets.QToolButton()
+        self.btn_sftp.setText("KOSMOS SD")
+        self.btn_sftp.setToolTip("Connexion SFTP — téléverser la carte SD")
+        self.btn_sftp.setObjectName("btn_sftp")
+        buttons_layout.addWidget(self.btn_sftp)
+
         self.derusher_label = QtWidgets.QLabel("")
         self.derusher_label.setStyleSheet(
             "color: #F2BFB4; font-weight: bold; font-family: 'Segoe UI', sans-serif;"

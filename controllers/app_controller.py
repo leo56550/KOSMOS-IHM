@@ -3,6 +3,7 @@ from PyQt6 import QtWidgets, QtCore
 from services.campaign_service import get_campaign_json_data
 from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
+from views.dialogs.sftp_dialog import SftpDialog
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController
 from controllers.validation_controller import ValidationController
@@ -79,6 +80,9 @@ class AppController:
         window.btn_lang_fr.clicked.connect(lambda: self.set_language("fr"))
         window.btn_lang_en.clicked.connect(lambda: self.set_language("en"))
 
+        if hasattr(window, 'btn_sftp'):
+            window.btn_sftp.clicked.connect(self._open_sftp_dialog)
+
         # Finish buttons
         self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
         if self.btn_finir_qualif:
@@ -101,6 +105,11 @@ class AppController:
 
         self.lock_navigation(True)
         self.switch_page(window.page_accueil)
+
+    def _open_sftp_dialog(self):
+        """Ouvre le dialog de connexion SFTP / téléversement carte SD."""
+        dlg = SftpDialog(self.window)
+        dlg.exec()
 
     # --- Language ---
 
