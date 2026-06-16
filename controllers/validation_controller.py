@@ -14,11 +14,12 @@ class ValidationController:
     """Contrôleur de la page Validation : lecture vidéo et saisie de l'exploitabilité."""
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
-                 on_video_focused=None):
+                 on_video_focused=None, on_qualification_changed=None):
         """Initialise le player embarqué, l'arbre vidéo et le combo exploitabilité."""
         self.page = page_widget
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
+        self._on_qualification_changed = on_qualification_changed
         self.current_language = 'en'
         self.current_json_path = None
         self.current_video_path = None
@@ -191,6 +192,8 @@ class ValidationController:
                 data["video_observation"]["exploitable"]["value"] = text
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
+                if self._on_qualification_changed:
+                    self._on_qualification_changed()
 
                 selected = self.video_tree.selectionModel().selectedRows()
                 if selected:

@@ -1,6 +1,7 @@
 from PyQt6 import QtWidgets, QtCore
+import json
 
-from services.campaign_service import get_campaign_json_data
+from services.campaign_service import get_campaign_json_data, get_video_json_path
 from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
 from views.dialogs.sftp_dialog import SftpDialog
@@ -48,6 +49,7 @@ class AppController:
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
+            on_qualification_changed=self.refresh_status_bar,
         )
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
@@ -70,6 +72,10 @@ class AppController:
             self.accueil_ctrl, self.qualif_ctrl, self.validation_ctrl,
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
+
+        # Rafraîchir la barre de statut quand le modèle vidéo change (suppression/ajout externe)
+        self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
+        self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
@@ -215,6 +221,7 @@ class AppController:
         self.qualif_ctrl.open_system_explorer(nom_derusher)
         self._refresh_all_page_models()
         self._detect_campaign_mode()
+        self.refresh_status_bar()
 
         dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
         if not dossier:
@@ -400,3 +407,34 @@ class AppController:
     def _focus_map(self, video_name: str):
         """Focalise la carte Leaflet sur la vidéo dont le nom est fourni."""
         self.qualif_ctrl.update_minimap(video_name)
+
+    def refresh_status_bar(self, *_):
+        """Recalcule et affiche les stats de campagne dans la barre de statut."""
+        model = self.qualif_ctrl.video_model
+        n = model.rowCount()
+        total_sec = 0
+        qualified = 0
+        for row in range(n):
+            dur_item = model.item(row, 1)
+            if dur_item:
+                parts = dur_item.text().split(":")
+                if len(parts) == 2:
+                    try:
+                        total_sec += int(parts[0]) * 60 + int(parts[1])
+                    except ValueError:
+                        pass
+            path_item = model.item(row, 0)
+            if path_item:
+                video_path = path_item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if video_path:
+                    json_path = get_video_json_path(video_path)
+                    if os.path.exists(json_path):
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                            val = data.get("video_observation", {}).get("exploitable", {}).get("value")
+                            if val and str(val).strip():
+                                qualified += 1
+                        except Exception:
+                            pass
+        self.window.update_status_bar(n, total_sec, qualified)

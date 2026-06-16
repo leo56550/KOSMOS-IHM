@@ -21,6 +21,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._setup_toolbar()
 
+        self._setup_status_bar()
         self.translations = {
             'fr': {
                 'Accueil': 'Accueil', 'Qualification': 'Qualification',
@@ -192,6 +193,60 @@ class MainWindow(QtWidgets.QMainWindow):
                 border-radius: 4px;
             }
         """)
+
+    def _setup_status_bar(self):
+        """Crée la barre de statut avec les compteurs de campagne."""
+        sb = self.statusBar()
+        sb.setSizeGripEnabled(False)
+        sb.setStyleSheet("""
+            QStatusBar {
+                background-color: #1a3349;
+                border-top: 1px solid #2778A2;
+                padding: 0 8px;
+            }
+            QStatusBar::item { border: none; }
+        """)
+
+        def _lbl(text="—"):
+            lbl = QtWidgets.QLabel(text)
+            lbl.setStyleSheet(
+                "color: #a0b8c8; font-family: 'Segoe UI', sans-serif;"
+                " font-size: 13px; padding: 0 14px;"
+            )
+            return lbl
+
+        def _sep():
+            s = QtWidgets.QLabel("|")
+            s.setStyleSheet("color: #2778A2; font-size: 13px; padding: 0 2px;")
+            return s
+
+        self._sb_videos = _lbl()
+        self._sb_duration = _lbl()
+        self._sb_qualified = _lbl()
+
+        sb.addPermanentWidget(self._sb_videos)
+        sb.addPermanentWidget(_sep())
+        sb.addPermanentWidget(self._sb_duration)
+        sb.addPermanentWidget(_sep())
+        sb.addPermanentWidget(self._sb_qualified)
+
+    def update_status_bar(self, video_count: int, total_seconds: int, qualified_count: int):
+        """Met à jour les trois indicateurs de la barre de statut."""
+        h = total_seconds // 3600
+        m = (total_seconds % 3600) // 60
+        s = total_seconds % 60
+        dur_str = f"{h}h {m:02d}m {s:02d}s" if h > 0 else f"{m}m {s:02d}s"
+        pct = int(100 * qualified_count / video_count) if video_count > 0 else 0
+
+        self._sb_videos.setText(f"{video_count} vidéo{'s' if video_count != 1 else ''}")
+        self._sb_duration.setText(f"Durée totale : {dur_str}")
+
+        color = "#4CAF50" if pct == 100 else "#f0c040" if pct > 0 else "#a0b8c8"
+        self._sb_qualified.setStyleSheet(
+            f"color: {color}; font-family: 'Segoe UI', sans-serif;"
+            " font-size: 13px; padding: 0 14px;"
+        )
+        self._sb_qualified.setText(f"Validées : {qualified_count}/{video_count}  ({pct} %)")
 
     def _load_flag_icon(self, filename: str) -> QtGui.QIcon:
         """Charge l'icône drapeau depuis img/filename, retourne une icône vide si absent."""
