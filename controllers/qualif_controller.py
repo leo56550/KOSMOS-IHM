@@ -215,7 +215,7 @@ class QualifController:
         splitter.setSizes([campaign_h, video_h, trash_h])
 
     def _init_minimap(self):
-        """Crée le MapBridge WebChannel et le MapDialog pour la carte de campagne."""
+        """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""
         self.bridge = MapBridge()
         self.channel = QWebChannel()
         self.channel.registerObject("backend", self.bridge)
@@ -529,6 +529,32 @@ class QualifController:
 
         center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
 
+        # --- Lire les infos survey + waypoints depuis les JSON ---
+        survey_name, zone, site = "", "", ""
+        waypoints: dict[str, str] = {}
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not vpath:
+                continue
+            jpath = get_video_json_path(vpath)
+            if not os.path.exists(jpath):
+                continue
+            try:
+                with open(jpath, 'r', encoding='utf-8') as f:
+                    jdata = json.load(f)
+                if not survey_name:
+                    sv = jdata.get("survey", {})
+                    survey_name = (sv.get("survey_name") or {}).get("value") or ""
+                    zone        = (sv.get("zone")        or {}).get("value") or ""
+                    site        = (sv.get("site")        or {}).get("value") or ""
+                wp = (jdata.get("video_observation", {}).get("gps_waypoint") or {}).get("value")
+                waypoints[item.text()] = str(wp) if wp is not None else ""
+            except Exception:
+                pass
+
         if not getattr(self, 'map_initialized', False):
             m = folium.Map(location=center, zoom_start=17, tiles=None)
             folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
@@ -538,6 +564,20 @@ class QualifController:
                 name="OpenSeaMap", overlay=True, control=True, max_zoom=19
             ).add_to(m)
             folium.LayerControl().add_to(m)
+
+            # --- Bandeau campagne (survey / zone / site) ---
+            header_parts = [p for p in [survey_name, zone, site] if p]
+            if header_parts:
+                header_html = (
+                    '<div style="position:fixed;top:10px;left:50%;transform:translateX(-50%);'
+                    'background:rgba(20,41,61,0.88);color:#F2BFB4;'
+                    'font-family:\'Segoe UI\',sans-serif;font-size:13px;font-weight:bold;'
+                    'padding:5px 18px;border-radius:6px;border:1px solid #2778A2;'
+                    'z-index:9999;pointer-events:none;white-space:nowrap;">'
+                    + " &nbsp;|&nbsp; ".join(header_parts)
+                    + '</div>'
+                )
+                m.get_root().html.add_child(folium.Element(header_html))
 
             m.get_root().header.add_child(
                 folium.Element('<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>')
@@ -576,8 +616,29 @@ class QualifController:
             </script>"""
             m.get_root().html.add_child(folium.Element(js_map_linkage))
 
+            sorted_names = sorted(valid_coords.keys())
+            polyline_coords = [valid_coords[n] for n in sorted_names]
+            if len(polyline_coords) >= 2:
+                folium.PolyLine(
+                    locations=polyline_coords,
+                    color="#2778A2",
+                    weight=2.5,
+                    opacity=0.85,
+                    tooltip="Tracé GPS (ordre chronologique)",
+                ).add_to(m)
+
             for name, coords in valid_coords.items():
-                popup = folium.Popup(name, auto_close=False, close_on_click=False)
+                wp = waypoints.get(name, "")
+                popup_html = (
+                    f'<div style="font-family:\'Segoe UI\',sans-serif;font-size:12px;'
+                    f'min-width:120px;">'
+                    f'<b style="font-size:13px;">{name}</b>'
+                    + (f'<br><span style="color:#607080;">GPS Waypoint :</span> '
+                       f'<b>{wp}</b>' if wp else '')
+                    + '</div>'
+                )
+                popup = folium.Popup(popup_html, max_width=220,
+                                     auto_close=False, close_on_click=False)
                 marker = folium.Marker(location=coords, popup=popup,
                                        icon=folium.Icon(color='blue', icon='camera', prefix='fa'))
                 marker.add_to(m)
@@ -617,13 +678,14 @@ class QualifController:
             self.map_dialog.map_view.setHtml(data.getvalue().decode())
             self.map_initialized = True
             self.map_dialog.show()
+            self.map_dialog.raise_()
             if selected_name and selected_name in valid_coords:
-                QtCore.QTimer.singleShot(500, lambda: self.apply_red_marker_js(selected_name))
+                QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
-            if not self.map_dialog.isVisible():
-                self.map_dialog.show()
+            self.map_dialog.show()
+            self.map_dialog.raise_()
             if selected_name and selected_name in valid_coords:
-                self.apply_red_marker_js(selected_name)
+                QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
 
     def apply_red_marker_js(self, selected_name: str):
         """Exécute le JS changeMarkerColorJS pour passer le marqueur selected_name en rouge."""

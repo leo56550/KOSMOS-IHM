@@ -45,15 +45,26 @@ class AppController:
             window.page_qualification, parent=window,
             on_before_delete=self._release_file_in_all_players
         )
-        self.validation_ctrl = ValidationController(window.page_validation, self.qualif_ctrl.video_model)
-        self.evenements_ctrl = EvenementsController(window.page_evenements, self.qualif_ctrl.video_model)
+        self.validation_ctrl = ValidationController(
+            window.page_validation, self.qualif_ctrl.video_model,
+            on_video_focused=self._focus_map,
+        )
+        self.evenements_ctrl = EvenementsController(
+            window.page_evenements, self.qualif_ctrl.video_model,
+            on_video_focused=self._focus_map,
+        )
         self.metadonnees_ctrl = MetadonneesController(
             window.page_metadonnees,
             self.qualif_ctrl.video_model,
-            self.qualif_ctrl.trash_model
+            self.qualif_ctrl.trash_model,
+            on_metadata_saved=self._on_metadata_saved,
+            on_video_selected=self._on_meta_video_selected,
         )
         self.apropos_ctrl = AProposController(window.page_apropos)
-        self.extraction_ctrl = ExtractionController(window.page_extraction, self.qualif_ctrl.video_model)
+        self.extraction_ctrl = ExtractionController(
+            window.page_extraction, self.qualif_ctrl.video_model,
+            on_video_focused=self._focus_map,
+        )
 
         self.page_controllers = [
             self.accueil_ctrl, self.qualif_ctrl, self.validation_ctrl,
@@ -105,6 +116,26 @@ class AppController:
 
         self.lock_navigation(True)
         self.switch_page(window.page_accueil)
+
+    def _on_meta_video_selected(self, video_name: str, _video_path: str):
+        """Ouvre le player détaché et focus la carte depuis la page Métadonnées."""
+        # Focus carte — update_minimap gère le raise_() du dialog et le pan JS
+        self.qualif_ctrl.update_minimap(video_name)
+        # Ouvre le player (bypass la garde selected_video_name)
+        prev = self.qualif_ctrl.selected_video_name
+        self.qualif_ctrl.selected_video_name = None
+        self.qualif_ctrl.select_video_by_name(video_name)
+        if self.qualif_ctrl.selected_video_name is None:
+            # select_video_by_name n'a pas trouvé la vidéo, restaurer
+            self.qualif_ctrl.selected_video_name = prev
+
+    def _on_metadata_saved(self):
+        """Reconstruit la minimap si elle est visible, sinon invalide pour le prochain affichage."""
+        if self.qualif_ctrl.map_dialog.isVisible():
+            self.qualif_ctrl.map_initialized = False
+            self.qualif_ctrl.update_minimap(self.qualif_ctrl.selected_video_name)
+        else:
+            self.qualif_ctrl.map_initialized = False
 
     def _open_sftp_dialog(self):
         """Ouvre le dialog de connexion SFTP / téléversement carte SD."""
@@ -365,3 +396,7 @@ class AppController:
             player = getattr(ctrl, attr, None)
             if player is not None:
                 QtCore.QTimer.singleShot(0, player.setFocus)
+
+    def _focus_map(self, video_name: str):
+        """Focalise la carte Leaflet sur la vidéo dont le nom est fourni."""
+        self.qualif_ctrl.update_minimap(video_name)

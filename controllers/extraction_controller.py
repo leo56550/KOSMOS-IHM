@@ -13,10 +13,11 @@ from views.dialogs.capture_dialog import CaptureDialog
 class ExtractionController:
     """Contrôleur de la page Extraction : découpe vidéo, capture d'image et gestion des livrables."""
 
-    def __init__(self, widget: QtWidgets.QWidget, video_model):
+    def __init__(self, widget: QtWidgets.QWidget, video_model, on_video_focused=None):
         """Initialise le player, l'arbre vidéo, le panneau de paramètres et le modèle de livrables."""
         self.widget = widget
         self.video_model = video_model
+        self._on_video_focused = on_video_focused
         self.current_language = 'en'
         self.current_is_stereo = False
         self.current_video_payload = None
@@ -156,6 +157,8 @@ class ExtractionController:
             return
 
         video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if self._on_video_focused:
+            self._on_video_focused(item.text())
         if video_path and os.path.exists(video_path):
             is_stereo, video_payload = check_stereo_status(video_path)
             self.current_is_stereo = is_stereo

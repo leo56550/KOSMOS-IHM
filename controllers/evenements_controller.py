@@ -18,10 +18,12 @@ from models.video_model import VideoFilterProxyModel
 class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
-    def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel):
+    def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
+                 on_video_focused=None):
         """Initialise les widgets de la page et connecte les signaux de capture et d'export."""
         self.page = page_widget
         self.video_model = shared_model
+        self._on_video_focused = on_video_focused
         self.current_language = 'en'
         self.export_start_ms = 0
         self.export_end_ms = 0
@@ -669,6 +671,8 @@ class EvenementsController:
         self.current_video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
         video_dir = os.path.dirname(self.current_video_path)
         self.current_json_path = get_video_json_path(self.current_video_path)
+        if self._on_video_focused:
+            self._on_video_focused(item.text())
 
         is_stereo, video_to_load = check_stereo_status(self.current_video_path)
 

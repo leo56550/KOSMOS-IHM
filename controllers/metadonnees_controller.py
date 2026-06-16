@@ -25,11 +25,14 @@ class MetadonneesController:
     """Contrôleur de la page Métadonnées : affichage et édition des JSON vidéo, météo et statistiques."""
 
     def __init__(self, widget: QtWidgets.QWidget, video_model: QtGui.QStandardItemModel,
-                 trash_model: QtGui.QStandardItemModel):
+                 trash_model: QtGui.QStandardItemModel, on_metadata_saved=None,
+                 on_video_selected=None):
         """Connecte les modèles, crée les scroll areas et initialise la jauge statistique."""
         self.widget = widget
         self.video_model = video_model
         self.trash_model = trash_model
+        self._on_metadata_saved = on_metadata_saved
+        self._on_video_selected = on_video_selected
         self._json_data = {}
         self.current_template_json = None
         self.current_video_path = None
@@ -217,10 +220,14 @@ class MetadonneesController:
 
     def on_selection_changed(self, selected, deselected):
         """Charge le JSON de la vidéo sélectionnée et rafraîchit tous les panneaux de données."""
+        # Sauvegarder immédiatement les modifications en cours avant de changer de vidéo
+        if self._save_timer.isActive():
+            self._save_timer.stop()
+            self.save_metadata_to_json()
+
         indexes = selected.indexes()
         if not indexes:
             return
-        # Toujours cibler la colonne 0 — c'est là qu'est stocké UserRole
         col0_index = indexes[0].sibling(indexes[0].row(), 0)
         item = self.video_model.itemFromIndex(col0_index)
         if not item:
@@ -229,9 +236,12 @@ class MetadonneesController:
         if not video_path:
             return
         self.current_video_path = str(video_path)
+        video_name = item.text()
         json_path = get_video_json_path(self.current_video_path)
         if os.path.exists(json_path):
             self.load_all_data(json_path)
+        if self._on_video_selected:
+            self._on_video_selected(video_name, self.current_video_path)
 
     def load_global_campaign_metadata(self, campaign_folder: str):
         """Charge les sections système et campagne depuis le premier JSON trouvé dans campaign_folder."""
@@ -497,6 +507,7 @@ class MetadonneesController:
         """Écrit new_value dans _json_data et propage le changement aux JSON sur disque."""
         if source_widget and isinstance(source_widget, QtWidgets.QLineEdit) and new_value:
             source_widget.setStyleSheet(_FIELD_STYLE)
+        self._save_timer.start(800)
 
         if block_key in self._json_data and field_id in self._json_data[block_key]:
             self._json_data[block_key][field_id]["value"] = new_value
@@ -538,6 +549,8 @@ class MetadonneesController:
             try:
                 with open(self.current_template_json, 'w', encoding='utf-8') as f:
                     json.dump(self._json_data, f, indent=4, ensure_ascii=False)
+                if self._on_metadata_saved:
+                    self._on_metadata_saved()
             except Exception as e:
                 print(f"[ERROR] Failed writing JSON: {e}")
 
