@@ -8,6 +8,7 @@ from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
 from controllers.metadonnees_controller import MetadonneesController
 from controllers.extraction_controller import ExtractionController
+import os
 
 
 class AProposController:
@@ -29,6 +30,8 @@ class AppController:
         self.window = window
         self.qualification_completed = False
         self.validation_completed = False
+        self._current_campaign_name: str = ""
+        self._current_derusher_name: str = ""
 
         # Instantiate page controllers
         self.accueil_ctrl = AccueilController(
@@ -111,9 +114,27 @@ class AppController:
             self.btn_finir_qualif.setText(trans.get('Finir qualification', self.btn_finir_qualif.text()))
         if self.btn_finir_validation:
             self.btn_finir_validation.setText(trans.get('Finir validation', self.btn_finir_validation.text()))
+        self._update_info_labels(trans)
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
+
+    def _update_info_labels(self, trans: dict):
+        """Rafraîchit les labels dérusher et campagne de la toolbar avec les traductions actuelles."""
+        w = self.window
+        if hasattr(w, 'derusher_label') and self._current_derusher_name:
+            w.derusher_label.setText(
+                trans.get('derusher_active', '{} est en train de derusher').format(self._current_derusher_name)
+            )
+        if hasattr(w, 'campaign_label'):
+            if self._current_campaign_name:
+                w.campaign_label.setText(
+                    trans.get('campaign_open', '📁 {}').format(self._current_campaign_name)
+                )
+            else:
+                w.campaign_label.setText("")
+        if self._current_campaign_name:
+            w.setWindowTitle(f"KOSMOS IHM — {self._current_campaign_name}")
 
     # --- Campaign opening ---
 
@@ -131,12 +152,20 @@ class AppController:
             self.btn_finir_validation.setEnabled(True)
             self.btn_finir_validation.setText(trans.get('Finir validation', 'Finir validation'))
 
+        self._current_derusher_name = nom_derusher
+
         self.qualif_ctrl.open_system_explorer(nom_derusher)
         self._refresh_all_page_models()
 
         dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
         if not dossier:
             return
+
+        session = os.path.basename(os.path.normpath(dossier))
+        parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
+        self._current_campaign_name = f"{parent} / {session}" if parent else session
+        print(f"[CAMPAIGN] dossier={dossier!r}  name={self._current_campaign_name!r}  has_label={hasattr(w, 'campaign_label')}")
+        self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
 
         data_systeme = get_campaign_json_data(dossier, extract_system=True)
         data_complete = get_campaign_json_data(dossier, extract_system=False)
@@ -168,15 +197,6 @@ class AppController:
                 self.metadonnees_ctrl.inject_weather_data({})
 
             self.switch_page(w.page_qualification)
-
-            try:
-                trans = w.translations[w.current_language]
-                if hasattr(w, 'derusher_label') and nom_derusher:
-                    w.derusher_label.setText(
-                        trans.get('derusher_active', '{} est en train de derusher').format(nom_derusher)
-                    )
-            except Exception:
-                pass
         else:
             # Pas de JSON système trouvé (campagne fraîche) — déverrouiller quand même
             # Qualification si des vidéos ont été chargées, sinon tout garder verrouillé.
