@@ -16,6 +16,34 @@ _SLIDER_STYLE = SLIDER
 _BTN_STYLE = BTN_PRIMARY
 _TOGGLE_STYLE = BTN_TOGGLE
 
+_CAM_BTN_STYLE = """
+QPushButton {
+    background-color: #1b2c3d;
+    color: #607080;
+    font-weight: bold;
+    border: 2px solid #D94F38;
+    border-radius: 5px;
+    padding: 4px 20px;
+    font-size: 11px;
+    font-family: "Segoe UI", sans-serif;
+    letter-spacing: 0.5px;
+}
+QPushButton:checked {
+    background-color: #2778A2;
+    color: #ffffff;
+    border: 2px solid #2778A2;
+}
+QPushButton:hover:!checked {
+    background-color: #25384d;
+    color: #b0c8d8;
+    border-color: #a83020;
+}
+QPushButton:hover:checked {
+    background-color: #3290c2;
+    border-color: #3290c2;
+}
+"""
+
 
 class _VideoLabel(QtWidgets.QWidget):
     """Widget d'affichage vidéo — stocke un QImage et le scale dans paintEvent sans passer par QPixmap."""
@@ -147,6 +175,29 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.logo_label.setStyleSheet("color: white; font-size: 24px; font-weight: bold;")
         self.display_stack.addWidget(self.logo_label)
 
+        # Boutons caméra stéréo (barre au-dessus de la vidéo)
+        self.btn_cam_L = QtWidgets.QPushButton("Cam G")
+        self.btn_cam_L.setCheckable(True)
+        self.btn_cam_L.setChecked(True)
+        self.btn_cam_L.setStyleSheet(_CAM_BTN_STYLE)
+
+        self.btn_cam_R = QtWidgets.QPushButton("Cam D")
+        self.btn_cam_R.setCheckable(True)
+        self.btn_cam_R.setChecked(True)
+        self.btn_cam_R.setStyleSheet(_CAM_BTN_STYLE)
+
+        self.cam_bar = QtWidgets.QWidget()
+        self.cam_bar.setFixedHeight(36)
+        self.cam_bar.setStyleSheet(f"background-color: {C_BG_DARK}; border-bottom: 1px solid {C_BORDER_SUB};")
+        cam_bar_layout = QtWidgets.QHBoxLayout(self.cam_bar)
+        cam_bar_layout.setContentsMargins(10, 3, 10, 3)
+        cam_bar_layout.setSpacing(10)
+        cam_bar_layout.addStretch()
+        cam_bar_layout.addWidget(self.btn_cam_L)
+        cam_bar_layout.addWidget(self.btn_cam_R)
+        cam_bar_layout.addStretch()
+        self.cam_bar.setVisible(False)
+
         self.video_container = QtWidgets.QWidget()
         vc_layout = QtWidgets.QHBoxLayout(self.video_container)
         vc_layout.setContentsMargins(0, 0, 0, 0)
@@ -241,20 +292,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             btn.setStyleSheet(_BTN_STYLE)
             buttons_layout.addWidget(btn)
 
-        self._sep_cam = self._vline()
-        self.btn_cam_L = QtWidgets.QPushButton("Cam G")
-        self.btn_cam_L.setCheckable(True)
-        self.btn_cam_L.setChecked(True)
-        self.btn_cam_L.setStyleSheet(_TOGGLE_STYLE)
-
-        self.btn_cam_R = QtWidgets.QPushButton("Cam D")
-        self.btn_cam_R.setCheckable(True)
-        self.btn_cam_R.setChecked(True)
-        self.btn_cam_R.setStyleSheet(_TOGGLE_STYLE)
-
-        for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
-            w.setVisible(False)
-            buttons_layout.addWidget(w)
 
         # ── Corrections panel ─────────────────────────────────────────────
         self.corrections_panel = QtWidgets.QFrame()
@@ -325,7 +362,16 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # ── Splitter ──────────────────────────────────────────────────────
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.splitter.setChildrenCollapsible(False)
-        self.splitter.addWidget(self.display_stack)
+
+        # Conteneur vidéo : cam_bar (stéréo) + display_stack
+        video_outer = QtWidgets.QWidget()
+        video_outer.setStyleSheet("background: black;")
+        video_outer_layout = QtWidgets.QVBoxLayout(video_outer)
+        video_outer_layout.setContentsMargins(0, 0, 0, 0)
+        video_outer_layout.setSpacing(0)
+        video_outer_layout.addWidget(self.cam_bar)
+        video_outer_layout.addWidget(self.display_stack)
+        self.splitter.addWidget(video_outer)
 
         bottom_container = QtWidgets.QWidget()
         bottom_vbox = QtWidgets.QVBoxLayout(bottom_container)
@@ -761,14 +807,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 btn.blockSignals(True)
                 btn.setChecked(True)
                 btn.blockSignals(False)
-            for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
-                w.setVisible(True)
+            self.cam_bar.setVisible(True)
         else:
             self.is_stereo = False
             self.left_display.setVisible(True)
             self.video_widget_R.setVisible(False)
-            for w in [self._sep_cam, self.btn_cam_L, self.btn_cam_R]:
-                w.setVisible(False)
+            self.cam_bar.setVisible(False)
             path = video_data[0] if isinstance(video_data, list) else video_data
             if path and os.path.exists(path):
                 self.video_fps = self._get_video_fps(path)
