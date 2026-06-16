@@ -754,7 +754,7 @@ class QualifController:
             if not os.path.isdir(folder_path):
                 continue
             for file in sorted(os.listdir(folder_path)):
-                if not file.lower().endswith(".mp4"):
+                if not file.lower().endswith(".mp4") or file.lower().endswith("_stereo.mp4"):
                     continue
                 video_path = os.path.join(folder_path, file)
                 try:

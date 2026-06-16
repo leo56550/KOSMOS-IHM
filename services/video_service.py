@@ -25,7 +25,7 @@ def get_all_mp4_files(parent_folder: str) -> list:
         current_folder_date = extract_date_from_template(root)
 
         for file in files:
-            if file.lower().endswith(".mp4"):
+            if file.lower().endswith(".mp4") and not file.lower().endswith("_stereo.mp4"):
                 full_path = os.path.join(root, file)
 
                 try:
