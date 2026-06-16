@@ -45,6 +45,14 @@ class QualifController:
         self.mini_map_container = self.widget.findChild(QtWidgets.QFrame, "mini_map_container")
         self.frame_miniature = self.widget.findChild(QtWidgets.QFrame, "frame_miniature")
 
+        self._fs_watcher = QtCore.QFileSystemWatcher()
+        self._fs_debounce = QtCore.QTimer()
+        self._fs_debounce.setSingleShot(True)
+        self._fs_debounce.setInterval(600)
+        self._fs_debounce.timeout.connect(self._refresh_from_disk)
+        self._fs_watcher.directoryChanged.connect(self._fs_debounce.start)
+        self._fs_watcher.fileChanged.connect(self._fs_debounce.start)
+
         if self.frame_campaign:
             layout = QtWidgets.QVBoxLayout(self.frame_campaign)
             layout.setContentsMargins(5, 5, 5, 5)
@@ -258,6 +266,7 @@ class QualifController:
             self.trash_model.removeRows(0, self.trash_model.rowCount())
         self.all_coords.clear()
         self.map_initialized = False   # Force la recréation de la carte pour la nouvelle campagne
+        self._start_watching_campaign(directory)
 
         self._load_existing_trash(directory)
 
@@ -321,6 +330,80 @@ class QualifController:
             self.load_and_display_campaign_json(first_loaded_json)
 
         self._reset_left_splitter_sizes()
+
+    def _start_watching_campaign(self, directory: str):
+        """Surveille la racine campagne, ses enfants directs et le dossier .trash (pas en profondeur)."""
+        old = self._fs_watcher.directories()
+        if old:
+            self._fs_watcher.removePaths(old)
+        old_files = self._fs_watcher.files()
+        if old_files:
+            self._fs_watcher.removePaths(old_files)
+
+        dirs_to_watch = [directory]
+
+        try:
+            for name in os.listdir(directory):
+                child = os.path.join(directory, name)
+                if not os.path.isdir(child):
+                    continue
+                if name == '.trash':
+                    # Surveiller uniquement le dossier .trash lui-même, pas ses enfants
+                    dirs_to_watch.append(child)
+                elif name not in ('segments',):
+                    # Dossiers vidéo (00XX…) : surveiller le dossier direct
+                    dirs_to_watch.append(child)
+        except OSError:
+            pass
+
+        existing = [d for d in dirs_to_watch if os.path.isdir(d)]
+        if existing:
+            self._fs_watcher.addPaths(existing)
+
+    def _refresh_from_disk(self):
+        """Resynchronise les trees vidéo et trash avec l'état réel du disque."""
+        if not self.current_campaign_folder:
+            return
+
+        # --- vidéos principales ---
+        videos = get_all_mp4_files(self.current_campaign_folder)
+        current_paths = {
+            self.video_model.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+            for r in range(self.video_model.rowCount())
+            if self.video_model.item(r, 0)
+        }
+        new_paths = {v["path"] for v in videos}
+
+        # Supprimer les lignes dont le fichier n'existe plus
+        for row in range(self.video_model.rowCount() - 1, -1, -1):
+            item = self.video_model.item(row, 0)
+            if item and item.data(QtCore.Qt.ItemDataRole.UserRole) not in new_paths:
+                self.video_model.removeRow(row)
+
+        # Ajouter les nouveaux fichiers
+        for video in videos:
+            if video["path"] not in current_paths:
+                col_name = QtGui.QStandardItem(video["name"])
+                col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
+                self.video_model.appendRow([
+                    col_name,
+                    QtGui.QStandardItem(video["duration"]),
+                    QtGui.QStandardItem(video["fps"]),
+                    QtGui.QStandardItem(video["res"]),
+                    QtGui.QStandardItem(video.get("size", "--")),
+                    QtGui.QStandardItem(video.get("date", "")),
+                ])
+                coords = get_video_gps_coords(video["path"])
+                if coords:
+                    self.all_coords[video["name"]] = coords
+
+        # --- trash ---
+        if self.trash_video_tree:
+            self.trash_model.removeRows(0, self.trash_model.rowCount())
+            self._load_existing_trash(self.current_campaign_folder)
+
+        # Surveiller les nouveaux sous-dossiers éventuellement créés
+        self._start_watching_campaign(self.current_campaign_folder)
 
     def load_and_display_campaign_json(self, json_path: str):
         if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:
