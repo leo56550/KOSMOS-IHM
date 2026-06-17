@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KOSMOS IHM — Récapitulatif des fonctionnalités</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #0d1b2a;
+    color: #d0e4f0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Couverture ── */
+  .cover {
+    background: linear-gradient(135deg, #0d1b2a 0%, #1a3349 60%, #2778A2 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px 40px;
+    page-break-after: always;
+  }
+  .cover-logo {
+    font-size: 72px;
+    margin-bottom: 24px;
+  }
+  .cover h1 {
+    font-size: 42px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .cover h2 {
+    font-size: 20px;
+    color: #7ec8e3;
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin-bottom: 40px;
+  }
+  .cover-divider {
+    width: 120px;
+    height: 3px;
+    background: #2778A2;
+    border-radius: 2px;
+    margin: 0 auto 40px;
+  }
+  .cover-desc {
+    max-width: 620px;
+    color: #a0b8cc;
+    font-size: 15px;
+    line-height: 1.8;
+    margin-bottom: 48px;
+  }
+  .cover-meta {
+    color: #56789a;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+  .cover-badges {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+  }
+  .badge {
+    background: rgba(39, 120, 162, 0.25);
+    border: 1px solid #2778A2;
+    border-radius: 20px;
+    padding: 5px 16px;
+    color: #7ec8e3;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Sommaire ── */
+  .toc-page {
+    padding: 60px 80px;
+    page-break-after: always;
+  }
+  .toc-page h2 {
+    font-size: 28px;
+    color: #fff;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .toc-divider { width: 60px; height: 3px; background: #2778A2; border-radius: 2px; margin-bottom: 36px; }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .toc-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #162433;
+    border: 1px solid #203550;
+    border-radius: 8px;
+    padding: 14px 18px;
+    border-left: 4px solid #2778A2;
+  }
+  .toc-num {
+    font-size: 22px;
+    font-weight: 900;
+    color: #2778A2;
+    min-width: 32px;
+  }
+  .toc-label { color: #d0e4f0; font-size: 14px; font-weight: 600; }
+  .toc-sub { color: #56789a; font-size: 11px; margin-top: 2px; }
+
+  /* ── Layout principal ── */
+  .page-section {
+    padding: 56px 72px;
+    page-break-inside: avoid;
+  }
+  .page-section + .page-section {
+    border-top: 1px solid #1e3448;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+  .section-icon {
+    font-size: 40px;
+    line-height: 1;
+    min-width: 50px;
+    text-align: center;
+  }
+  .section-title-block h2 {
+    font-size: 26px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .section-title-block .subtitle {
+    color: #7ec8e3;
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .section-divider {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(to right, #2778A2, transparent);
+    margin-bottom: 28px;
+  }
+
+  /* ── Cards de fonctionnalité ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .feature-card {
+    background: #162433;
+    border: 1px solid #1e3448;
+    border-radius: 8px;
+    padding: 16px 18px;
+    border-top: 3px solid #2778A2;
+    break-inside: avoid;
+  }
+  .feature-card h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #F2BFB4;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .feature-card h3 .icon { font-size: 16px; }
+  .feature-card ul {
+    list-style: none;
+    padding: 0;
+  }
+  .feature-card ul li {
+    color: #a0b8cc;
+    font-size: 12px;
+    padding: 3px 0;
+    padding-left: 14px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .feature-card ul li::before {
+    content: "›";
+    position: absolute;
+    left: 0;
+    color: #2778A2;
+    font-weight: bold;
+  }
+
+  /* Accent colors par section */
+  .accent-green  .feature-card { border-top-color: #4CAF50; }
+  .accent-green  .feature-card h3 .icon { color: #4CAF50; }
+  .accent-orange .feature-card { border-top-color: #f0a040; }
+  .accent-orange .feature-card h3 .icon { color: #f0a040; }
+  .accent-purple .feature-card { border-top-color: #9b59b6; }
+  .accent-purple .feature-card h3 .icon { color: #9b59b6; }
+  .accent-teal   .feature-card { border-top-color: #1abc9c; }
+  .accent-teal   .feature-card h3 .icon { color: #1abc9c; }
+  .accent-red    .feature-card { border-top-color: #e74c3c; }
+  .accent-red    .feature-card h3 .icon { color: #e74c3c; }
+  .accent-yellow .feature-card { border-top-color: #f1c40f; }
+  .accent-yellow .feature-card h3 .icon { color: #f1c40f; }
+
+  /* ── Tableau architecture ── */
+  .arch-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+  .arch-table th {
+    background: #20415D;
+    color: #F2BFB4;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border: 1px solid #1e3448;
+  }
+  .arch-table td {
+    padding: 9px 14px;
+    border: 1px solid #1e3448;
+    color: #a0b8cc;
+    font-size: 12px;
+    vertical-align: top;
+  }
+  .arch-table tr:nth-child(even) td { background: #111d2b; }
+  .arch-table tr:hover td { background: #162433; }
+  .arch-table td:first-child { color: #7ec8e3; font-weight: 600; }
+  .arch-table code {
+    background: #0d1b2a;
+    color: #F2BFB4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: "Consolas", monospace;
+  }
+
+  /* ── Workflow ── */
+  .workflow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 24px 0;
+    flex-wrap: wrap;
+  }
+  .workflow-step {
+    background: #162433;
+    border: 1px solid #2778A2;
+    border-radius: 8px;
+    padding: 12px 18px;
+    text-align: center;
+    min-width: 110px;
+  }
+  .workflow-step .num {
+    font-size: 20px;
+    font-weight: 900;
+    color: #2778A2;
+    margin-bottom: 4px;
+  }
+  .workflow-step .name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .workflow-step .desc {
+    font-size: 10px;
+    color: #56789a;
+    margin-top: 3px;
+  }
+  .workflow-arrow {
+    color: #2778A2;
+    font-size: 22px;
+    margin: 0 8px;
+    font-weight: bold;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    background: #0a1520;
+    border-top: 2px solid #2778A2;
+    padding: 28px 72px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #345678;
+    font-size: 11px;
+  }
+
+  /* ── Print ── */
+  @media print {
+    body { background: #0d1b2a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { page-break-after: always; }
+    .toc-page { page-break-after: always; }
+    .page-section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     COUVERTURE
+═══════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">🌊</div>
+  <h1>KOSMOS IHM</h1>
+  <h2>Interface Homme-Machine — Campagnes vidéo sous-marines</h2>
+  <div class="cover-divider"></div>
+  <p class="cover-desc">
+    Application de bureau PyQt6 dédiée à la qualification, la validation et l'annotation
+    de campagnes vidéo sous-marines stéréo et mono. Elle couvre l'ensemble du workflow
+    opérationnel : ouverture de campagne, lecture vidéo, saisie d'événements, renseignement
+    des métadonnées, visualisation GPS et export des livrables.
+  </p>
+  <div class="cover-badges">
+    <span class="badge">PyQt6</span>
+    <span class="badge">Python 3.11+</span>
+    <span class="badge">OpenCV</span>
+    <span class="badge">Folium / Leaflet</span>
+    <span class="badge">Paramiko SFTP</span>
+    <span class="badge">Pandas</span>
+  </div>
+  <p class="cover-meta">Récapitulatif fonctionnel — Juin 2026</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SOMMAIRE
+═══════════════════════════════════════════════════════ -->
+<div class="toc-page">
+  <h2>Sommaire</h2>
+  <div class="toc-divider"></div>
+  <div class="toc-grid">
+    <div class="toc-item">
+      <div class="toc-num">1</div>
+      <div>
+        <div class="toc-label">Workflow général</div>
+        <div class="toc-sub">Architecture et enchaînement des pages</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">2</div>
+      <div>
+        <div class="toc-label">Page Accueil</div>
+        <div class="toc-sub">Ouverture de campagne</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">3</div>
+      <div>
+        <div class="toc-label">Page Qualification</div>
+        <div class="toc-sub">Arbre vidéo · Carte GPS · Trash</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">4</div>
+      <div>
+        <div class="toc-label">Page Validation</div>
+        <div class="toc-sub">Player · Télémétrie · Exploitabilité</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">5</div>
+      <div>
+        <div class="toc-label">Page Événements</div>
+        <div class="toc-sub">Annotation · Moteur · Export CSV</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">6</div>
+      <div>
+        <div class="toc-label">Page Métadonnées</div>
+        <div class="toc-sub">Formulaires JSON · Météo · Carte</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">7</div>
+      <div>
+        <div class="toc-label">Page Extraction</div>
+        <div class="toc-sub">Découpe · Capture · Export</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">8</div>
+      <div>
+        <div class="toc-label">Fonctionnalités transversales</div>
+        <div class="toc-sub">Barre statut · SFTP · Sync carte · Plein écran</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">9</div>
+      <div>
+        <div class="toc-label">Architecture technique</div>
+        <div class="toc-sub">MVC · Services · Modèles</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     1. WORKFLOW GÉNÉRAL
+═══════════════════════════════════════════════════════ -->
+<div class="page-section">
+  <div class="section-header">
+    <div class="section-icon">🔄</div>
+    <div class="section-title-block">
+      <h2>Workflow général</h2>
+      <div class="subtitle">Enchaînement des pages et déverrouillage progressif de la navigation</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+
+  <div class="workflow">
+    <div class="workflow-step">
+      <div class="num">1</div>
+      <div class="name">Accueil</div>
+      <div class="desc">Sélection dérusher<br>Ouverture dossier</div>
+    </div>
+    <div class="workflow-arrow">›</div>
+    <div class="workflow-step">
+      <div class="num">2</div>
+      <div class="name">Qualification</div>
+      <div class="desc">Revue vidéos<br>Carte GPS</div>
+    </div>
+    <div class="workflow-arrow">›</div>
+    <div class="workflow-step">
+      <div class="num">3</div>
+      <div class="name">Validation</div>
+      <div class="desc">Exploitabilité<br>Télémétrie</div>
+    </div>
+    <div class="workflow-arrow">›</div>
+    <div class="workflow-step">
+      <div class="num">4</div>
+      <div class="name">Événements</div>
+      <div class="desc">Annotation<br>Moteur</div>
+    </div>
+    <div class="workflow-arrow">›</div>
+    <div class="workflow-step">
+      <div class="num">5</div>
+      <div class="name">Métadonnées</div>
+      <div class="desc">Formulaires<br>Météo</div>
+    </div>
+    <div class="workflow-arrow">›</div>
+    <div class="workflow-step">
+      <div class="num">6</div>
+      <div class="name">Extraction</div>
+      <div class="desc">Segments<br>Captures</div>
+    </div>
+  </div>
+
+  <div class="features-grid" style="margin-top:20px;">
+    <div class="feature-card">
+      <h3><span class="icon">🔒</span> Navigation progressive</h3>
+      <ul>
+        <li>Pages Validation et Événements déverrouillées après "Finir qualification"</li>
+        <li>Extraction accessible à tout moment</li>
+        <li>Boutons workflow "Finir qualification / validation" dans la toolbar</li>
+        <li>Indicateurs visuels sur les boutons (✓ terminé)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🌐</span> Bilingue FR / EN</h3>
+      <ul>
+        <li>Drapeaux FR / EN dans la toolbar pour changer de langue à la volée</li>
+        <li>Labels, combos, boutons et dialogs traduits dynamiquement</li>
+        <li>Valeurs métadonnées dans la langue sélectionnée</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📁</span> Label campagne active</h3>
+      <ul>
+        <li>Nom de la campagne affiché dans la toolbar (parent/session)</li>
+        <li>Badge MONO / STEREO détecté automatiquement</li>
+        <li>Nom du dérusher affiché en permanence</li>
+        <li>Titre de la fenêtre mis à jour</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     2. ACCUEIL
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-green">
+  <div class="section-header">
+    <div class="section-icon">🏠</div>
+    <div class="section-title-block">
+      <h2>Page Accueil</h2>
+      <div class="subtitle">Point d'entrée — identification du dérusher et ouverture de campagne</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">👤</span> Sélection du dérusher</h3>
+      <ul>
+        <li>Saisie du nom de l'opérateur avant toute ouverture</li>
+        <li>Nom mémorisé et affiché dans la toolbar pendant toute la session</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📂</span> Ouverture de campagne</h3>
+      <ul>
+        <li>Sélection d'un dossier via l'explorateur système</li>
+        <li>Chargement automatique des vidéos MP4 présentes</li>
+        <li>Détection MONO / STEREO à l'ouverture</li>
+        <li>Déverrouillage de la navigation si des vidéos sont trouvées</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">⚙️</span> Connexion SFTP / Carte SD</h3>
+      <ul>
+        <li>Bouton "KOSMOS SD" dans la toolbar, disponible à tout moment</li>
+        <li>Connexion SSH avec IP, port, identifiants configurables</li>
+        <li>Choix libre du dossier distant (modifiable après connexion)</li>
+        <li>Listing récursif avec cases à cocher + sélection globale</li>
+        <li>Téléversement vers un dossier local avec barre de progression</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     3. QUALIFICATION
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-teal">
+  <div class="section-header">
+    <div class="section-icon">🎬</div>
+    <div class="section-title-block">
+      <h2>Page Qualification</h2>
+      <div class="subtitle">Revue des vidéos de campagne, carte GPS interactive et gestion de la corbeille</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">🌳</span> Arbre vidéo</h3>
+      <ul>
+        <li>Colonnes : nom, durée, FPS, résolution, taille, date</li>
+        <li>Filtre automatique des fichiers <code>_stereo.mp4</code></li>
+        <li>Sélection → ouverture du player détaché et focus carte</li>
+        <li>Double-clic → plein écran immédiat</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🗺️</span> Carte GPS Leaflet</h3>
+      <ul>
+        <li>Dialog QDialog flottant, indépendant de l'arbre</li>
+        <li>Marqueurs cliquables par vidéo avec popup enrichi</li>
+        <li>Popup : nom vidéo, coordonnées GPS, waypoint</li>
+        <li>Header de carte : nom campagne, ZONE, SITE</li>
+        <li>Tracé polyline GPS chronologique en bleu</li>
+        <li>Clic marqueur → sélection dans tous les arbres</li>
+        <li>Sélection arbre → pan/focus sur le marqueur</li>
+        <li>Rebuild automatique après édition des métadonnées</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🗑️</span> Gestion de la corbeille</h3>
+      <ul>
+        <li>Arbre dédié aux vidéos supprimées (<code>.trash/</code>)</li>
+        <li>Restauration ou suppression définitive depuis l'IHM</li>
+        <li>Libération du verrou Windows avant suppression</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">👁️</span> Watcher système de fichiers</h3>
+      <ul>
+        <li><code>QFileSystemWatcher</code> sur le dossier campagne</li>
+        <li>Mise à jour automatique si suppression/ajout externe</li>
+        <li>Debounce 600 ms pour éviter les rafraîchissements en cascade</li>
+        <li>Surveillance 2 niveaux max (pas les sous-dossiers .trash)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     4. VALIDATION
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-orange">
+  <div class="section-header">
+    <div class="section-icon">✅</div>
+    <div class="section-title-block">
+      <h2>Page Validation</h2>
+      <div class="subtitle">Lecture vidéo approfondie, télémétrie et saisie de l'exploitabilité</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">▶️</span> Player vidéo embarqué</h3>
+      <ul>
+        <li>Lecture Mono ou Stéréo (gauche + droite côte à côte)</li>
+        <li>Timeline interactive avec zoom molette</li>
+        <li>Raccourcis clavier actifs dès l'arrivée sur la page :<br>Espace = lecture/pause · ← → = ±5 s</li>
+        <li>Double-clic → plein écran avec overlay 3 s</li>
+        <li>Échap pour quitter le plein écran</li>
+        <li>Zoom numérique sur le flux vidéo</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📡</span> Télémétrie CSV</h3>
+      <ul>
+        <li>Chargement du CSV associé à la vidéo (<code>.csv</code>)</li>
+        <li>Bouton toggle "Télémétrie" dans la barre du player</li>
+        <li>Dialog télémétrie indépendant : tableau de données</li>
+        <li>Un seul dialog par player (pas de doublons)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">⭐</span> Exploitabilité</h3>
+      <ul>
+        <li>Combo box avec valeurs autorisées issues du JSON</li>
+        <li>Valeurs localisées selon la langue active (FR/EN)</li>
+        <li>Persistance immédiate en JSON</li>
+        <li>Indicateur visuel vert ✓ sur l'item de l'arbre</li>
+        <li>Mise à jour de la barre de statut en temps réel</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔄</span> Sync bidirectionnelle avec la carte</h3>
+      <ul>
+        <li>Clic sur une vidéo dans l'arbre → focus marqueur sur la carte</li>
+        <li>Clic sur un marqueur de la carte → sélection dans l'arbre</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     5. ÉVÉNEMENTS
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-purple">
+  <div class="section-header">
+    <div class="section-icon">📋</div>
+    <div class="section-title-block">
+      <h2>Page Événements</h2>
+      <div class="subtitle">Annotation temporelle des événements, détection moteur et export</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">✏️</span> Saisie d'événements</h3>
+      <ul>
+        <li>Création d'événements horodatés sur la timeline</li>
+        <li>Marqueurs début / fin déplaçables à la souris</li>
+        <li>Types d'événements personnalisables</li>
+        <li>Persistance JSON par vidéo</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">⚙️</span> Détection événements moteur</h3>
+      <ul>
+        <li>Lecture automatique du <code>systemEvent.csv</code></li>
+        <li>Détection des stabilisations moteur avec délai configurable (6 s)</li>
+        <li>Affichage sur la timeline avec rotation et angle</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📤</span> Export CSV</h3>
+      <ul>
+        <li>Export des événements annotés en CSV</li>
+        <li>Timestamps en frames et en secondes</li>
+        <li>Compatible avec les outils d'analyse post-campagne</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔄</span> Sync arbre ↔ carte</h3>
+      <ul>
+        <li>Clic sur une vidéo dans l'arbre → focus marqueur sur la carte</li>
+        <li>Clic sur un marqueur de la carte → sélection dans l'arbre</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     6. MÉTADONNÉES
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-yellow">
+  <div class="section-header">
+    <div class="section-icon">🏷️</div>
+    <div class="section-title-block">
+      <h2>Page Métadonnées</h2>
+      <div class="subtitle">Formulaires de saisie structurés, injection météo automatique et visualisation</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">📝</span> Formulaires dynamiques JSON</h3>
+      <ul>
+        <li>Champs générés dynamiquement depuis la structure JSON de la campagne</li>
+        <li>Types : texte libre, listes déroulantes, dates, coordonnées</li>
+        <li>Sauvegarde automatique avec debounce 800 ms après saisie</li>
+        <li>Sauvegarde forcée lors du changement de vidéo</li>
+        <li>Champs : survey_name, ZONE, SITE, GPS Waypoint, profondeur, etc.</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🌤️</span> Injection météo automatique</h3>
+      <ul>
+        <li>Appel API météo au chargement de la campagne</li>
+        <li>Pré-remplissage des champs météo (vent, temp, état de mer…)</li>
+        <li>Basé sur les coordonnées GPS de la campagne</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🖼️</span> Vignette vidéo</h3>
+      <ul>
+        <li>Extraction d'une frame à la position choisie</li>
+        <li>Affichage dans le panneau métadonnées</li>
+        <li>Traitement d'image (débrumage, égalisation histogramme)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🗺️</span> Sync carte en temps réel</h3>
+      <ul>
+        <li>Modification du GPS Waypoint → rebuild automatique de la carte</li>
+        <li>Sélection d'une vidéo → focus sur son marqueur</li>
+        <li>Ouverture automatique du player détaché à la sélection</li>
+        <li>Clic marqueur → sélection dans l'arbre</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🌍</span> Métadonnées globales campagne</h3>
+      <ul>
+        <li>Champs partagés pour toutes les vidéos (survey_name, zone, site…)</li>
+        <li>Propagation vers le header de la carte Leaflet</li>
+        <li>Synchronisation entre pages</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     7. EXTRACTION
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-red">
+  <div class="section-header">
+    <div class="section-icon">✂️</div>
+    <div class="section-title-block">
+      <h2>Page Extraction</h2>
+      <div class="subtitle">Découpe vidéo, capture d'image et gestion des livrables</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">📐</span> Découpe de segments</h3>
+      <ul>
+        <li>Marqueurs début/fin déplaçables sur la timeline</li>
+        <li>Saisie manuelle des timecodes (hh:mm:ss)</li>
+        <li>Affichage de la durée du segment en temps réel</li>
+        <li>Export du segment en MP4 (worker thread, barre de progression)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📸</span> Capture d'image</h3>
+      <ul>
+        <li>Capture de la frame courante (mono ou stéréo L/R séparés)</li>
+        <li>Options de traitement : débrumage, égalisation histogramme</li>
+        <li>Dialog de prévisualisation avant sauvegarde</li>
+        <li>Sauvegarde dans le dossier de la campagne</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📦</span> Arbre des livrables</h3>
+      <ul>
+        <li>Liste des segments et captures produits</li>
+        <li>Colonnes : nom, taille, type</li>
+        <li>Icônes de prévisualisation pour les captures</li>
+        <li>Synchronisation avec le système de fichiers</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔄</span> Sync arbre ↔ carte</h3>
+      <ul>
+        <li>Clic sur une vidéo dans l'arbre → focus marqueur sur la carte</li>
+        <li>Clic sur un marqueur de la carte → sélection dans l'arbre</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     8. FONCTIONNALITÉS TRANSVERSALES
+═══════════════════════════════════════════════════════ -->
+<div class="page-section">
+  <div class="section-header">
+    <div class="section-icon">⚡</div>
+    <div class="section-title-block">
+      <h2>Fonctionnalités transversales</h2>
+      <div class="subtitle">Disponibles sur toutes les pages — ergonomie, observabilité et connectivité</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">📊</span> Barre de statut campagne</h3>
+      <ul>
+        <li>Nombre total de vidéos chargées</li>
+        <li>Durée totale de la campagne (hh mm ss)</li>
+        <li>Compteur de vidéos validées (X/N · %)</li>
+        <li>Couleur adaptative : vert 100 % · jaune en cours · gris vide</li>
+        <li>Mise à jour en temps réel à chaque changement d'exploitabilité</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🖥️</span> Plein écran vidéo</h3>
+      <ul>
+        <li>Double-clic sur le player pour passer en plein écran</li>
+        <li>Fenêtre dédiée avec affichage stéréo ou mono</li>
+        <li>Overlay "Appuyez sur Échap" affiché 3 s</li>
+        <li>Double-clic ou Échap pour quitter</li>
+        <li>Sortie automatique au changement de vidéo</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🗺️</span> Synchronisation carte ↔ arbres</h3>
+      <ul>
+        <li>Clique dans n'importe quel arbre → focus sur le marqueur Leaflet</li>
+        <li>Clique sur un marqueur Leaflet → sélection dans tous les arbres</li>
+        <li>Fonctionne sur les 4 pages : Qualification, Validation, Événements, Extraction</li>
+        <li>Pan automatique de la carte sur la vidéo focalisée</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">⌨️</span> Raccourcis clavier</h3>
+      <ul>
+        <li><code>Espace</code> — lecture / pause</li>
+        <li><code>←</code> / <code>→</code> — reculer / avancer de 5 s</li>
+        <li><code>Échap</code> — quitter le plein écran</li>
+        <li>Actifs dès l'arrivée sur la page, sans clic préalable</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔭</span> Watcher de fichiers</h3>
+      <ul>
+        <li>Détection automatique des suppressions/ajouts externes</li>
+        <li>Tous les arbres mis à jour sans redémarrer l'application</li>
+        <li>Debounce 600 ms pour éviter les rafraîchissements multiples</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📡</span> SFTP / Carte SD KOSMOS</h3>
+      <ul>
+        <li>Connexion SSH (Paramiko) avec IP/port/user/mot de passe</li>
+        <li>Dossier distant librement configurable (même après connexion)</li>
+        <li>Bouton "Actualiser" pour changer de dossier sans se reconnecter</li>
+        <li>Listing récursif avec cases à cocher hiérarchiques</li>
+        <li>Téléversement multi-fichiers avec progression et annulation</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     9. ARCHITECTURE TECHNIQUE
+═══════════════════════════════════════════════════════ -->
+<div class="page-section">
+  <div class="section-header">
+    <div class="section-icon">🏗️</div>
+    <div class="section-title-block">
+      <h2>Architecture technique</h2>
+      <div class="subtitle">Pattern MVC — séparation Modèles / Vues / Contrôleurs / Services</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+
+  <table class="arch-table">
+    <thead>
+      <tr>
+        <th>Couche</th>
+        <th>Fichiers principaux</th>
+        <th>Responsabilité</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Controllers</td>
+        <td><code>app_controller.py</code><br><code>qualif_controller.py</code><br><code>validation_controller.py</code><br><code>evenements_controller.py</code><br><code>metadonnees_controller.py</code><br><code>extraction_controller.py</code></td>
+        <td>Orchestration signaux/slots, workflow, callbacks cross-page, navigation</td>
+      </tr>
+      <tr>
+        <td>Views</td>
+        <td><code>main_window.py</code><br><code>embedded_player.py</code><br><code>timeline_widget.py</code><br><code>map_dialog.py</code><br><code>telemetry_dialog.py</code><br><code>sftp_dialog.py</code></td>
+        <td>Widgets PyQt6, layouts, styles, signaux UI — aucune logique métier</td>
+      </tr>
+      <tr>
+        <td>Models</td>
+        <td><code>video_model.py</code><br><code>VideoFilterProxyModel</code></td>
+        <td>QStandardItemModel vidéos, modèle trash, proxy de filtrage stéréo</td>
+      </tr>
+      <tr>
+        <td>Services</td>
+        <td><code>campaign_service.py</code><br><code>video_service.py</code><br><code>sftp_service.py</code><br><code>export_service.py</code><br><code>motor_service.py</code><br><code>weather_service.py</code><br><code>image_service.py</code></td>
+        <td>I/O fichiers, workers QThread, API météo, SFTP Paramiko, OpenCV</td>
+      </tr>
+      <tr>
+        <td>Communication JS↔Python</td>
+        <td><code>map_bridge.py</code><br><code>QWebChannel</code></td>
+        <td>Signal <code>videoSelected</code> de Leaflet JS vers tous les controllers</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="features-grid" style="margin-top: 20px;">
+    <div class="feature-card">
+      <h3><span class="icon">🔗</span> Callbacks cross-controller</h3>
+      <ul>
+        <li><code>on_video_focused(name)</code> — arbre → carte (toutes pages)</li>
+        <li><code>on_metadata_saved()</code> — rebuild carte si visible</li>
+        <li><code>on_video_selected(name, path)</code> — métadonnées → player + carte</li>
+        <li><code>on_qualification_changed()</code> — mise à jour barre de statut</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🧵</span> Workers QThread</h3>
+      <ul>
+        <li><code>SftpConnectWorker</code> — listing SFTP asynchrone</li>
+        <li><code>SftpDownloadWorker</code> — transfert fichiers par fichier</li>
+        <li><code>WeatherWorker</code> — appel API météo</li>
+        <li><code>ExportWorker</code> — export vidéo OpenCV</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">⏱️</span> Debounce QTimer</h3>
+      <ul>
+        <li>600 ms — watcher système de fichiers</li>
+        <li>800 ms — sauvegarde métadonnées après frappe</li>
+        <li>80 ms — focus JS sur la carte après show()</li>
+        <li>0 ms (singleShot) — focus player après switch de page</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     FOOTER
+═══════════════════════════════════════════════════════ -->
+<div class="footer">
+  <span>KOSMOS IHM — Récapitulatif fonctionnel</span>
+  <span>Architecture PyQt6 MVC · Python 3.11+ · Juin 2026</span>
+  <span>leo.bultel@imt-atlantique.fr</span>
+</div>
+
+</body>
+</html>

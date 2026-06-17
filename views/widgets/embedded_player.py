@@ -140,8 +140,15 @@ class _VideoLabel(QtWidgets.QWidget):
             crop_h = ih / self._zoom
             x0 = max(0.0, min(self._zoom_cx * iw - crop_w / 2, iw - crop_w))
             y0 = max(0.0, min(self._zoom_cy * ih - crop_h / 2, ih - crop_h))
-            cx = (x0 + (mx / ww) * crop_w) / iw if ww > 0 else 0.5
-            cy = (y0 + (my / wh) * crop_h) / ih if wh > 0 else 0.5
+            # Le crop est affiché avec letterboxing → même calcul que zoom <= 1
+            dst = QtCore.QSizeF(crop_w, crop_h).scaled(
+                QtCore.QSizeF(ww, wh), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+            off_x = (ww - dst.width()) / 2
+            off_y = (wh - dst.height()) / 2
+            rel_x = (mx - off_x) / dst.width() if dst.width() > 0 else 0.5
+            rel_y = (my - off_y) / dst.height() if dst.height() > 0 else 0.5
+            cx = (x0 + rel_x * crop_w) / iw
+            cy = (y0 + rel_y * crop_h) / ih
         self._zoom = new_zoom
         self._zoom_cx = max(0.0, min(cx, 1.0))
         self._zoom_cy = max(0.0, min(cy, 1.0))
@@ -163,8 +170,16 @@ class _VideoLabel(QtWidgets.QWidget):
                 crop_h = max(1, int(ih / self._zoom))
                 x0 = int(max(0, min(self._zoom_cx * iw - crop_w / 2, iw - crop_w)))
                 y0 = int(max(0, min(self._zoom_cy * ih - crop_h / 2, ih - crop_h)))
-                painter.drawImage(self.rect(), self._image,
-                                  QtCore.QRect(x0, y0, crop_w, crop_h))
+                # Maintien du ratio : letterboxing identique au mode non-zoomé
+                dst = QtCore.QSize(crop_w, crop_h).scaled(
+                    self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                dx = (self.width() - dst.width()) // 2
+                dy = (self.height() - dst.height()) // 2
+                painter.drawImage(
+                    QtCore.QRect(dx, dy, dst.width(), dst.height()),
+                    self._image,
+                    QtCore.QRect(x0, y0, crop_w, crop_h),
+                )
 
 
 class EmbeddedVideoPlayer(QtWidgets.QWidget):

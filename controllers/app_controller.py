@@ -97,6 +97,9 @@ class AppController:
         window.btn_lang_fr.clicked.connect(lambda: self.set_language("fr"))
         window.btn_lang_en.clicked.connect(lambda: self.set_language("en"))
 
+        if hasattr(window, 'btn_open_video'):
+            window.btn_open_video.clicked.connect(self._open_single_video)
+
         if hasattr(window, 'btn_sftp'):
             window.btn_sftp.clicked.connect(self._open_sftp_dialog)
 
@@ -142,6 +145,20 @@ class AppController:
             self.qualif_ctrl.update_minimap(self.qualif_ctrl.selected_video_name)
         else:
             self.qualif_ctrl.map_initialized = False
+
+    def _open_single_video(self):
+        """Ouvre un fichier MP4 standalone dans un player complet, sans campagne."""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.window,
+            "Ouvrir une vidéo",
+            "",
+            "Vidéos MP4 (*.mp4);;Tous les fichiers (*)",
+        )
+        if not path:
+            return
+        from views.dialogs.quick_video_dialog import QuickVideoDialog
+        dlg = QuickVideoDialog(path, parent=self.window)
+        dlg.show()
 
     def _open_sftp_dialog(self):
         """Ouvre le dialog de connexion SFTP / téléversement carte SD."""

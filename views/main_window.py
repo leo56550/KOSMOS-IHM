@@ -112,6 +112,12 @@ class MainWindow(QtWidgets.QMainWindow):
             buttons_layout.addWidget(button)
             action.setData(button)
 
+        self.btn_open_video = QtWidgets.QToolButton()
+        self.btn_open_video.setText("Ouvrir vidéo")
+        self.btn_open_video.setToolTip("Ouvrir un fichier MP4 sans charger de campagne")
+        self.btn_open_video.setObjectName("btn_open_video")
+        buttons_layout.addWidget(self.btn_open_video)
+
         self.btn_sftp = QtWidgets.QToolButton()
         self.btn_sftp.setText("KOSMOS SD")
         self.btn_sftp.setToolTip("Connexion SFTP — téléverser la carte SD")
