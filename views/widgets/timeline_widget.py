@@ -41,7 +41,7 @@ class VideoTimeline(QtWidgets.QWidget):
 
         self.rects_evenements = {}
 
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(160)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
@@ -120,118 +120,147 @@ class VideoTimeline(QtWidgets.QWidget):
                     "zone": landing.get("zone", 0)
                 })
 
+    # ── Constantes visuelles ──────────────────────────────────────────────────
+    RULER_H        = 26
+    C_BG           = "#0d1b2a"
+    C_RULER_BG     = "#0a1520"
+    C_RULER_BORDER = "#2778A2"
+    C_RULER_TICK   = "#2a4a62"
+    C_RULER_TEXT   = "#7ec8e3"
+    C_GRID         = (39, 100, 140, 45)   # RGBA
+    C_PLAYHEAD     = "#00d4ff"
+    C_MOTOR        = "#f0c040"
+    C_MOTOR360     = "#ff5555"
+    C_MARKER_IN    = "#2ecc71"
+    C_MARKER_OUT   = "#e74c3c"
+
+    # Per-zone: (zone_bg, event_fill_top, event_fill_bot, event_border)
+    ZONE_STYLES = [
+        (QtGui.QColor(16, 36, 52, 200),  QtGui.QColor(36, 80, 120),  QtGui.QColor(20, 55, 90),  QtGui.QColor("#2778A2")),
+        (QtGui.QColor(20, 44, 68, 200),  QtGui.QColor(30, 100, 155), QtGui.QColor(20, 70, 115), QtGui.QColor("#3498db")),
+        (QtGui.QColor(48, 14, 18, 200),  QtGui.QColor(130, 40, 35),  QtGui.QColor(90, 25, 20),  QtGui.QColor("#D94F38")),
+    ]
+
     def paintEvent(self, event):
-        """Dessine les zones, segments, événements, curseur de lecture et marqueurs d'export."""
+        """Dessine la timeline : règle temporelle, zones, événements, playhead et marqueurs."""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
         self.calculate_segments()
 
+        RH = self.RULER_H
         width = self.min_zoomed_width()
-        total_height = self.height()
+        H = self.height()
         total_duration = self.total_duration if self.total_duration > 0 else 1
 
-        painter.fillRect(0, 0, width, total_height, QtGui.QColor("#141414"))
+        # ── Fond général ────────────────────────────────────────────────────
+        painter.fillRect(0, RH, width, H - RH, QtGui.QColor(self.C_BG))
 
-        track_height = 24
-        zone_definitions = self.zone_definitions or []
+        # ── Zones ───────────────────────────────────────────────────────────
+        track_height = 22
+        zone_defs = self.zone_definitions or []
+        zone_top_margin = RH + 2
 
-        if not zone_definitions:
-            zone_count = 1
-            zone_spacing = 0
-            zone_top_margin = 10
-            zone_height = max(30, total_height - 2 * zone_top_margin)
+        if not zone_defs:
+            zone_count, zone_spacing = 1, 0
+            zone_height = max(28, H - zone_top_margin - 2)
             zone_rows = {0: []}
         else:
-            zone_count = len(zone_definitions)
-            zone_spacing = 10
-            zone_top_margin = 10
-            zone_height = max(50, (total_height - zone_top_margin - (zone_count - 1) * zone_spacing) // zone_count)
+            zone_count = len(zone_defs)
+            zone_spacing = 3
+            zone_height = max(38, (H - zone_top_margin - (zone_count - 1) * zone_spacing - 2) // zone_count)
             zone_rows = {i: [] for i in range(zone_count)}
 
-            for zone_index, zone in enumerate(zone_definitions):
-                y_zone = zone_top_margin + zone_index * (zone_height + zone_spacing)
-                painter.fillRect(0, y_zone, width, zone_height, zone["color"])
-                painter.setPen(QtGui.QPen(QtGui.QColor("#3d3d3d"), 1))
-                painter.drawLine(0, y_zone, width, y_zone)
-                painter.drawLine(0, y_zone + zone_height, width, y_zone + zone_height)
-                painter.setPen(QtGui.QColor("white"))
-                font_zone = painter.font()
-                font_zone.setPointSize(9)
-                painter.setFont(font_zone)
-                painter.drawText(8, y_zone + 16, zone["label"])
+        for zi in range(zone_count):
+            y_z = zone_top_margin + zi * (zone_height + zone_spacing)
+            style = self.ZONE_STYLES[zi] if zi < len(self.ZONE_STYLES) else self.ZONE_STYLES[-1]
+            zone_bg = style[0]
 
+            painter.fillRect(0, y_z, width, zone_height, zone_bg)
+
+            # Barre colorée gauche + label
+            if zone_defs and zi < len(zone_defs):
+                bar_color = zone_defs[zi].get("color", QtGui.QColor("#2778A2"))
+                painter.fillRect(0, y_z, 3, zone_height, bar_color)
+                lbl = zone_defs[zi].get("label", "").upper()
+                f_lbl = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
+                painter.setFont(f_lbl)
+                painter.setPen(QtGui.QColor(255, 255, 255, 55))
+                painter.drawText(7, y_z + 13, lbl)
+
+            # Séparateur bas de zone
+            painter.setPen(QtGui.QPen(QtGui.QColor("#162433"), 1))
+            painter.drawLine(0, y_z + zone_height, width, y_z + zone_height)
+
+        # ── Grille temporelle (vertical, fond) ───────────────────────────────
+        tick_ms = self._get_tick_interval(width, total_duration)
+        if tick_ms > 0:
+            grid_pen = QtGui.QPen(QtGui.QColor(*self.C_GRID), 1)
+            painter.setPen(grid_pen)
+            t = tick_ms
+            while t < total_duration:
+                x = self._clamp_int((t / total_duration) * width)
+                painter.drawLine(x, RH, x, H)
+                t += tick_ms
+
+        # ── Segments (atterrissage→décollage) ────────────────────────────────
         self.rects_evenements.clear()
 
-        for segment in self.segments:
-            start_ms = segment.get("start", 0)
-            end_ms = segment.get("end", 0)
-            x_start = self._clamp_int((start_ms / total_duration) * width)
-            x_end = self._clamp_int((end_ms / total_duration) * width)
-            zone_index = max(0, min(segment.get("zone", 0), zone_count - 1))
-            y_zone = zone_top_margin + zone_index * (zone_height + zone_spacing)
-            segment_rect = QtCore.QRect(x_start, y_zone, max(1, x_end - x_start), zone_height)
-            painter.fillRect(segment_rect, QtGui.QColor(100, 200, 255, 60))
-            painter.setPen(QtGui.QPen(QtGui.QColor(100, 200, 255, 150), 1))
-            painter.drawRect(segment_rect)
+        for seg in self.segments:
+            xs = self._clamp_int((seg.get("start", 0) / total_duration) * width)
+            xe = self._clamp_int((seg.get("end", 0) / total_duration) * width)
+            zi = max(0, min(seg.get("zone", 0), zone_count - 1))
+            y_z = zone_top_margin + zi * (zone_height + zone_spacing)
+            painter.fillRect(xs, y_z, max(1, xe - xs), zone_height, QtGui.QColor(80, 180, 255, 22))
+            painter.setPen(QtGui.QPen(QtGui.QColor(80, 180, 255, 60), 1))
+            painter.drawRect(xs, y_z, max(1, xe - xs), zone_height)
 
+        # ── Événements ──────────────────────────────────────────────────────
         for idx, evt in enumerate(self.events):
             start_ms = evt.get("start", 0)
-            end_ms = evt.get("end", 0)
-            title = evt.get("title", "")
+            end_ms   = evt.get("end", 0)
+            title    = evt.get("title", "")
             evt_type = evt.get("type", "")
-
-            x_start = self._clamp_int((start_ms / total_duration) * width)
+            x_start  = self._clamp_int((start_ms / total_duration) * width)
 
             if evt_type != "custom_event":
-                is_rotation_360 = "360" in evt_type.lower()
-                color = "#ff3b30" if is_rotation_360 else "white"
-                line_width = 2.5 if is_rotation_360 else 1.5
-                dash_pen = QtGui.QPen(QtGui.QColor(color), line_width)
+                is_360 = "360" in str(evt_type).lower()
+                c_line = QtGui.QColor(self.C_MOTOR360 if is_360 else self.C_MOTOR)
+                dash_pen = QtGui.QPen(c_line, 1.5 if is_360 else 1)
                 dash_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
                 painter.setPen(dash_pen)
-                painter.drawLine(self._clamp_int(x_start), 0, self._clamp_int(x_start), total_height)
+                painter.drawLine(x_start, RH, x_start, H)
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.setBrush(c_line)
+                painter.drawEllipse(QtCore.QPoint(x_start, RH + 5), 3, 3)
                 continue
 
-            x_end = self._clamp_int((end_ms / total_duration) * width)
+            x_end      = self._clamp_int((end_ms / total_duration) * width)
             rect_width = self._clamp_int(max(x_end - x_start, 8))
-            txt_start = self._format_ms(start_ms)
-            txt_end = self._format_ms(end_ms)
+            zi = max(0, min(evt.get("zone", 0), zone_count - 1))
+            y_z = zone_top_margin + zi * (zone_height + zone_spacing)
+            style = self.ZONE_STYLES[zi] if zi < len(self.ZONE_STYLES) else self.ZONE_STYLES[-1]
 
-            zone_index = max(0, min(evt.get("zone", 0), zone_count - 1))
-            y_zone = zone_top_margin + zone_index * (zone_height + zone_spacing)
-
+            # Placement multi-lignes anti-overlap
             row_index = 0
-            while row_index < len(zone_rows[zone_index]):
-                overlap = False
-                for interval in zone_rows[zone_index][row_index]:
-                    if not (x_end <= interval[0] or x_start >= interval[1]):
-                        overlap = True
-                        break
+            while row_index < len(zone_rows[zi]):
+                overlap = any(
+                    not (x_end <= iv[0] or x_start >= iv[1])
+                    for iv in zone_rows[zi][row_index]
+                )
                 if not overlap:
                     break
                 row_index += 1
+            if row_index >= len(zone_rows[zi]):
+                zone_rows[zi].append([])
+            zone_rows[zi][row_index].append((x_start, x_end))
 
-            if row_index >= len(zone_rows[zone_index]):
-                zone_rows[zone_index].append([])
-            zone_rows[zone_index][row_index].append((x_start, x_end))
+            y_pos = y_z + 6 + row_index * (track_height + 3)
+            if y_pos + track_height > y_z + zone_height - 3:
+                y_pos = y_z + 6
 
-            y_position = y_zone + 10 + row_index * (track_height + 4)
-            if y_position + track_height > y_zone + zone_height - 5:
-                y_position = y_zone + 10
-
-            rect_box = QtCore.QRect(self._clamp_int(x_start), y_position, rect_width, track_height)
+            rect_box = QtCore.QRect(self._clamp_int(x_start), y_pos, rect_width, track_height)
             self.rects_evenements[idx] = (evt, rect_box)
-
-            if zone_index == 0:
-                bg_color = QtGui.QColor("#20415D")
-                border_color = QtGui.QColor("#20415D")
-            elif zone_index == 1:
-                bg_color = QtGui.QColor("#2778A2")
-                border_color = QtGui.QColor("#2778A2")
-            else:
-                bg_color = QtGui.QColor("#D94F38")
-                border_color = QtGui.QColor("#D94F38")
 
             is_selected = (
                 self.selected_event_dict is not None
@@ -239,69 +268,173 @@ class VideoTimeline(QtWidgets.QWidget):
                 and evt.get("start") == self.selected_event_dict.get("start")
             )
 
-            rect_path = QtGui.QPainterPath()
-            rect_path.addRoundedRect(QtCore.QRectF(rect_box), 4, 4)
-            painter.fillPath(rect_path, bg_color)
-            painter.setPen(QtGui.QPen(QtGui.QColor("#ffffff") if is_selected else border_color, 3 if is_selected else 1))
-            painter.drawPath(rect_path)
+            _, fill_top, fill_bot, border_col = style
 
-            if rect_width > 15 and zone_index != 2:
-                painter.setPen(QtGui.QColor(255, 255, 255, 100))
-                painter.drawLine(x_start + 2, y_position + 6, x_start + 2, y_position + track_height - 6)
-                painter.drawLine(x_end - 2, y_position + 6, x_end - 2, y_position + track_height - 6)
+            # Gradient vertical
+            grad = QtGui.QLinearGradient(
+                QtCore.QPointF(rect_box.left(), rect_box.top()),
+                QtCore.QPointF(rect_box.left(), rect_box.bottom())
+            )
+            grad.setColorAt(0.0, fill_top)
+            grad.setColorAt(1.0, fill_bot)
 
-            font = painter.font()
-            font.setPointSize(8)
-            painter.setFont(font)
+            path = QtGui.QPainterPath()
+            path.addRoundedRect(QtCore.QRectF(rect_box), 3, 3)
+            painter.fillPath(path, grad)
 
+            if is_selected:
+                glow = QtGui.QPen(QtGui.QColor(self.C_PLAYHEAD), 1.5)
+                painter.setPen(glow)
+            else:
+                painter.setPen(QtGui.QPen(border_col, 1))
+            painter.drawPath(path)
+
+            # Handles resize
+            if rect_width > 12:
+                hc = QtGui.QColor(255, 255, 255, 60)
+                painter.setPen(hc)
+                for hx in (x_start + 3, x_end - 3):
+                    painter.drawLine(hx, y_pos + 4, hx, y_pos + track_height - 4)
+
+            # Label
+            f_evt = QtGui.QFont("Segoe UI", 8)
+            painter.setFont(f_evt)
+            txt_color = QtGui.QColor(220, 238, 255) if not is_selected else QtGui.QColor("#00d4ff")
+            painter.setPen(txt_color)
             if rect_width > 70:
-                full_text = f"[{txt_start}] {title} [{txt_end}]"
-                painter.setPen(QtGui.QColor("white"))
-                displayed_text = painter.fontMetrics().elidedText(full_text, QtCore.Qt.TextElideMode.ElideRight, rect_width - 10)
-                painter.drawText(QtCore.QRect(x_start + 5, y_position, rect_width - 10, track_height),
-                                 QtCore.Qt.AlignmentFlag.AlignCenter, displayed_text)
-            elif rect_width > 35:
-                painter.setPen(QtGui.QColor("white"))
-                displayed_text = painter.fontMetrics().elidedText(title, QtCore.Qt.TextElideMode.ElideRight, rect_width - 6)
-                painter.drawText(QtCore.QRect(x_start + 3, y_position, rect_width - 6, track_height),
-                                 QtCore.Qt.AlignmentFlag.AlignCenter, displayed_text)
+                ts = self._format_ms(start_ms)
+                te = self._format_ms(end_ms)
+                full = f"{ts}  {title}  {te}"
+                shown = painter.fontMetrics().elidedText(full, QtCore.Qt.TextElideMode.ElideRight, rect_width - 10)
+                painter.drawText(
+                    QtCore.QRect(x_start + 5, y_pos, rect_width - 10, track_height),
+                    QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft, shown
+                )
+            elif rect_width > 28:
+                shown = painter.fontMetrics().elidedText(title, QtCore.Qt.TextElideMode.ElideRight, rect_width - 6)
+                painter.drawText(
+                    QtCore.QRect(x_start + 3, y_pos, rect_width - 6, track_height),
+                    QtCore.Qt.AlignmentFlag.AlignCenter, shown
+                )
 
-        x_cursor = self._clamp_int((self.current_pos / total_duration) * width)
-        painter.setPen(QtGui.QPen(QtGui.QColor("#0816b0"), 2))
-        painter.drawLine(x_cursor, 0, x_cursor, total_height)
+        # ── Règle temporelle (dessinée en dernier pour être au-dessus) ───────
+        self._draw_ruler(painter, width, RH, total_duration)
 
-        current_timestamp = self._format_ms(self.current_pos)
-        chrono_font = painter.font()
-        chrono_font.setPointSize(9)
-        chrono_font.setBold(True)
-        painter.setFont(chrono_font)
-        painter.setPen(QtGui.QColor("#ff3b30"))
-        txt_width = painter.fontMetrics().horizontalAdvance(current_timestamp)
-        x_text = max(5, min(x_cursor - (txt_width // 2), width - txt_width - 5))
-        painter.drawText(x_text, 15, current_timestamp)
-        painter.setBrush(QtGui.QColor("#ff3b30"))
+        # ── Playhead ────────────────────────────────────────────────────────
+        x_cur = self._clamp_int((self.current_pos / total_duration) * width)
+
+        # Ligne verticale
+        painter.setPen(QtGui.QPen(QtGui.QColor(self.C_PLAYHEAD), 1.5))
+        painter.drawLine(x_cur, RH, x_cur, H)
+
+        # Triangle dans la règle
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-        painter.drawEllipse(QtCore.QPoint(self._clamp_int(x_cursor), 18), 4, 4)
+        painter.setBrush(QtGui.QColor(self.C_PLAYHEAD))
+        tri = [
+            QtCore.QPoint(x_cur,     RH + 1),
+            QtCore.QPoint(x_cur - 5, RH - 7),
+            QtCore.QPoint(x_cur + 5, RH - 7),
+        ]
+        painter.drawPolygon(tri)
 
-        if self.start_marker_ms > 0 or self.end_marker_ms > 0:
-            if self.start_marker_ms > 0:
-                x_sm = self._clamp_int((self.start_marker_ms / total_duration) * width)
-                painter.setPen(QtGui.QPen(QtGui.QColor("#27ae60"), 3))
-                painter.drawLine(x_sm, 0, x_sm, total_height)
-                painter.setBrush(QtGui.QColor("#27ae60"))
-                painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.drawPolygon([QtCore.QPoint(x_sm, 8), QtCore.QPoint(x_sm - 5, 0), QtCore.QPoint(x_sm + 5, 0)])
-            if self.end_marker_ms > 0:
-                x_em = self._clamp_int((self.end_marker_ms / total_duration) * width)
-                painter.setPen(QtGui.QPen(QtGui.QColor("#e74c3c"), 3))
-                painter.drawLine(x_em, 0, x_em, total_height)
-                painter.setBrush(QtGui.QColor("#e74c3c"))
-                painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.drawPolygon([QtCore.QPoint(x_em, total_height - 8),
-                                     QtCore.QPoint(x_em - 5, total_height),
-                                     QtCore.QPoint(x_em + 5, total_height)])
+        # Badge temps dans la règle
+        time_str = self._format_ms(self.current_pos)
+        f_badge = QtGui.QFont("Segoe UI", 8, QtGui.QFont.Weight.Bold)
+        painter.setFont(f_badge)
+        fm = painter.fontMetrics()
+        bw = fm.horizontalAdvance(time_str) + 10
+        bh = 15
+        bx = max(1, min(x_cur - bw // 2, width - bw - 1))
+        by = (RH - bh) // 2 - 1
+        badge_path = QtGui.QPainterPath()
+        badge_path.addRoundedRect(QtCore.QRectF(bx, by, bw, bh), 3, 3)
+        painter.fillPath(badge_path, QtGui.QColor(self.C_PLAYHEAD))
+        painter.setPen(QtGui.QColor("#001c28"))
+        painter.drawText(QtCore.QRect(bx, by, bw, bh), QtCore.Qt.AlignmentFlag.AlignCenter, time_str)
+
+        # ── Marqueurs In / Out ───────────────────────────────────────────────
+        if self.start_marker_ms > 0:
+            xm = self._clamp_int((self.start_marker_ms / total_duration) * width)
+            painter.setPen(QtGui.QPen(QtGui.QColor(self.C_MARKER_IN), 1.5))
+            painter.drawLine(xm, RH, xm, H)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(self.C_MARKER_IN))
+            painter.drawPolygon([
+                QtCore.QPoint(xm,     RH),
+                QtCore.QPoint(xm,     RH + 10),
+                QtCore.QPoint(xm + 8, RH),
+            ])
+
+        if self.end_marker_ms > 0:
+            xm = self._clamp_int((self.end_marker_ms / total_duration) * width)
+            painter.setPen(QtGui.QPen(QtGui.QColor(self.C_MARKER_OUT), 1.5))
+            painter.drawLine(xm, RH, xm, H)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(self.C_MARKER_OUT))
+            painter.drawPolygon([
+                QtCore.QPoint(xm,     RH),
+                QtCore.QPoint(xm,     RH + 10),
+                QtCore.QPoint(xm - 8, RH),
+            ])
 
         painter.end()
+
+    # ── Helpers visuels ───────────────────────────────────────────────────────
+
+    def _get_tick_interval(self, width: int, total_duration: int) -> int:
+        """Retourne l'intervalle entre ticks mineurs (ms) pour ~50px d'espacement."""
+        if total_duration <= 0 or width <= 0:
+            return 0
+        ms_per_px = total_duration / width
+        raw = 50 * ms_per_px
+        for step in (200, 500, 1_000, 2_000, 5_000, 10_000, 15_000, 30_000,
+                     60_000, 120_000, 300_000, 600_000, 1_800_000, 3_600_000):
+            if step >= raw:
+                return step
+        return 3_600_000
+
+    def _draw_ruler(self, painter: QtGui.QPainter, width: int, ruler_h: int, total_duration: int):
+        """Dessine la règle temporelle avec ticks majeurs/mineurs et labels adaptatifs."""
+        # Fond règle
+        painter.fillRect(0, 0, width, ruler_h, QtGui.QColor(self.C_RULER_BG))
+        # Bordure bas
+        painter.setPen(QtGui.QPen(QtGui.QColor(self.C_RULER_BORDER), 1))
+        painter.drawLine(0, ruler_h - 1, width, ruler_h - 1)
+
+        if total_duration <= 0:
+            return
+
+        tick_ms = self._get_tick_interval(width, total_duration)
+        if tick_ms <= 0:
+            return
+
+        px_per_tick = (tick_ms / total_duration) * width
+        # Affiche un label tous les N ticks pour que les labels soient espacés d'~80px
+        label_every = max(1, int(80 / max(px_per_tick, 1)))
+
+        f_tick = QtGui.QFont("Segoe UI", 7)
+        painter.setFont(f_tick)
+        fm = painter.fontMetrics()
+
+        t, n = 0, 0
+        while t <= total_duration:
+            x = self._clamp_int((t / total_duration) * width)
+            is_major = (n % label_every == 0)
+
+            if is_major:
+                painter.setPen(QtGui.QPen(QtGui.QColor(self.C_RULER_BORDER), 1))
+                painter.drawLine(x, ruler_h - 12, x, ruler_h - 1)
+                label = self._format_ms(t)
+                lw = fm.horizontalAdvance(label)
+                lx = max(2, min(x - lw // 2, width - lw - 2))
+                painter.setPen(QtGui.QColor(self.C_RULER_TEXT))
+                painter.drawText(lx, ruler_h - 14, label)
+            else:
+                painter.setPen(QtGui.QPen(QtGui.QColor(self.C_RULER_TICK), 1))
+                painter.drawLine(x, ruler_h - 5, x, ruler_h - 1)
+
+            t += tick_ms
+            n += 1
 
     def mousePressEvent(self, event):
         """Démarre un drag timeline, un redimensionnement ou un déplacement d'événement selon la position."""
