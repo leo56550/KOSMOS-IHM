@@ -21,6 +21,42 @@ from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
 
+class _HistWorker(QtCore.QThread):
+    """Extrait la frame courante et calcule les histogrammes R/G/B hors du thread principal."""
+
+    result_ready = QtCore.pyqtSignal(object, int, str)  # (hists dict, mean_luma, dominant)
+
+    def __init__(self, video_path: str, position_ms: int, parent=None):
+        super().__init__(parent)
+        self._path = video_path
+        self._pos_ms = position_ms
+
+    def run(self):
+        cap = cv2.VideoCapture(self._path)
+        if not cap.isOpened():
+            return
+        cap.set(cv2.CAP_PROP_POS_MSEC, self._pos_ms)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret or frame is None:
+            return
+        if self.isInterruptionRequested():
+            return
+
+        channel_cfg = [('#D94F38', 2, 'R'), ('#4CAF50', 1, 'G'), ('#2778A2', 0, 'B')]
+        hists = {}
+        for _color, idx, name in channel_cfg:
+            hists[name] = cv2.calcHist([frame], [idx], None, [256], [0, 256]).flatten()
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_luma = int(np.mean(gray))
+        means = {name: float(np.mean(frame[:, :, idx])) for _c, idx, name in channel_cfg}
+        dominant = max(means, key=means.get)
+
+        if not self.isInterruptionRequested():
+            self.result_ready.emit(hists, mean_luma, dominant)
+
+
 class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
@@ -535,10 +571,18 @@ class EvenementsController:
 
         self._draw_empty_histogram()
 
-        # Timer répétitif : met à jour l'histogramme toutes les secondes pendant la lecture
+        # Timer répétitif pendant la lecture (2s pour ne pas bloquer le player)
         self._hist_timer = QtCore.QTimer()
-        self._hist_timer.setInterval(1000)
+        self._hist_timer.setInterval(2000)
         self._hist_timer.timeout.connect(self._update_histogram)
+
+        # Debounce pour les seeks (évite de lancer un calcul à chaque pixel de déplacement)
+        self._hist_debounce = QtCore.QTimer()
+        self._hist_debounce.setSingleShot(True)
+        self._hist_debounce.setInterval(300)
+        self._hist_debounce.timeout.connect(self._update_histogram)
+
+        self._hist_worker: _HistWorker | None = None
 
         self.export_button.clicked.connect(self.on_export_segment_clicked)
         self.export_worker = None
@@ -560,12 +604,12 @@ class EvenementsController:
             self._update_histogram()
 
     def _on_hist_position_changed(self, _pos):
-        """Mise à jour immédiate de l'histogramme lors d'un seek en pause."""
+        """Lance un debounce de 300ms sur l'histogramme lors d'un seek en pause."""
         from PyQt6.QtMultimedia import QMediaPlayer
         if not hasattr(self, 'event_player'):
             return
         if self.event_player.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
-            self._update_histogram()
+            self._hist_debounce.start()
 
     def _hist_apply_style(self, ax):
         """Applique le style sombre commun et le logo watermark sur les axes."""
@@ -598,52 +642,52 @@ class EvenementsController:
         self._hist_canvas.draw()
 
     def _update_histogram(self):
-        """Calcule et dessine l'histogramme R/G/B enrichi de la frame courante."""
+        """Lance le worker d'extraction de frame dans un thread séparé."""
         if not hasattr(self, '_hist_ax') or not hasattr(self, 'event_player'):
             return
         video_path = getattr(self.event_player, 'current_video_path', None)
         if not video_path or not os.path.exists(video_path):
             return
 
+        # Annule le worker précédent s'il tourne encore
+        try:
+            if self._hist_worker is not None and self._hist_worker.isRunning():
+                self._hist_worker.requestInterruption()
+                self._hist_worker.result_ready.disconnect()
+        except RuntimeError:
+            pass
+        self._hist_worker = None
+
         position_ms = self.event_player.player.position()
-        cap = cv2.VideoCapture(video_path)
-        cap.set(cv2.CAP_PROP_POS_MSEC, position_ms)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret or frame is None:
+        worker = _HistWorker(video_path, position_ms)
+        worker.result_ready.connect(self._on_hist_ready)
+        # Pas de deleteLater : on garde la référence Python pour éviter le RuntimeError
+        self._hist_worker = worker
+        worker.start()
+
+    def _on_hist_ready(self, hists: dict, mean_luma: int, dominant: str):
+        """Reçu depuis le worker — dessine l'histogramme sur le thread principal."""
+        if not hasattr(self, '_hist_ax') or not hasattr(self, '_hist_canvas'):
             return
 
+        channel_cfg = [('#D94F38', 'R'), ('#4CAF50', 'G'), ('#2778A2', 'B')]
         ax = self._hist_ax
         ax.clear()
         self._hist_apply_style(ax)
 
-        # OpenCV lit en BGR → (idx 2=R, 1=G, 0=B)
-        channel_cfg = [('#D94F38', 2, 'R'), ('#4CAF50', 1, 'G'), ('#2778A2', 0, 'B')]
-        hists = {}
-        for color, idx, name in channel_cfg:
-            h = cv2.calcHist([frame], [idx], None, [256], [0, 256]).flatten()
-            hists[name] = h
+        for color, name in channel_cfg:
+            h = hists[name]
             ax.fill_between(range(256), h, alpha=0.28, color=color, zorder=2)
             ax.plot(h, color=color, linewidth=0.9, alpha=0.9, zorder=3)
 
         y_max = max(h.max() for h in hists.values()) or 1
 
-        # Zones de clipping (surex / sous-ex)
-        ax.axvspan(0, 5,   alpha=0.22, color='#5555ff', zorder=1)   # sous-exposition
-        ax.axvspan(250, 255, alpha=0.22, color='#D94F38', zorder=1)  # surexposition
-
-        # Ligne de luminosité moyenne
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        mean_luma = int(np.mean(gray))
+        ax.axvspan(0, 5,     alpha=0.22, color='#5555ff', zorder=1)
+        ax.axvspan(250, 255, alpha=0.22, color='#D94F38', zorder=1)
         ax.axvline(mean_luma, color='#ffffff', linewidth=0.9,
                    alpha=0.55, linestyle='--', zorder=4)
 
-        # Canal dominant
-        means = {name: float(np.mean(frame[:, :, idx])) for _, idx, name in channel_cfg}
-        dominant = max(means, key=means.get)
         dom_color = {'R': '#D94F38', 'G': '#4CAF50', 'B': '#2778A2'}[dominant]
-
-        # Textes de stats
         ax.text(0.02, 0.97, f"Lum. : {mean_luma}",
                 transform=ax.transAxes, color='#a0b8c8',
                 fontsize=6.5, va='top', ha='left', zorder=5)
