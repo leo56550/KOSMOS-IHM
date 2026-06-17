@@ -74,20 +74,29 @@ class ValidationController:
 
     def _build_exploitable_panel(self):
         """Construit le panel d'exploitabilité avec un design carte + boutons toggle."""
-        old = self.exploitable_container.layout()
-        if old:
-            while old.count():
-                item = old.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
-        else:
-            old = QtWidgets.QVBoxLayout(self.exploitable_container)
+        # Vide le layout existant avec setParent(None) (immédiat, pas deleteLater)
+        outer = self.exploitable_container.layout()
+        if not outer:
+            outer = QtWidgets.QVBoxLayout(self.exploitable_container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        while outer.count():
+            item = outer.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)   # suppression immédiate du parent → invisible de suite
 
+        # Applique le style au container
         self.exploitable_container.setStyleSheet(
-            "QFrame { background-color: #0d1b2a; border-top: 1px solid #1e3448; }"
+            "background-color: #0d1b2a; border: none;"
         )
 
-        layout = old if old else QtWidgets.QVBoxLayout(self.exploitable_container)
+        # Widget interne qui porte tout le contenu — évite les conflits de layout
+        self._panel_widget = QtWidgets.QWidget()
+        self._panel_widget.setStyleSheet("background: transparent;")
+        outer.addWidget(self._panel_widget)
+
+        layout = QtWidgets.QVBoxLayout(self._panel_widget)
         layout.setContentsMargins(14, 14, 14, 10)
         layout.setSpacing(10)
 
@@ -98,17 +107,17 @@ class ValidationController:
         self.lbl_exploitable.setStyleSheet(
             "color: #F2BFB4; font-size: 12px; font-weight: bold;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
-            " letter-spacing: 0.3px; border: none; background: transparent;"
+            " letter-spacing: 0.3px;"
         )
         layout.addWidget(self.lbl_exploitable)
 
         # Séparateur
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("background: #1e3448; border: none; max-height: 1px;")
+        sep.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
         layout.addWidget(sep)
 
-        # Zone des boutons toggle (remplie dynamiquement)
+        # Zone des boutons toggle (remplie dynamiquement par _rebuild_choice_buttons)
         self._choice_container = QtWidgets.QWidget()
         self._choice_container.setStyleSheet("background: transparent;")
         self._choice_layout = QtWidgets.QVBoxLayout(self._choice_container)
@@ -116,55 +125,58 @@ class ValidationController:
         self._choice_layout.setSpacing(6)
         layout.addWidget(self._choice_container)
 
-        # Indicateur de statut
-        self._status_badge = QtWidgets.QLabel("")
+        # Indicateur de statut (sélection courante)
+        self._status_badge = QtWidgets.QLabel(self.translate("Aucune sélection", "No selection"))
         self._status_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._status_badge.setStyleSheet(
             "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
-            " background: transparent; border: none;"
         )
         layout.addWidget(self._status_badge)
         layout.addStretch()
 
     def _rebuild_choice_buttons(self, choices: list[str], current: str):
-        """Reconstruit les boutons toggle selon les valeurs autorisées du JSON."""
+        """Reconstruit les boutons toggle en grille 2 colonnes selon les valeurs autorisées."""
         # Nettoie les anciens boutons
         for btn in self._exploitable_btn_group.buttons():
             self._exploitable_btn_group.removeButton(btn)
         while self._choice_layout.count():
             item = self._choice_layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                item.widget().setParent(None)
 
         self._exploitable_choices = choices
 
         _BTN_BASE = (
-            "QToolButton {"
+            "QPushButton {"
             "  background-color: #162433;"
             "  color: #7a9ab8;"
             "  font-family: 'Segoe UI', sans-serif;"
-            "  font-size: 12px;"
+            "  font-size: 11px;"
             "  font-weight: bold;"
             "  border: 1px solid #1e3448;"
-            "  border-radius: 6px;"
-            "  padding: 8px 12px;"
-            "  text-align: left;"
+            "  border-radius: 5px;"
+            "  padding: 5px 8px;"
+            "  text-align: center;"
             "}"
-            "QToolButton:hover {"
+            "QPushButton:hover {"
             "  background-color: #1e3448;"
             "  color: #d4e8f5;"
             "  border-color: #2778A2;"
             "}"
-            "QToolButton:checked {"
+            "QPushButton:checked {"
             "  background-color: #1a4a2e;"
             "  color: #4CAF50;"
             "  border: 1px solid #4CAF50;"
             "}"
         )
 
-        for choice in choices:
-            btn = QtWidgets.QToolButton()
-            btn.setText(f"  {choice}")
+        # Grille 2 colonnes pour tenir dans la hauteur disponible
+        grid = QtWidgets.QGridLayout()
+        grid.setSpacing(5)
+        grid.setContentsMargins(0, 0, 0, 0)
+
+        for i, choice in enumerate(choices):
+            btn = QtWidgets.QPushButton(choice)
             btn.setCheckable(True)
             btn.setChecked(choice == current)
             btn.setSizePolicy(
@@ -172,10 +184,26 @@ class ValidationController:
                 QtWidgets.QSizePolicy.Policy.Fixed
             )
             btn.setStyleSheet(_BTN_BASE)
-            btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
             self._exploitable_btn_group.addButton(btn)
-            self._choice_layout.addWidget(btn)
+            grid.addWidget(btn, i // 2, i % 2)
             btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
+
+        # Wrapper pour insérer le QGridLayout dans le QVBoxLayout parent
+        grid_widget = QtWidgets.QWidget()
+        grid_widget.setStyleSheet("background: transparent;")
+        grid_widget.setLayout(grid)
+        self._choice_layout.addWidget(grid_widget)
+
+        # Ajuste la hauteur minimale du container selon le nb de lignes
+        n_rows = (len(choices) + 1) // 2
+        btn_h = 32   # hauteur estimée par bouton
+        needed = 20 + 2 + n_rows * (btn_h + 5) + 30 + 24   # titre + sep + grille + badge + marges
+        self.exploitable_container.setMinimumHeight(needed)
+        self.exploitable_container.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Minimum
+        )
+        self.exploitable_container.updateGeometry()
 
         self._update_status_badge(current)
 
