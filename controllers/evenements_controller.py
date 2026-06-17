@@ -18,6 +18,7 @@ from services.export_service import ExportWorker
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
+from services.thumbnail_service import THUMB_W, THUMB_H
 
 
 class EvenementsController:
@@ -101,6 +102,7 @@ class EvenementsController:
         self.tree_view_events = self.page.findChild(QtWidgets.QTreeView, "treeView")
         if self.tree_view_events:
             self.tree_view_events.setModel(self.proxy_model)
+            self.tree_view_events.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.tree_view_events.clicked.connect(self.on_video_selected)
 
         self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)

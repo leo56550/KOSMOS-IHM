@@ -112,18 +112,6 @@ class MainWindow(QtWidgets.QMainWindow):
             buttons_layout.addWidget(button)
             action.setData(button)
 
-        self.btn_open_video = QtWidgets.QToolButton()
-        self.btn_open_video.setText("Ouvrir vidéo")
-        self.btn_open_video.setToolTip("Ouvrir un fichier MP4 sans charger de campagne")
-        self.btn_open_video.setObjectName("btn_open_video")
-        buttons_layout.addWidget(self.btn_open_video)
-
-        self.btn_sftp = QtWidgets.QToolButton()
-        self.btn_sftp.setText("KOSMOS SD")
-        self.btn_sftp.setToolTip("Connexion SFTP — téléverser la carte SD")
-        self.btn_sftp.setObjectName("btn_sftp")
-        buttons_layout.addWidget(self.btn_sftp)
-
         self.derusher_label = QtWidgets.QLabel("")
         self.derusher_label.setStyleSheet(
             "color: #F2BFB4; font-weight: bold; font-family: 'Segoe UI', sans-serif;"
@@ -197,6 +185,67 @@ class MainWindow(QtWidgets.QMainWindow):
                 background-color: #F2BFB4;
                 border: 1px solid #F2BFB4;
                 border-radius: 4px;
+            }
+        """)
+
+        self._setup_action_toolbar()
+
+    def _setup_action_toolbar(self):
+        """Crée la toolbar d'actions secondaires (sous la nav) : fichier, campagne."""
+        self.action_toolbar = QtWidgets.QToolBar("Actions", self)
+        self.action_toolbar.setMovable(False)
+        self.action_toolbar.setFloatable(False)
+        self.action_toolbar.setObjectName("action_toolbar")
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self.action_toolbar)
+
+        def _btn(text, tip, name, enabled=True):
+            b = QtWidgets.QToolButton()
+            b.setText(text)
+            b.setToolTip(tip)
+            b.setObjectName(name)
+            b.setEnabled(enabled)
+            return b
+
+        self.btn_open_video = _btn("Ouvrir vidéo", "Ouvrir un fichier MP4 sans charger de campagne", "btn_open_video")
+        self.btn_sftp       = _btn("KOSMOS SD",    "Connexion SFTP — téléverser la carte SD",        "btn_sftp")
+        self.btn_notes      = _btn("Notes",        "Notes de session — mémo libre de la campagne",   "btn_notes",      enabled=False)
+        self.btn_rapport_pdf = _btn("Rapport PDF", "Générer un rapport PDF de la campagne",          "btn_rapport_pdf", enabled=False)
+
+        self.action_toolbar.addWidget(self.btn_open_video)
+        self.action_toolbar.addWidget(self.btn_sftp)
+        self.action_toolbar.addSeparator()
+        self.action_toolbar.addWidget(self.btn_notes)
+        self.action_toolbar.addWidget(self.btn_rapport_pdf)
+
+        self.action_toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #111f2e;
+                border-bottom: 1px solid #1e3448;
+                padding: 3px 10px;
+                spacing: 4px;
+            }
+            QToolBar::separator {
+                width: 1px;
+                background: #2778A2;
+                margin: 4px 6px;
+            }
+            QToolButton {
+                background-color: #162433;
+                color: #a0c4d8;
+                font-family: "Segoe UI", sans-serif;
+                font-size: 11px;
+                border: 1px solid #1e3448;
+                border-radius: 4px;
+                padding: 4px 14px;
+            }
+            QToolButton:hover {
+                background-color: #1e3448;
+                color: #d4e8f5;
+                border-color: #2778A2;
+            }
+            QToolButton:disabled {
+                color: #3a5568;
+                border-color: #1a2e40;
             }
         """)
 

@@ -5,24 +5,16 @@ from services.campaign_service import get_campaign_json_data, get_video_json_pat
 from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
 from views.dialogs.sftp_dialog import SftpDialog
+from views.dialogs.notes_dialog import NotesDialog
+from services.report_service import generate_pdf_report
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController
 from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
 from controllers.metadonnees_controller import MetadonneesController
 from controllers.extraction_controller import ExtractionController
+from controllers.apropos_controller import AProposController
 import os
-
-
-class AProposController:
-    """Contrôleur minimal de la page À propos (pas de logique métier)."""
-
-    def __init__(self, widget, *args, **kwargs):
-        self.widget = widget
-
-    def set_language(self, language: str):
-        """Stub de traduction (page statique)."""
-        pass
 
 
 class AppController:
@@ -100,6 +92,12 @@ class AppController:
         if hasattr(window, 'btn_open_video'):
             window.btn_open_video.clicked.connect(self._open_single_video)
 
+        if hasattr(window, 'btn_notes'):
+            window.btn_notes.clicked.connect(self._open_notes)
+
+        if hasattr(window, 'btn_rapport_pdf'):
+            window.btn_rapport_pdf.clicked.connect(self._generate_rapport_pdf)
+
         if hasattr(window, 'btn_sftp'):
             window.btn_sftp.clicked.connect(self._open_sftp_dialog)
 
@@ -159,6 +157,68 @@ class AppController:
         from views.dialogs.quick_video_dialog import QuickVideoDialog
         dlg = QuickVideoDialog(path, parent=self.window)
         dlg.show()
+
+    def _open_notes(self):
+        """Ouvre le bloc-notes de session pour la campagne courante."""
+        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
+        if not dossier:
+            return
+        dlg = NotesDialog(dossier, parent=self.window)
+        dlg.show()
+
+    def _generate_rapport_pdf(self):
+        """Lance la génération du rapport PDF et propose un emplacement de sauvegarde."""
+        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
+        if not dossier:
+            return
+
+        default_name = f"rapport_{os.path.basename(dossier.rstrip('/\\'))}.pdf"
+        out_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self.window,
+            "Enregistrer le rapport PDF",
+            os.path.join(dossier, default_name),
+            "PDF (*.pdf)",
+        )
+        if not out_path:
+            return
+
+        # Collect video paths from shared model (column 0, UserRole = path)
+        model = self.qualif_ctrl.video_model
+        video_paths = []
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if item:
+                path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if path:
+                    video_paths.append(path)
+
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
+        if not os.path.isfile(logo_path):
+            logo_path = None
+
+        # Show progress dialog
+        progress = QtWidgets.QProgressDialog(
+            "Génération du rapport PDF…", "Annuler", 0, 0, self.window
+        )
+        progress.setWindowTitle("Rapport PDF")
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QtWidgets.QApplication.processEvents()
+
+        result = generate_pdf_report(dossier, video_paths, out_path, logo_path)
+
+        progress.close()
+
+        if result == out_path:
+            QtWidgets.QMessageBox.information(
+                self.window, "Rapport PDF",
+                f"Rapport généré avec succès :\n{out_path}"
+            )
+        else:
+            QtWidgets.QMessageBox.critical(
+                self.window, "Erreur", result
+            )
 
     def _open_sftp_dialog(self):
         """Ouvre le dialog de connexion SFTP / téléversement carte SD."""
@@ -243,6 +303,11 @@ class AppController:
         dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
         if not dossier:
             return
+
+        if hasattr(self.window, 'btn_notes'):
+            self.window.btn_notes.setEnabled(True)
+        if hasattr(self.window, 'btn_rapport_pdf'):
+            self.window.btn_rapport_pdf.setEnabled(True)
 
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))

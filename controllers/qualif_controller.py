@@ -13,6 +13,7 @@ from services.campaign_service import get_video_gps_coords, get_video_json_path
 from services.migration_service import migrate_json_file_if_needed
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
+from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from views.widgets.video_player_dialog import VideoPlayerWindow
 from views.dialogs.map_dialog import MapDialog, MapBridge
 
@@ -127,6 +128,7 @@ class QualifController:
             layout_block.addWidget(self.video_tree)
             splitter.insertWidget(index, self.widget_video_container)
 
+        self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
         for i in range(self.video_model.columnCount()):
             self.video_tree.resizeColumnToContents(i)
         self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
@@ -165,6 +167,7 @@ class QualifController:
             layout_block_trash.addWidget(self.trash_video_tree)
             splitter_trash.insertWidget(index_trash, self.widget_trash_container)
 
+        self.trash_video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
         for i in range(self.trash_model.columnCount()):
             self.trash_video_tree.resizeColumnToContents(i)
         self.trash_video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
@@ -294,6 +297,7 @@ class QualifController:
                 self.all_coords[video["name"]] = coords
 
         self.update_minimap(self.selected_video_name)
+        self._start_thumbnail_generation()
 
         update_counter = 0
         first_loaded_json = None
@@ -330,6 +334,36 @@ class QualifController:
             self.load_and_display_campaign_json(first_loaded_json)
 
         self._reset_left_splitter_sizes()
+
+    def _start_thumbnail_generation(self):
+        """Lance un worker pour générer les vignettes de toutes les vidéos (modèle principal + corbeille)."""
+        if hasattr(self, '_thumb_worker') and self._thumb_worker and self._thumb_worker.isRunning():
+            self._thumb_worker.requestInterruption()
+        items = []
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item:
+                path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if path:
+                    items.append(('main', row, path))
+        for row in range(self.trash_model.rowCount()):
+            item = self.trash_model.item(row, 0)
+            if item:
+                path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if path:
+                    items.append(('trash', row, path))
+        if not items:
+            return
+        self._thumb_worker = ThumbnailWorkerMulti(items)
+        self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self._thumb_worker.start()
+
+    def _on_thumbnail_ready(self, model_key: str, row: int, icon: QtGui.QIcon):
+        """Applique la vignette sur l'item du modèle correspondant."""
+        model = self.video_model if model_key == 'main' else self.trash_model
+        item = model.item(row, 0)
+        if item:
+            item.setIcon(icon)
 
     def _start_watching_campaign(self, directory: str):
         """Surveille la racine campagne, ses enfants directs et le dossier .trash (pas en profondeur)."""

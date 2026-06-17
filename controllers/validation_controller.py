@@ -8,6 +8,7 @@ from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from models.video_model import VideoFilterProxyModel
+from services.thumbnail_service import THUMB_W, THUMB_H
 
 
 class ValidationController:
@@ -40,6 +41,7 @@ class ValidationController:
             self.video_tree.setModel(self.proxy_model)
             self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.video_tree.clicked.connect(self.on_video_selected)
 
         if self.player_container:
@@ -61,24 +63,145 @@ class ValidationController:
             main_splitter.setStretchFactor(1, 1)
             main_splitter.setCollapsible(1, False)
 
+        self._exploitable_btn_group = QtWidgets.QButtonGroup()
+        self._exploitable_btn_group.setExclusive(True)
+        self._exploitable_choices: list[str] = []
+
         if self.exploitable_container:
-            layout = self.exploitable_container.layout() or QtWidgets.QVBoxLayout(self.exploitable_container)
-            layout.setContentsMargins(10, 10, 10, 10)
-            layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+            self._build_exploitable_panel()
 
-            self.lbl_exploitable = QtWidgets.QLabel("Video Exploitable? ")
-            self.lbl_exploitable.setStyleSheet("color: white; font-weight: bold; border: none;")
-            layout.addWidget(self.lbl_exploitable)
+    # ── Panel exploitabilité ──────────────────────────────────────────────────
 
-            self.combo_exploitable = QtWidgets.QComboBox()
-            self.combo_exploitable.setStyleSheet("""
-                QComboBox { background-color: #20415d; color: white; border: 1px solid #ababab;
-                            border-radius: 4px; padding: 5px; min-width: 150px; }
-                QComboBox QAbstractItemView { background-color: #20415d; color: white;
-                                             selection-background-color: #2778a2; }
-            """)
-            layout.addWidget(self.combo_exploitable)
-            self.combo_exploitable.currentTextChanged.connect(self.on_exploitable_changed)
+    def _build_exploitable_panel(self):
+        """Construit le panel d'exploitabilité avec un design carte + boutons toggle."""
+        old = self.exploitable_container.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+        else:
+            old = QtWidgets.QVBoxLayout(self.exploitable_container)
+
+        self.exploitable_container.setStyleSheet(
+            "QFrame { background-color: #0d1b2a; border-top: 1px solid #1e3448; }"
+        )
+
+        layout = old if old else QtWidgets.QVBoxLayout(self.exploitable_container)
+        layout.setContentsMargins(14, 14, 14, 10)
+        layout.setSpacing(10)
+
+        # Titre
+        self.lbl_exploitable = QtWidgets.QLabel(
+            self.translate("Exploitabilité vidéo", "Video Exploitability")
+        )
+        self.lbl_exploitable.setStyleSheet(
+            "color: #F2BFB4; font-size: 12px; font-weight: bold;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            " letter-spacing: 0.3px; border: none; background: transparent;"
+        )
+        layout.addWidget(self.lbl_exploitable)
+
+        # Séparateur
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("background: #1e3448; border: none; max-height: 1px;")
+        layout.addWidget(sep)
+
+        # Zone des boutons toggle (remplie dynamiquement)
+        self._choice_container = QtWidgets.QWidget()
+        self._choice_container.setStyleSheet("background: transparent;")
+        self._choice_layout = QtWidgets.QVBoxLayout(self._choice_container)
+        self._choice_layout.setContentsMargins(0, 4, 0, 4)
+        self._choice_layout.setSpacing(6)
+        layout.addWidget(self._choice_container)
+
+        # Indicateur de statut
+        self._status_badge = QtWidgets.QLabel("")
+        self._status_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._status_badge.setStyleSheet(
+            "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+            " background: transparent; border: none;"
+        )
+        layout.addWidget(self._status_badge)
+        layout.addStretch()
+
+    def _rebuild_choice_buttons(self, choices: list[str], current: str):
+        """Reconstruit les boutons toggle selon les valeurs autorisées du JSON."""
+        # Nettoie les anciens boutons
+        for btn in self._exploitable_btn_group.buttons():
+            self._exploitable_btn_group.removeButton(btn)
+        while self._choice_layout.count():
+            item = self._choice_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self._exploitable_choices = choices
+
+        _BTN_BASE = (
+            "QToolButton {"
+            "  background-color: #162433;"
+            "  color: #7a9ab8;"
+            "  font-family: 'Segoe UI', sans-serif;"
+            "  font-size: 12px;"
+            "  font-weight: bold;"
+            "  border: 1px solid #1e3448;"
+            "  border-radius: 6px;"
+            "  padding: 8px 12px;"
+            "  text-align: left;"
+            "}"
+            "QToolButton:hover {"
+            "  background-color: #1e3448;"
+            "  color: #d4e8f5;"
+            "  border-color: #2778A2;"
+            "}"
+            "QToolButton:checked {"
+            "  background-color: #1a4a2e;"
+            "  color: #4CAF50;"
+            "  border: 1px solid #4CAF50;"
+            "}"
+        )
+
+        for choice in choices:
+            btn = QtWidgets.QToolButton()
+            btn.setText(f"  {choice}")
+            btn.setCheckable(True)
+            btn.setChecked(choice == current)
+            btn.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed
+            )
+            btn.setStyleSheet(_BTN_BASE)
+            btn.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
+            self._exploitable_btn_group.addButton(btn)
+            self._choice_layout.addWidget(btn)
+            btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
+
+        self._update_status_badge(current)
+
+    def _on_choice_toggled(self, checked: bool, choice: str):
+        """Déclenché quand un bouton toggle change d'état."""
+        if checked:
+            self.on_exploitable_changed(choice)
+
+    def _update_status_badge(self, current: str):
+        """Met à jour le badge de statut sous les boutons."""
+        if not hasattr(self, '_status_badge'):
+            return
+        if current and str(current).strip():
+            self._status_badge.setText(f"✓  {current}")
+            self._status_badge.setStyleSheet(
+                "color: #4CAF50; font-size: 11px; font-weight: bold;"
+                " font-family: 'Segoe UI', sans-serif;"
+                " background: #0d1b0f; border: 1px solid #2a6a2a;"
+                " border-radius: 5px; padding: 4px 8px;"
+            )
+        else:
+            self._status_badge.setText(self.translate("Non renseigné", "Not set"))
+            self._status_badge.setStyleSheet(
+                "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+                " background: transparent; border: none;"
+            )
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
@@ -90,7 +213,9 @@ class ValidationController:
         if hasattr(self, 'player'):
             self.player.set_language(language)
         if hasattr(self, 'lbl_exploitable'):
-            self.lbl_exploitable.setText(self.translate("Vidéo Exploitable ? ", "Video Exploitable?"))
+            self.lbl_exploitable.setText(
+                self.translate("Exploitabilité vidéo", "Video Exploitability")
+            )
         if self.current_json_path and os.path.exists(self.current_json_path):
             self.refresh_combobox_values()
 
@@ -162,27 +287,24 @@ class ValidationController:
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
 
     def refresh_combobox_values(self):
-        """Recharge les valeurs autorisées du combo exploitabilité depuis le JSON."""
-        if not hasattr(self, 'combo_exploitable') or not self.current_json_path:
+        """Recharge les valeurs autorisées et reconstruit les boutons toggle depuis le JSON."""
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
-        if os.path.exists(self.current_json_path):
-            try:
-                self.combo_exploitable.blockSignals(True)
-                self.combo_exploitable.clear()
-                with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                if "video_observation" in data and "exploitable" in data["video_observation"]:
-                    field = data["video_observation"]["exploitable"]
-                    lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
-                    self.combo_exploitable.addItems(field.get(lang_key, []))
-                    self.combo_exploitable.setCurrentText(field.get("value", ""))
-            except Exception:
-                pass
-            finally:
-                self.combo_exploitable.blockSignals(False)
+        if not hasattr(self, '_choice_container'):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            field = data.get("video_observation", {}).get("exploitable", {})
+            lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
+            choices = field.get(lang_key, [])
+            current = field.get("value", "") or ""
+            self._rebuild_choice_buttons(choices, current)
+        except Exception:
+            pass
 
     def on_exploitable_changed(self, text: str):
-        """Persiste la valeur d'exploitabilité dans le JSON et met à jour l'icône de l'item."""
+        """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
         if not self.current_json_path or not text:
             return
         try:
@@ -192,15 +314,19 @@ class ValidationController:
                 data["video_observation"]["exploitable"]["value"] = text
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
+
+                self._update_status_badge(text)
+
                 if self._on_qualification_changed:
                     self._on_qualification_changed()
 
-                selected = self.video_tree.selectionModel().selectedRows()
-                if selected:
-                    source_index = self.proxy_model.mapToSource(selected[0])
-                    item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
-                    if item:
-                        self.refresh_item_indicator(item, self.current_video_path)
+                if self.video_tree:
+                    selected = self.video_tree.selectionModel().selectedRows()
+                    if selected:
+                        source_index = self.proxy_model.mapToSource(selected[0])
+                        item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
+                        if item:
+                            self.refresh_item_indicator(item, self.current_video_path)
         except Exception:
             pass
 
@@ -219,10 +345,8 @@ class ValidationController:
                 pass
 
         if is_processed:
-            item.setIcon(self.page.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DialogApplyButton))
             item.setForeground(QtGui.QBrush(QtGui.QColor("#4CAF50")))
         else:
-            item.setIcon(self.page.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_FileIcon))
             item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
 
     def initialize_tree_indicators(self):

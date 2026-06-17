@@ -4,6 +4,7 @@ import cv2
 from PyQt6 import QtWidgets, QtCore, QtGui
 
 from services.motor_service import get_motor_stable_timestamps
+from services.thumbnail_service import THUMB_W, THUMB_H
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
 from views.widgets.embedded_player import EmbeddedVideoPlayer
@@ -55,6 +56,7 @@ class ExtractionController:
 
         if self.tree_videos_2:
             self.tree_videos_2.clicked.connect(self.on_video_selected_treeview)
+            self.tree_videos_2.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             if self.video_model:
                 self.tree_videos_2.setModel(self.video_model)
             else:

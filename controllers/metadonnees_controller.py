@@ -7,6 +7,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from services.weather_service import WeatherWorker
+from services.thumbnail_service import THUMB_W, THUMB_H
 from services.campaign_service import get_video_json_path, _find_first_json_in_folder
 from views.dialogs.weather_dialog import WeatherWebDialog
 
@@ -82,6 +83,7 @@ class MetadonneesController:
             self.tree_videos.setModel(self.video_model)
             self.tree_videos.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.tree_videos.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            self.tree_videos.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
 
     def _make_scroll_area(self, container: QtWidgets.QFrame) -> QtWidgets.QScrollArea | None:
         """Installe un QScrollArea dans le container et retourne-le."""
