@@ -332,7 +332,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "QScrollArea { border: none; background-color: #141414; }")
 
         self.timeline = VideoTimeline([], parent=self, zone_definitions=zone_definitions)
-        self.timeline.setMinimumHeight(140)
+        self.timeline.setMinimumHeight(160)
         self.scroll_area_timeline.setWidget(self.timeline)
 
         # Playback buttons
@@ -449,21 +449,27 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.splitter.addWidget(video_outer)
 
         bottom_container = QtWidgets.QWidget()
+        bottom_container.setStyleSheet(f"background-color: {C_BG_DARK};")
         bottom_vbox = QtWidgets.QVBoxLayout(bottom_container)
         bottom_vbox.setContentsMargins(0, 0, 0, 0)
         bottom_vbox.setSpacing(0)
 
         time_container = QtWidgets.QWidget()
+        time_container.setStyleSheet(f"background-color: {C_BG_DARK};")
         time_container.setLayout(self.time_layout)
         buttons_container = QtWidgets.QWidget()
+        buttons_container.setStyleSheet(f"background-color: {C_BG_DARK};")
         buttons_container.setLayout(buttons_layout)
 
-        bottom_vbox.addWidget(time_container)
-        bottom_vbox.addWidget(self.scroll_area_timeline)
-        bottom_vbox.addWidget(buttons_container)
-        bottom_vbox.addWidget(self.corrections_panel)
+        bottom_vbox.addWidget(time_container, 0)
+        bottom_vbox.addWidget(self.scroll_area_timeline, 1)
+        bottom_vbox.addWidget(buttons_container, 0)
+        bottom_vbox.addWidget(self.corrections_panel, 0)
 
         self.splitter.addWidget(bottom_container)
+        self.splitter.setSizes([400, 260])
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
         main_layout.addWidget(self.splitter)
 
         # ── Signals ───────────────────────────────────────────────────────
