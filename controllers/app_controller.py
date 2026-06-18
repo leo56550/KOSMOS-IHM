@@ -6,6 +6,7 @@ from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
 from views.dialogs.sftp_dialog import SftpDialog
 from views.dialogs.notes_dialog import NotesDialog
+from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
 from services.report_service import generate_pdf_report
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController
@@ -41,11 +42,18 @@ class AppController:
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
-            on_qualification_changed=self.refresh_status_bar,
+            on_qualification_changed=self._on_qualification_changed,
         )
+        self._overview_dialog: 'CampaignOverviewDialog | None' = None
+        self._overview_refresh_timer = QtCore.QTimer()
+        self._overview_refresh_timer.setSingleShot(True)
+        self._overview_refresh_timer.setInterval(500)
+        self._overview_refresh_timer.timeout.connect(self._do_refresh_overview)
+
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
+            on_events_changed=self._schedule_overview_refresh,
         )
         self.metadonnees_ctrl = MetadonneesController(
             window.page_metadonnees,
@@ -65,9 +73,11 @@ class AppController:
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
 
-        # Rafraîchir la barre de statut quand le modèle vidéo change (suppression/ajout externe)
+        # Rafraîchir la barre de statut et la vue globale quand le modèle vidéo change
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
+        self.qualif_ctrl.video_model.rowsInserted.connect(self._schedule_overview_refresh)
+        self.qualif_ctrl.video_model.rowsRemoved.connect(self._schedule_overview_refresh)
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
@@ -100,6 +110,9 @@ class AppController:
 
         if hasattr(window, 'btn_sftp'):
             window.btn_sftp.clicked.connect(self._open_sftp_dialog)
+
+        if hasattr(window, 'btn_vue_globale'):
+            window.btn_vue_globale.clicked.connect(self._open_vue_globale)
 
         # Finish buttons
         self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
@@ -220,10 +233,50 @@ class AppController:
                 self.window, "Erreur", result
             )
 
+    def _on_qualification_changed(self):
+        """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit stats + vue globale."""
+        self.refresh_status_bar()
+        self._do_refresh_overview()  # immédiat — un seul clic, pas besoin de debounce
+
+    def _schedule_overview_refresh(self, *_):
+        """Déclenche un refresh de la vue globale avec debounce 500ms."""
+        if self._overview_dialog is not None:
+            self._overview_refresh_timer.start()
+
+    def _do_refresh_overview(self):
+        """Exécute le refresh effectif de la vue globale."""
+        if self._overview_dialog is not None:
+            self._overview_dialog.refresh(self.qualif_ctrl.video_model)
+
     def _open_sftp_dialog(self):
         """Ouvre le dialog de connexion SFTP / téléversement carte SD."""
         dlg = SftpDialog(self.window)
         dlg.exec()
+
+    def _open_vue_globale(self):
+        """Ouvre le dialog de vision globale de la campagne (une seule instance)."""
+        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
+        if not dossier:
+            return
+        if self._overview_dialog is not None and self._overview_dialog.isVisible():
+            self._overview_dialog.raise_()
+            self._overview_dialog.activateWindow()
+            return
+        dlg = CampaignOverviewDialog(dossier, self.qualif_ctrl.video_model, parent=self.window)
+        dlg.video_selected.connect(self._on_overview_video_selected)
+        dlg.destroyed.connect(lambda: setattr(self, '_overview_dialog', None))
+        self._overview_dialog = dlg
+        dlg.show()
+
+    def _on_overview_video_selected(self, row: int):
+        """Navigue vers la vidéo sélectionnée depuis la vue globale."""
+        model = self.qualif_ctrl.video_model
+        item = model.item(row, 0)
+        if not item:
+            return
+        video_name = item.text()
+        self.switch_page(self.window.page_validation)
+        self.validation_ctrl.select_video_by_name(video_name)
 
     # --- Language ---
 
@@ -308,6 +361,8 @@ class AppController:
             self.window.btn_notes.setEnabled(True)
         if hasattr(self.window, 'btn_rapport_pdf'):
             self.window.btn_rapport_pdf.setEnabled(True)
+        if hasattr(self.window, 'btn_vue_globale'):
+            self.window.btn_vue_globale.setEnabled(True)
 
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))

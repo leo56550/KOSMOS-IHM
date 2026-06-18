@@ -145,6 +145,7 @@ class ValidationController:
                 item.widget().setParent(None)
 
         self._exploitable_choices = choices
+        self._rebuilding_buttons = True  # bloque on_exploitable_changed pendant setChecked
 
         _BTN_BASE = (
             "QPushButton {"
@@ -193,6 +194,7 @@ class ValidationController:
         grid_widget.setStyleSheet("background: transparent;")
         grid_widget.setLayout(grid)
         self._choice_layout.addWidget(grid_widget)
+        self._rebuilding_buttons = False  # autorise à nouveau on_exploitable_changed
 
         # Ajuste la hauteur minimale du container selon le nb de lignes
         n_rows = (len(choices) + 1) // 2
@@ -209,7 +211,7 @@ class ValidationController:
 
     def _on_choice_toggled(self, checked: bool, choice: str):
         """Déclenché quand un bouton toggle change d'état."""
-        if checked:
+        if checked and not getattr(self, '_rebuilding_buttons', False):
             self.on_exploitable_changed(choice)
 
     def _update_status_badge(self, current: str):
@@ -334,29 +336,40 @@ class ValidationController:
     def on_exploitable_changed(self, text: str):
         """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
         if not self.current_json_path or not text:
+            print(f"[ValidationCtrl] on_exploitable_changed ignoré — path={self.current_json_path!r} text={text!r}")
             return
+        print(f"[ValidationCtrl] Sauvegarde exploitabilité '{text}' → {self.current_json_path}")
         try:
+            if not os.path.isfile(self.current_json_path):
+                print(f"[ValidationCtrl] ERREUR — fichier JSON introuvable : {self.current_json_path}")
+                return
             with open(self.current_json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            if "video_observation" in data and "exploitable" in data["video_observation"]:
-                data["video_observation"]["exploitable"]["value"] = text
-                with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
+            if "video_observation" not in data:
+                data["video_observation"] = {}
+            video_obs = data["video_observation"]
+            if "exploitable" not in video_obs:
+                video_obs["exploitable"] = {}
+            video_obs["exploitable"]["value"] = text
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            print(f"[ValidationCtrl] ✓ exploitable='{text}' écrit dans {self.current_json_path}")
 
-                self._update_status_badge(text)
+            self._update_status_badge(text)
 
-                if self._on_qualification_changed:
-                    self._on_qualification_changed()
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
 
-                if self.video_tree:
-                    selected = self.video_tree.selectionModel().selectedRows()
-                    if selected:
-                        source_index = self.proxy_model.mapToSource(selected[0])
-                        item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
-                        if item:
-                            self.refresh_item_indicator(item, self.current_video_path)
-        except Exception:
-            pass
+            if self.video_tree:
+                selected = self.video_tree.selectionModel().selectedRows()
+                if selected:
+                    source_index = self.proxy_model.mapToSource(selected[0])
+                    item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
+                    if item:
+                        self.refresh_item_indicator(item, self.current_video_path)
+        except Exception as e:
+            print(f"[ValidationCtrl] EXCEPTION dans on_exploitable_changed : {e!r}")
+            import traceback; traceback.print_exc()
 
     def refresh_item_indicator(self, item, video_path):
         """Met à jour l'icône et la couleur d'un item selon son statut exploitabilité."""

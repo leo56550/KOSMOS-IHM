@@ -61,11 +61,12 @@ class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
-                 on_video_focused=None):
+                 on_video_focused=None, on_events_changed=None):
         """Initialise les widgets de la page et connecte les signaux de capture et d'export."""
         self.page = page_widget
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
+        self._on_events_changed = on_events_changed
         self.current_language = 'en'
         self.export_start_ms = 0
         self.export_end_ms = 0
@@ -1081,6 +1082,8 @@ class EvenementsController:
             event_dict["_json_key"] = json_key
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            if self._on_events_changed:
+                self._on_events_changed()
         except Exception as e:
             print(f"[BACKEND] Exception writing JSON: {e}")
 
@@ -1107,6 +1110,8 @@ class EvenementsController:
                     video_obs[json_key][0]["values"] = new_list
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            if self._on_events_changed:
+                self._on_events_changed()
         except Exception as e:
             print(f"[BACKEND] Error purging event: {e}")
 
@@ -1289,6 +1294,8 @@ class EvenementsController:
                 data["video_observation"] = video_obs
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
+                if self._on_events_changed:
+                    self._on_events_changed()
         except Exception as e:
             print(f"[CLEANUP] Error: {e}")
 

@@ -10,7 +10,7 @@ from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, check_stereo_status
 from services.campaign_service import get_video_gps_coords, get_video_json_path
-from services.migration_service import migrate_json_file_if_needed
+from services.migration_service import migrate_json_file_if_needed, initialise_video_json_if_needed
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
@@ -303,6 +303,7 @@ class QualifController:
         first_loaded_json = None
 
         for video in videos:
+            initialise_video_json_if_needed(video["path"])   # template.json → stem.json
             json_path = get_video_json_path(video["path"])
             if not os.path.exists(json_path):
                 continue

@@ -408,6 +408,13 @@
     <div class="toc-item">
       <div class="toc-num">9</div>
       <div>
+        <div class="toc-label">Vue globale campagne</div>
+        <div class="toc-sub">Timeline multi-vidéos · couleurs · événements</div>
+      </div>
+    </div>
+    <div class="toc-item">
+      <div class="toc-num">10</div>
+      <div>
         <div class="toc-label">Architecture technique</div>
         <div class="toc-sub">MVC · Services · Modèles</div>
       </div>
@@ -629,11 +636,12 @@
     <div class="feature-card">
       <h3><span class="icon">⭐</span> Exploitabilité</h3>
       <ul>
-        <li>Combo box avec valeurs autorisées issues du JSON</li>
-        <li>Valeurs localisées selon la langue active (FR/EN)</li>
-        <li>Persistance immédiate en JSON</li>
+        <li>Boutons toggle en grille 2 colonnes, valeurs issues du JSON (FR/EN)</li>
+        <li>Badge de statut sous les boutons (✓ valeur sélectionnée)</li>
+        <li>Persistance immédiate dans <code>&lt;stem&gt;.json</code></li>
         <li>Indicateur visuel vert ✓ sur l'item de l'arbre</li>
         <li>Mise à jour de la barre de statut en temps réel</li>
+        <li>Mise à jour immédiate de la vue globale campagne</li>
       </ul>
     </div>
     <div class="feature-card">
@@ -876,14 +884,87 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════
-     9. ARCHITECTURE TECHNIQUE
+     9. VUE GLOBALE CAMPAGNE
+═══════════════════════════════════════════════════════ -->
+<div class="page-section accent-teal">
+  <div class="section-header">
+    <div class="section-icon">🗺️</div>
+    <div class="section-title-block">
+      <h2>Vue globale campagne</h2>
+      <div class="subtitle">Timeline multi-vidéos en QDialog non-modal — exploitabilité, événements, navigation</div>
+    </div>
+  </div>
+  <div class="section-divider"></div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3><span class="icon">▶</span> Ouverture</h3>
+      <ul>
+        <li>Bouton "Vue globale" dans la toolbar d'actions secondaires (activé à l'ouverture d'une campagne)</li>
+        <li>QDialog non-modal : la navigation dans l'IHM reste possible pendant l'ouverture</li>
+        <li>Une seule instance à la fois (réutilise la fenêtre existante si déjà ouverte)</li>
+        <li>Clic sur une ligne → bascule sur la page Validation et charge la vidéo</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🎨</span> Code couleur exploitabilité</h3>
+      <ul>
+        <li><span style="color:#4CAF50">●</span> <strong>Oui / Yes</strong> — vert</li>
+        <li><span style="color:#D94F38">●</span> <strong>Non / No</strong> — rouge</li>
+        <li><span style="color:#2778A2">●</span> <strong>Habitat</strong> — bleu</li>
+        <li><span style="color:#9B59B6">●</span> <strong>Communication</strong> — violet</li>
+        <li><span style="color:#F1C40F">●</span> <strong>?</strong> — jaune</li>
+        <li><span style="color:#3a4a5a">●</span> <strong>Non défini</strong> — gris foncé</li>
+        <li>Valeurs FR et EN reconnues (oui/yes, non/no…)</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">◆</span> Marqueurs d'événements</h3>
+      <ul>
+        <li>Losanges colorés sur la barre de chaque vidéo</li>
+        <li>Positionnés au <code>frame_number_start × 1000 / 25 ms</code> (approx. 25 fps)</li>
+        <li>Couleurs par type : animal=jaune, images=rouge, déploiement=bleu clair</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔍</span> Zoom et navigation</h3>
+      <ul>
+        <li>Molette souris pour zoomer/dézoomer la timeline</li>
+        <li>Boutons − / Ajuster / + dans le pied du dialog</li>
+        <li>"Ajuster" recalcule le zoom pour tenir dans la fenêtre</li>
+        <li>Scroll horizontal/vertical si le contenu déborde</li>
+        <li>Hover sur une ligne : surlignage de la ligne</li>
+        <li>Le widget s'étire pour remplir toute la hauteur du dialog</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">🔄</span> Mises à jour en temps réel</h3>
+      <ul>
+        <li>Changement d'exploitabilité → rafraîchissement immédiat (sans debounce)</li>
+        <li>Ajout / suppression d'événements → debounce 500 ms puis refresh</li>
+        <li>Ajout / suppression de vidéos → debounce 500 ms puis refresh</li>
+        <li>Ré-affichage du dialog → relecture des JSONs pour afficher l'état courant</li>
+      </ul>
+    </div>
+    <div class="feature-card">
+      <h3><span class="icon">📐</span> Redimensionnement</h3>
+      <ul>
+        <li><code>resizeEvent</code> → recalcul du zoom pour s'adapter à la nouvelle largeur</li>
+        <li>Hauteur du widget = max(contenu, hauteur viewport) → pas d'espace vide</li>
+        <li>Fonctionne en plein écran et en fenêtre redimensionnée</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     10. ARCHITECTURE TECHNIQUE
 ═══════════════════════════════════════════════════════ -->
 <div class="page-section">
   <div class="section-header">
     <div class="section-icon">🏗️</div>
     <div class="section-title-block">
       <h2>Architecture technique</h2>
-      <div class="subtitle">Pattern MVC — séparation Modèles / Vues / Contrôleurs / Services</div>
+      <div class="subtitle">Pattern MVC — séparation Modèles / Vues / Contrôleurs / Services · Migration JSON</div>
     </div>
   </div>
   <div class="section-divider"></div>
@@ -914,8 +995,13 @@
       </tr>
       <tr>
         <td>Services</td>
-        <td><code>campaign_service.py</code><br><code>video_service.py</code><br><code>sftp_service.py</code><br><code>export_service.py</code><br><code>motor_service.py</code><br><code>weather_service.py</code><br><code>image_service.py</code></td>
-        <td>I/O fichiers, workers QThread, API météo, SFTP Paramiko, OpenCV</td>
+        <td><code>campaign_service.py</code><br><code>video_service.py</code><br><code>sftp_service.py</code><br><code>export_service.py</code><br><code>motor_service.py</code><br><code>weather_service.py</code><br><code>image_service.py</code><br><code>migration_service.py</code></td>
+        <td>I/O fichiers, workers QThread, API météo, SFTP Paramiko, OpenCV.<br><code>migration_service</code> : conversion <code>template.json</code> → <code>&lt;stem&gt;.json</code> à l'ouverture de campagne ; migration legacy (format v3 → v4 rich-field)</td>
+      </tr>
+      <tr>
+        <td>Views / Dialogs</td>
+        <td><code>campaign_overview_dialog.py</code><br><code>campaign_overview_widget.py</code></td>
+        <td>Vue globale campagne : QDialog non-modal + widget QPainter custom (timeline, couleurs, losanges événements, zoom molette)</td>
       </tr>
       <tr>
         <td>Communication JS↔Python</td>
@@ -942,6 +1028,8 @@
         <li><code>SftpDownloadWorker</code> — transfert fichiers par fichier</li>
         <li><code>WeatherWorker</code> — appel API météo</li>
         <li><code>ExportWorker</code> — export vidéo OpenCV</li>
+        <li><code>_HistWorker</code> — calcul histogramme RGB hors thread principal (cv2 + numpy), évite le lag vidéo</li>
+        <li><code>ThumbnailWorkerMulti</code> — génération vignettes arbre vidéo</li>
       </ul>
     </div>
     <div class="feature-card">
@@ -949,6 +1037,9 @@
       <ul>
         <li>600 ms — watcher système de fichiers</li>
         <li>800 ms — sauvegarde métadonnées après frappe</li>
+        <li>500 ms — refresh vue globale (ajout/suppression d'événements ou vidéos)</li>
+        <li>300 ms — déclenchement histogramme après changement de position</li>
+        <li>2 000 ms — timer périodique de mise à jour de l'histogramme</li>
         <li>80 ms — focus JS sur la carte après show()</li>
         <li>0 ms (singleShot) — focus player après switch de page</li>
       </ul>
@@ -961,7 +1052,7 @@
 ═══════════════════════════════════════════════════════ -->
 <div class="footer">
   <span>KOSMOS IHM — Récapitulatif fonctionnel</span>
-  <span>Architecture PyQt6 MVC · Python 3.11+ · Juin 2026</span>
+  <span>Architecture PyQt6 MVC · Python 3.11+ · Mis à jour Juin 2026</span>
   <span>leo.bultel@imt-atlantique.fr</span>
 </div>
 

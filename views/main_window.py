@@ -210,12 +210,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_sftp       = _btn("KOSMOS SD",    "Connexion SFTP — téléverser la carte SD",        "btn_sftp")
         self.btn_notes      = _btn("Notes",        "Notes de session — mémo libre de la campagne",   "btn_notes",      enabled=False)
         self.btn_rapport_pdf = _btn("Rapport PDF", "Générer un rapport PDF de la campagne",          "btn_rapport_pdf", enabled=False)
+        self.btn_vue_globale = _btn("Vue globale", "Vision globale de la campagne sur une timeline", "btn_vue_globale", enabled=False)
 
         self.action_toolbar.addWidget(self.btn_open_video)
         self.action_toolbar.addWidget(self.btn_sftp)
         self.action_toolbar.addSeparator()
         self.action_toolbar.addWidget(self.btn_notes)
         self.action_toolbar.addWidget(self.btn_rapport_pdf)
+        self.action_toolbar.addWidget(self.btn_vue_globale)
 
         self.action_toolbar.setStyleSheet("""
             QToolBar {

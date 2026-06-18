@@ -30,7 +30,11 @@ def get_video_gps_coords(video_path: str) -> tuple:
 
 
 def get_video_json_path(video_path: str) -> str:
-    """Return the JSON path for a given video file: same folder, same stem, .json extension."""
+    """Return the JSON path for a given video: same folder, same stem, .json extension.
+
+    After campaign opening, the IHM only interacts with <stem>.json.
+    template.json is the source used to initialise <stem>.json on first open.
+    """
     folder = os.path.dirname(os.path.normpath(video_path))
     stem = os.path.splitext(os.path.basename(video_path))[0]
     return os.path.join(folder, f"{stem}.json")

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 
 
 def is_legacy_format(data: dict) -> bool:
@@ -430,6 +431,33 @@ def migrate_legacy_to_new(old_data: dict) -> dict:
     vo["estimated_visibility"]["value"] = analyse.get("visibility")
 
     return template
+
+
+def initialise_video_json_if_needed(video_path: str) -> bool:
+    """Copy template.json → <stem>.json if the stem JSON doesn't exist yet.
+
+    Called once per video at campaign opening.  After this call,
+    get_video_json_path(video_path) is guaranteed to exist (if template.json was present).
+    Returns True if a copy was made.
+    """
+    folder = os.path.dirname(os.path.normpath(video_path))
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    target = os.path.join(folder, f"{stem}.json")
+
+    if os.path.isfile(target):
+        return False  # already initialised
+
+    template = os.path.join(folder, "template.json")
+    if not os.path.isfile(template):
+        return False  # nothing to copy
+
+    try:
+        shutil.copy2(template, target)
+        print(f"[INIT] {stem}.json créé depuis template.json")
+        return True
+    except Exception as e:
+        print(f"[INIT] Impossible de créer {stem}.json : {e}")
+        return False
 
 
 def migrate_json_file_if_needed(json_path: str) -> bool:

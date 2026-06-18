@@ -259,7 +259,7 @@ class SftpDialog(QtWidgets.QDialog):
     def _build_download_group(self) -> QtWidgets.QGroupBox:
         grp = QtWidgets.QGroupBox("Téléversement vers l'ordinateur")
         lay = QtWidgets.QVBoxLayout(grp)
-        lay.setSpacing(8)
+        lay.setSpacing(6)
 
         row1 = QtWidgets.QHBoxLayout()
         row1.addWidget(QtWidgets.QLabel("Destination :"))
@@ -279,7 +279,6 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_download.setMinimumWidth(200)
         self.btn_download.clicked.connect(self._on_download)
         row2.addWidget(self.btn_download)
-
         self.btn_cancel_dl = QtWidgets.QPushButton("Annuler")
         self.btn_cancel_dl.setVisible(False)
         self.btn_cancel_dl.clicked.connect(self._on_cancel_download)
@@ -287,16 +286,75 @@ class SftpDialog(QtWidgets.QDialog):
         row2.addStretch()
         lay.addLayout(row2)
 
-        self.dl_progress = QtWidgets.QProgressBar()
-        self.dl_progress.setRange(0, 100)
-        self.dl_progress.setValue(0)
-        self.dl_progress.setVisible(False)
-        self.dl_progress.setFixedHeight(16)
-        lay.addWidget(self.dl_progress)
+        # ── Fichier courant ──
+        sep1 = QtWidgets.QFrame()
+        sep1.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep1.setStyleSheet("background:#1e3448; border:none; max-height:1px;")
+        lay.addWidget(sep1)
+
+        lbl_cur = QtWidgets.QLabel("Fichier en cours")
+        lbl_cur.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
+        lay.addWidget(lbl_cur)
+
+        self.lbl_file_name = QtWidgets.QLabel("—")
+        self.lbl_file_name.setStyleSheet("color:#F2BFB4; font-size:11px;")
+        lay.addWidget(self.lbl_file_name)
+
+        self.pb_file = QtWidgets.QProgressBar()
+        self.pb_file.setRange(0, 1000)
+        self.pb_file.setValue(0)
+        self.pb_file.setFixedHeight(14)
+        self.pb_file.setTextVisible(False)
+        lay.addWidget(self.pb_file)
+
+        row_file = QtWidgets.QHBoxLayout()
+        self.lbl_file_bytes = QtWidgets.QLabel("0 B / 0 B")
+        self.lbl_file_bytes.setStyleSheet("color:#a0b8cc; font-size:10px;")
+        row_file.addWidget(self.lbl_file_bytes)
+        row_file.addStretch()
+        self.lbl_speed = QtWidgets.QLabel("")
+        self.lbl_speed.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
+        row_file.addWidget(self.lbl_speed)
+        lay.addLayout(row_file)
+
+        # ── Total ──
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep2.setStyleSheet("background:#1e3448; border:none; max-height:1px;")
+        lay.addWidget(sep2)
+
+        lbl_tot = QtWidgets.QLabel("Progression totale")
+        lbl_tot.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
+        lay.addWidget(lbl_tot)
+
+        self.pb_total = QtWidgets.QProgressBar()
+        self.pb_total.setRange(0, 1000)
+        self.pb_total.setValue(0)
+        self.pb_total.setFixedHeight(18)
+        lay.addWidget(self.pb_total)
+
+        row_tot = QtWidgets.QHBoxLayout()
+        self.lbl_total_bytes = QtWidgets.QLabel("0 B / 0 B")
+        self.lbl_total_bytes.setStyleSheet("color:#a0b8cc; font-size:10px;")
+        row_tot.addWidget(self.lbl_total_bytes)
+        row_tot.addStretch()
+        self.lbl_eta = QtWidgets.QLabel("")
+        self.lbl_eta.setStyleSheet("color:#a0b8cc; font-size:10px;")
+        row_tot.addWidget(self.lbl_eta)
+        lay.addLayout(row_tot)
 
         self.lbl_dl_status = QtWidgets.QLabel("")
         self.lbl_dl_status.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_dl_status.setStyleSheet("font-size:11px;")
         lay.addWidget(self.lbl_dl_status)
+
+        # Masquer le panneau de progression au départ
+        for w in [sep1, lbl_cur, self.lbl_file_name, self.pb_file,
+                  sep2, lbl_tot, self.pb_total]:
+            w.setVisible(False)
+        self._dl_progress_widgets = [sep1, lbl_cur, self.lbl_file_name,
+                                     self.pb_file, sep2, lbl_tot, self.pb_total]
+        self._dl_detail_rows = [row_file, row_tot]  # layouts — masqués via labels
 
         return grp
 
@@ -493,6 +551,38 @@ class SftpDialog(QtWidgets.QDialog):
             self._local_dest = folder
             self.edit_dest.setText(folder)
 
+    # ── Helpers affichage ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _fmt_speed(bps: float) -> str:
+        if bps < 1024:
+            return f"{bps:.0f} B/s"
+        if bps < 1024 ** 2:
+            return f"{bps / 1024:.1f} KB/s"
+        return f"{bps / 1024**2:.2f} MB/s"
+
+    @staticmethod
+    def _fmt_eta(seconds: float) -> str:
+        if seconds <= 0 or seconds > 86400:
+            return ""
+        s = int(seconds)
+        h, r = divmod(s, 3600)
+        m, s = divmod(r, 60)
+        if h:
+            return f"ETA {h}h {m:02d}m"
+        if m:
+            return f"ETA {m}m {s:02d}s"
+        return f"ETA {s}s"
+
+    def _set_dl_panel_visible(self, visible: bool):
+        for w in self._dl_progress_widgets:
+            w.setVisible(visible)
+        for lbl in [self.lbl_file_bytes, self.lbl_speed,
+                    self.lbl_total_bytes, self.lbl_eta]:
+            lbl.setVisible(visible)
+
+    # ── Téléversement ─────────────────────────────────────────────────────
+
     def _on_download(self):
         if not self._local_dest:
             QtWidgets.QMessageBox.warning(self, "Destination manquante",
@@ -510,11 +600,17 @@ class SftpDialog(QtWidgets.QDialog):
 
         self.btn_download.setEnabled(False)
         self.btn_cancel_dl.setVisible(True)
-        self.dl_progress.setVisible(True)
-        self.dl_progress.setRange(0, len(files))
-        self.dl_progress.setValue(0)
+        self.btn_cancel_dl.setEnabled(True)
+        self._set_dl_panel_visible(True)
+        self.pb_file.setValue(0)
+        self.pb_total.setValue(0)
+        self.lbl_file_name.setText("Récupération des tailles…")
+        self.lbl_file_bytes.setText("")
+        self.lbl_speed.setText("")
+        self.lbl_total_bytes.setText(f"0 B / … — {len(files)} fichier(s)")
+        self.lbl_eta.setText("")
         self.lbl_dl_status.setStyleSheet("color: #b0c8d8;")
-        self.lbl_dl_status.setText(f"Préparation — {len(files)} fichier(s) à télécharger…")
+        self.lbl_dl_status.setText("")
 
         self._download_worker = SftpDownloadWorker(
             cfg['ip'], cfg['port'], cfg['user'], cfg['password'],
@@ -525,24 +621,56 @@ class SftpDialog(QtWidgets.QDialog):
         self._download_worker.error.connect(self._on_dl_error)
         self._download_worker.start()
 
-    def _on_dl_progress(self, current: int, total: int, filename: str):
-        self.dl_progress.setRange(0, total)
-        self.dl_progress.setValue(current + 1)
-        self.lbl_dl_status.setText(
-            f"[{current + 1}/{total}]  {filename}")
+    def _on_dl_progress(self, file_idx: int, file_total: int, filename: str,
+                         file_done: int, file_size: int,
+                         total_done: int, total_size: int, speed: float):
+        # Fichier courant
+        self.lbl_file_name.setText(f"[{file_idx + 1}/{file_total}]  {filename}")
+        if file_size > 0:
+            self.pb_file.setValue(int(file_done * 1000 / file_size))
+        else:
+            self.pb_file.setValue(0)
+        self.lbl_file_bytes.setText(
+            f"{_fmt_size(file_done)} / {_fmt_size(file_size)}")
 
-    def _on_dl_finished(self, count: int):
-        self.dl_progress.setValue(self.dl_progress.maximum())
+        # Vitesse
+        self.lbl_speed.setText(self._fmt_speed(speed) if speed > 0 else "")
+
+        # Total
+        if total_size > 0:
+            pct = int(total_done * 1000 / total_size)
+            self.pb_total.setValue(pct)
+            pct_disp = pct // 10
+            self.pb_total.setFormat(f"{pct_disp} %")
+        self.lbl_total_bytes.setText(
+            f"{_fmt_size(total_done)} / {_fmt_size(total_size)}"
+            f"  —  {file_idx + 1}/{file_total} fichiers")
+
+        # ETA
+        if speed > 0 and total_size > 0:
+            remaining = total_size - total_done
+            self.lbl_eta.setText(self._fmt_eta(remaining / speed))
+        else:
+            self.lbl_eta.setText("")
+
+    def _on_dl_finished(self, count: int, total_bytes: int):
+        self.pb_file.setValue(1000)
+        self.pb_total.setValue(1000)
+        self.pb_total.setFormat("100 %")
         self.btn_download.setEnabled(True)
         self.btn_cancel_dl.setVisible(False)
+        self.lbl_speed.setText("")
+        self.lbl_eta.setText("")
+        self.lbl_total_bytes.setText(
+            f"{_fmt_size(total_bytes)}  —  {count} fichier{'s' if count > 1 else ''}")
         self.lbl_dl_status.setStyleSheet("color: #5ecf80; font-weight: bold;")
         self.lbl_dl_status.setText(
-            f"Terminé — {count} fichier{'s' if count > 1 else ''} téléchargé{'s' if count > 1 else ''}  ✓")
+            f"Transfert terminé — {count} fichier{'s' if count > 1 else ''} "
+            f"({_fmt_size(total_bytes)})  ✓")
 
     def _on_dl_error(self, msg: str):
         self.btn_download.setEnabled(True)
         self.btn_cancel_dl.setVisible(False)
-        self.dl_progress.setVisible(False)
         self.lbl_dl_status.setStyleSheet("color: #D94F38; font-weight: bold;")
         self.lbl_dl_status.setText(f"Erreur : {msg}")
 
