@@ -6,7 +6,6 @@ from services.campaign_service import (get_campaign_json_data, get_video_json_pa
                                        get_working_video_json_path)
 from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
-from views.dialogs.sftp_dialog import SftpDialog
 from views.dialogs.notes_dialog import NotesDialog
 from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
 from services.report_service import generate_pdf_report
@@ -301,8 +300,9 @@ class AppController:
             self._overview_dialog.refresh(self.qualif_ctrl.video_model)
 
     def _open_sftp_dialog(self):
-        """Ouvre le dialog de connexion SFTP / téléversement carte SD."""
-        dlg = SftpDialog(self.window)
+        """Ouvre le hub KOSMOS Connexion (SFTP + planification déploiement)."""
+        from views.dialogs.kosmos_connexion_dialog import KosmosConnexionDialog
+        dlg = KosmosConnexionDialog(self.window)
         dlg.exec()
 
     def _open_vue_globale(self):

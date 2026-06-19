@@ -1,3 +1,4 @@
+import io
 import os
 import stat
 import time
@@ -159,6 +160,65 @@ class SftpDownloadWorker(QThread):
             self.error.emit("Échec d'authentification lors du téléchargement.")
         except Exception as e:
             self.error.emit(f"Erreur de transfert : {e}")
+        finally:
+            if ssh:
+                try:
+                    ssh.close()
+                except Exception:
+                    pass
+
+
+class SftpUploadWorker(QThread):
+    """Envoi d'un fichier (bytes) vers un chemin distant via SFTP (thread séparé)."""
+
+    finished = pyqtSignal(str)   # chemin distant effectif
+    error    = pyqtSignal(str)
+
+    def __init__(self, ip: str, port: int, user: str, password: str,
+                 remote_path: str, data: bytes):
+        super().__init__()
+        self.ip          = ip
+        self.port        = port
+        self.user        = user
+        self.password    = password
+        self.remote_path = remote_path
+        self.data        = data
+
+    def run(self):
+        ssh = None
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(self.ip, port=self.port, username=self.user,
+                        password=self.password, timeout=10)
+            sftp = ssh.open_sftp()
+            # Créer les dossiers parents si nécessaire
+            remote_dir = self.remote_path.rsplit('/', 1)[0]
+            if remote_dir:
+                try:
+                    sftp.makedirs = None   # paramiko n'a pas makedirs
+                    parts = remote_dir.lstrip('/').split('/')
+                    current = '/' if remote_dir.startswith('/') else ''
+                    for part in parts:
+                        current = (current + '/' + part).replace('//', '/')
+                        try:
+                            sftp.stat(current)
+                        except IOError:
+                            sftp.mkdir(current)
+                except Exception:
+                    pass
+            with sftp.file(self.remote_path, 'wb') as f:
+                f.write(self.data)
+            sftp.close()
+            self.finished.emit(self.remote_path)
+        except paramiko.AuthenticationException:
+            self.error.emit("Echec d'authentification — identifiant ou mot de passe incorrect.")
+        except paramiko.SSHException as e:
+            self.error.emit(f"Erreur SSH : {e}")
+        except OSError as e:
+            self.error.emit(f"Impossible de joindre {self.ip}:{self.port} — {e}")
+        except Exception as e:
+            self.error.emit(f"Erreur inattendue : {e}")
         finally:
             if ssh:
                 try:
