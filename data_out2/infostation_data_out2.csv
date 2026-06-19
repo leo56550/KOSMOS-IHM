@@ -1,5 +1,5 @@
 Codestation;Zone;Type;Latitude;Longitude;Date;Exploitable;Heure;Nom du point;Nom du point GPS;Codestatut;Codestatut2;Site;Pt de Suivi;Profondeur;Commentaires terrain pose;Commentaires terrain localisation;Nom du fichier;Timecode ardoise;Timecode début;Commentaires video;Images interessantes;Capture écran;Milieu/Habitat;Visibilite;Camera;Moteur;Systeme;Maree;Lune;Meteo;Vent (beaufort);Mer (beaufort);Houle;Bateau;Pilote;Equipage;Analyseur poisson;Analyseur habitat;Distance analysable min (m);Disatance analysable max (m)
-0042;Br;;nan;nan;07/05/2026;oui;;0042;;;Aucune;Ensta;;0.05;;;0042;;06:11;;;;;5;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0042;Br;;nan;nan;07/05/2026;oui;;0042;;;Aucune;Ensta;;0.05;;;0042;;06:11;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
 0043;Br;;nan;nan;07/05/2026;oui;;0043;;;Aucune;Ensta;;0.05;;;0043;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
 0043_01;;;nan;nan;;oui;;0043_01;;;;;;0.05;;;0043_01;;;;;;;;imx296;;Kofb;;;;;;;;;;;;;
 0044;Br;;nan;nan;07/05/2026;oui;;0044;;;Aucune;Ensta;;0.05;;;0044;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;

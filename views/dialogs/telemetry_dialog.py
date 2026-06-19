@@ -1,3 +1,4 @@
+import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtWidgets
 
@@ -6,13 +7,8 @@ _MISSING_STYLE = (
     " font-family: 'Segoe UI', sans-serif;"
 )
 
-# Temp et pression : pas de curseur dynamique
-_STATIC_METRICS = {"température", "pression"}
-
-# Hauteur compacte quand les données statiques sont manquantes
+# Hauteur compacte quand les données sont manquantes
 _COMPACT_H = 36
-# Hauteur normale pour un graphe avec données
-_GRAPH_H   = 180
 
 
 class TelemetryDialog(QtWidgets.QDialog):
@@ -53,8 +49,6 @@ class TelemetryDialog(QtWidgets.QDialog):
         main_layout.setContentsMargins(6, 6, 6, 6)
 
         for key, (label, color) in self.metrics.items():
-            is_static = key in _STATIC_METRICS
-
             # ── Stack : page 0 = graph  |  page 1 = compact "manquant" ──
             stack = QtWidgets.QStackedWidget()
 
@@ -66,24 +60,16 @@ class TelemetryDialog(QtWidgets.QDialog):
             pw.setMouseEnabled(x=True, y=True)
             curve = pw.plot(pen=pg.mkPen(color, width=1.5))
 
-            if is_static:
-                # Curseur gris positionné une seule fois, jamais redéplacé
-                pw.addItem(pg.InfiniteLine(
-                    pos=0, angle=90,
-                    pen=pg.mkPen('#555555', width=1,
-                                 style=QtCore.Qt.PenStyle.DashLine)
-                ))
-            else:
-                v_line = pg.InfiniteLine(
-                    pos=0, angle=90,
-                    pen=pg.mkPen('w', width=1,
-                                 style=QtCore.Qt.PenStyle.DashLine),
-                    label='{value:0.2f}s',
-                    labelOpts={'position': 0.1, 'color': 'w',
-                               'fill': (0, 0, 0, 150)}
-                )
-                pw.addItem(v_line)
-                self.v_lines.append(v_line)
+            v_line = pg.InfiniteLine(
+                pos=0, angle=90,
+                pen=pg.mkPen('w', width=1,
+                             style=QtCore.Qt.PenStyle.DashLine),
+                label='{value:0.2f}s',
+                labelOpts={'position': 0.1, 'color': 'w',
+                           'fill': (0, 0, 0, 150)}
+            )
+            pw.addItem(v_line)
+            self.v_lines.append(v_line)
 
             # --- Bandeau "données manquantes" (très compact) ---
             missing_w = QtWidgets.QWidget()
@@ -103,11 +89,9 @@ class TelemetryDialog(QtWidgets.QDialog):
             stack.addWidget(pw)        # index 0
             stack.addWidget(missing_w) # index 1
 
-            # Stretch : dynamiques prennent plus de place que statiques
-            stretch = 1 if is_static else 3
             self.plots[key]  = curve
             self.stacks[key] = stack
-            main_layout.addWidget(stack, stretch=stretch)
+            main_layout.addWidget(stack, stretch=3)
 
     # ── Language ──────────────────────────────────────────────────────────
 
@@ -145,8 +129,14 @@ class TelemetryDialog(QtWidgets.QDialog):
                 self._show_missing(key, stack)
                 continue
 
-            y_data = self.full_df[key].values
-            if (y_data != 0).sum() == 0:
+            try:
+                y_data = self.full_df[key].values.astype(float)
+            except (ValueError, TypeError):
+                self._show_missing(key, stack)
+                continue
+
+            valid = y_data[~np.isnan(y_data)]
+            if len(valid) == 0 or (valid != 0).sum() == 0:
                 self._show_missing(key, stack)
             else:
                 curve.setData(x_data, y_data)
@@ -156,13 +146,9 @@ class TelemetryDialog(QtWidgets.QDialog):
             v_line.setValue(0)
 
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
-        """Bascule le stack sur la page 'données manquantes' et ajuste la hauteur."""
+        """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""
         stack.setCurrentIndex(1)
-        if key in _STATIC_METRICS:
-            stack.setMaximumHeight(_COMPACT_H)
-        # Pour les métriques dynamiques, garder la hauteur normale même si vide
-        else:
-            stack.setMaximumHeight(16777215)
+        stack.setMaximumHeight(_COMPACT_H)
 
     def _show_graph(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page graphe et restaure la hauteur maximale."""

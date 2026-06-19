@@ -433,6 +433,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # ── Telemetry dialog ──────────────────────────────────────────────
         self.telemetry_dialog = TelemetryDialog(self)
         self.telemetry_dialog.finished.connect(lambda _: self.btn_telemetry.setChecked(False))
+        self.telemetry_dialog.finished.connect(lambda _: self._sync_telemetry_timer())
+
+        # Timer dédié au curseur télémétrie — découplé du positionChanged vidéo (~10 fps)
+        self._telemetry_timer = QtCore.QTimer(self)
+        self._telemetry_timer.setInterval(100)
+        self._telemetry_timer.timeout.connect(self._tick_telemetry_cursor)
 
         # ── Splitter ──────────────────────────────────────────────────────
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -746,9 +752,23 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Met en pause le flux principal."""
         self.player.pause()
 
+    def _sync_telemetry_timer(self):
+        """Démarre ou arrête le timer de curseur télémétrie selon l'état lecture + visibilité dialog."""
+        is_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if is_playing and self.telemetry_dialog.isVisible():
+            if not self._telemetry_timer.isActive():
+                self._telemetry_timer.start()
+        else:
+            self._telemetry_timer.stop()
+
+    def _tick_telemetry_cursor(self):
+        """Appelé par _telemetry_timer (~10 fps) — met à jour le curseur sans bloquer la vidéo."""
+        self.telemetry_dialog.update_cursor(self.player.position() / 1000.0)
+
     def _on_playback_state_changed(self, state):
         """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
+        self._sync_telemetry_timer()
         if is_playing:
             # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
             self.left_display.setCurrentIndex(0)
@@ -837,11 +857,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if is_playing and (now_ms - self._last_ui_update_ms) < 66:
             return
         self._last_ui_update_ms = now_ms
-
-        if (self.current_video_path
-                and hasattr(self, 'telemetry_dialog')
-                and self.telemetry_dialog.isVisible()):
-            self.telemetry_dialog.update_cursor(position_ms / 1000.0)
 
         if not self.timeline.is_dragging:
             self.timeline.set_current_position(position_ms)
@@ -974,29 +989,50 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.current_video_path = None
             self.display_stack.setCurrentIndex(0)
 
+    # Correspondance CSV Raspberry → noms canoniques attendus par TelemetryDialog
+    _TELEMETRY_COL_ALIASES = {
+        'delta(s)': 'Delta', 'delta_s': 'Delta', 'delta': 'Delta',
+        'tempc': 'température', 'temp_c': 'température', 'temp': 'température',
+        'temperature': 'température', 'water_temp': 'température',
+        'pression': 'pression', 'pressure': 'pression', 'press': 'pression',
+        # ExpTime et Lux restent tels quels
+    }
+
     def load_dynamic_metadata(self, csv_path: str):
-        """Charge le CSV de télémétrie. Met à jour le dialog s'il était déjà ouvert."""
+        """Charge le CSV de télémétrie, normalise les noms de colonnes et met à jour le dialog."""
         try:
             df = pd.read_csv(csv_path, sep=None, engine='python')
             df.columns = df.columns.str.strip()
-            col_delta = next((c for c in df.columns if 'Delta' in c), None)
-            if col_delta:
-                df.rename(columns={col_delta: 'Delta'}, inplace=True)
-                if df['Delta'].dtype == object:
-                    df['Delta'] = df['Delta'].str.replace(',', '.').astype(float)
-                self.df_telemetry = df
-                self.telemetry_dialog.update_data(df)
-                self.btn_telemetry.setEnabled(True)
-                if self.telemetry_dialog.isVisible():
-                    pass  # déjà ouvert → update_data suffit
+
+            # Normaliser les noms de colonnes (insensible à la casse)
+            rename_map = {col: self._TELEMETRY_COL_ALIASES[col.lower()]
+                          for col in df.columns
+                          if col.lower() in self._TELEMETRY_COL_ALIASES}
+            df.rename(columns=rename_map, inplace=True)
+
+            if 'Delta' not in df.columns:
+                print(f"[Télémétrie] Colonne Delta introuvable dans {csv_path}")
+                return
+
+            # Convertir les colonnes numériques (virgule décimale possible)
+            for col in ['Delta', 'température', 'pression', 'ExpTime', 'Lux']:
+                if col in df.columns and df[col].dtype == object:
+                    df[col] = pd.to_numeric(
+                        df[col].astype(str).str.replace(',', '.'), errors='coerce'
+                    )
+
+            self.df_telemetry = df
+            self.telemetry_dialog.update_data(df)
+            self.btn_telemetry.setEnabled(True)
         except Exception as e:
-            print(f"Erreur chargement télémétrie : {e}")
+            print(f"[Télémétrie] Erreur chargement : {e}")
 
     def _on_telemetry_toggled(self, checked: bool):
         if checked:
             self.telemetry_dialog.show()
         else:
             self.telemetry_dialog.hide()
+        self._sync_telemetry_timer()
 
     def play_all(self):
         """Lance la lecture sur le flux L et (en stéréo) le flux R."""
