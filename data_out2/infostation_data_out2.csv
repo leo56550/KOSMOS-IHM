@@ -1,0 +1,8 @@
+Codestation;Zone;Type;Latitude;Longitude;Date;Exploitable;Heure;Nom du point;Nom du point GPS;Codestatut;Codestatut2;Site;Pt de Suivi;Profondeur;Commentaires terrain pose;Commentaires terrain localisation;Nom du fichier;Timecode ardoise;Timecode début;Commentaires video;Images interessantes;Capture écran;Milieu/Habitat;Visibilite;Camera;Moteur;Systeme;Maree;Lune;Meteo;Vent (beaufort);Mer (beaufort);Houle;Bateau;Pilote;Equipage;Analyseur poisson;Analyseur habitat;Distance analysable min (m);Disatance analysable max (m)
+0042;Br;;nan;nan;07/05/2026;oui;;0042;;;Aucune;Ensta;;0.05;;;0042;;06:11;;;;;5;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0043;Br;;nan;nan;07/05/2026;oui;;0043;;;Aucune;Ensta;;0.05;;;0043;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0043_01;;;nan;nan;;oui;;0043_01;;;;;;0.05;;;0043_01;;;;;;;;imx296;;Kofb;;;;;;;;;;;;;
+0044;Br;;nan;nan;07/05/2026;oui;;0044;;;Aucune;Ensta;;0.05;;;0044;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0045;Br;;48,4194;-4,46934;07/05/2026;oui;;0045;;;Aucune;Ensta;;0.01;;;0045;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0046;Br;;48,41928;-4,46934;07/05/2026;oui;;0046;;;Aucune;Ensta;;0.01;;;0046;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;
+0047;Br;;48,41925;-4,46935;07/05/2026;oui;;0047;;;Aucune;Ensta;;0.03;;;0047;;;;;;;;imx296;;Kofb;;;;;;;Aucun;Robin;Olivier Clothilde;;;;

@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import uuid
 import cv2
 import numpy as np
@@ -11,7 +12,10 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from services.motor_service import get_motor_stable_timestamps
-from services.campaign_service import get_video_json_path
+from services.campaign_service import (
+    get_video_json_path, get_campaign_output_dir, get_video_output_dir,
+    get_working_video_dir, resolve_video_json_path,
+)
 from services.image_service import extract_frame_at_time
 from services.video_service import check_stereo_status
 from services.export_service import ExportWorker
@@ -67,6 +71,7 @@ class EvenementsController:
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
         self._on_events_changed = on_events_changed
+        self._working_dir: str = ""
         self.current_language = 'en'
         self.export_start_ms = 0
         self.export_end_ms = 0
@@ -74,6 +79,7 @@ class EvenementsController:
         self.current_video_path = None
         self.event_dictionary = {}
         self.capture_start_time = None
+        self._analysis_widgets: dict[str, QtWidgets.QLineEdit] = {}
 
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
         self.player_container_events = self.page.findChild(QtWidgets.QFrame, "video_timeline_container")
@@ -492,6 +498,42 @@ class EvenementsController:
 
     # --- Export UI ---
 
+    def _save_analysis_field(self, field_key: str, value: str):
+        """Écrit field_key dans video_observation du JSON courant."""
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vob = data.setdefault("video_observation", {})
+            if field_key in vob and isinstance(vob[field_key], dict):
+                vob[field_key]["value"] = value or None
+            else:
+                vob[field_key] = {"value": value or None}
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[Analyse] Erreur sauvegarde {field_key}: {e}")
+
+    def _load_analysis_fields(self):
+        """Peuple les widgets d'analyse depuis le JSON courant."""
+        if not self._analysis_widgets:
+            return
+        data = {}
+        if self.current_json_path and os.path.exists(self.current_json_path):
+            try:
+                with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        vob = data.get("video_observation", {})
+        for field_key, widget in self._analysis_widgets.items():
+            entry = vob.get(field_key, {})
+            val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+            widget.blockSignals(True)
+            widget.setText(str(val) if val is not None else "")
+            widget.blockSignals(False)
+
     def _initialize_export_ui(self):
         """Crée le bouton d'export, la barre de progression et le label de statut."""
         if not self.export_container:
@@ -525,6 +567,64 @@ class EvenementsController:
         layout.addWidget(self.export_button)
         layout.addWidget(self.export_progress)
         layout.addWidget(self.export_status_label)
+
+        # ── Analyse vidéo ────────────────────────────────────────────────
+        sep_analyse = QtWidgets.QFrame()
+        sep_analyse.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep_analyse.setStyleSheet("color: #1e3448;")
+        layout.addWidget(sep_analyse)
+
+        lbl_analyse = QtWidgets.QLabel(self.translate("Analyse vidéo", "Video analysis"))
+        lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 11px; font-weight: bold; border: none;")
+        layout.addWidget(lbl_analyse)
+
+        _lbl_s = "color: #7ec8e3; font-size: 10px; border: none;"
+        _inp_s = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
+                  " border-radius: 3px; padding: 2px 5px; font-size: 11px;")
+
+        analyse_grid = QtWidgets.QWidget()
+        analyse_grid.setStyleSheet("background: transparent;")
+        ag = QtWidgets.QGridLayout(analyse_grid)
+        ag.setContentsMargins(0, 4, 0, 4)
+        ag.setSpacing(6)
+
+        def _albl(text):
+            l = QtWidgets.QLabel(text)
+            l.setStyleSheet(_lbl_s)
+            return l
+
+        def _ainput(field_key, placeholder=""):
+            w = QtWidgets.QLineEdit()
+            w.setPlaceholderText(placeholder)
+            w.setStyleSheet(_inp_s)
+            w.editingFinished.connect(lambda fk=field_key, widget=w: self._save_analysis_field(fk, widget.text()))
+            self._analysis_widgets[field_key] = w
+            return w
+
+        ag.addWidget(_albl(self.translate("Analyseur poisson", "Fish annotator")), 0, 0)
+        ag.addWidget(_ainput("fish_annotator", "ex : Jean Dupont"), 0, 1)
+        ag.addWidget(_albl(self.translate("Analyseur habitat", "Habitat annotator")), 1, 0)
+        ag.addWidget(_ainput("habitat_annotator", "ex : Marie Martin"), 1, 1)
+        ag.addWidget(_albl(self.translate("Visibilité (m)", "Visibility (m)")), 2, 0)
+        ag.addWidget(_ainput("estimated_visibility", "ex : 5"), 2, 1)
+
+        dist_w = QtWidgets.QWidget()
+        dist_w.setStyleSheet("background: transparent;")
+        dist_row = QtWidgets.QHBoxLayout(dist_w)
+        dist_row.setContentsMargins(0, 0, 0, 0)
+        dist_row.setSpacing(4)
+        lbl_min = QtWidgets.QLabel("min")
+        lbl_min.setStyleSheet(_lbl_s)
+        lbl_max = QtWidgets.QLabel("max")
+        lbl_max.setStyleSheet(_lbl_s)
+        dist_row.addWidget(lbl_min)
+        dist_row.addWidget(_ainput("distance_min", "0"))
+        dist_row.addWidget(lbl_max)
+        dist_row.addWidget(_ainput("distance_max", "5"))
+        ag.addWidget(_albl(self.translate("Distance anal. (m)", "Analysis dist. (m)")), 3, 0)
+        ag.addWidget(dist_w, 3, 1)
+
+        layout.addWidget(analyse_grid)
 
         # ── Histogramme ──────────────────────────────────────────────────
         sep = QtWidgets.QFrame()
@@ -727,7 +827,10 @@ class EvenementsController:
         value_lower = (value or "").strip().lower()
         if "interesting_images" in type_lower or "image" in type_lower:
             return True
-        if any(kw in value_lower for kw in ["atterrissage", "atterissage", "décollage", "decollage", "landing", "takeoff", "take_off"]):
+        if any(kw in value_lower for kw in [
+            "atterrissage", "atterissage", "décollage", "decollage", "landing", "takeoff", "take_off",
+            "ardoise", "slate", "tableau blanc", "whiteboard",
+        ]):
             return True
         return False
 
@@ -884,7 +987,7 @@ class EvenementsController:
 
         self.current_video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
         video_dir = os.path.dirname(self.current_video_path)
-        self.current_json_path = get_video_json_path(self.current_video_path)
+        self.current_json_path = resolve_video_json_path(self._working_dir, self.current_video_path)
         if self._on_video_focused:
             self._on_video_focused(item.text())
 
@@ -901,6 +1004,7 @@ class EvenementsController:
         self.charger_evenements_du_json()
         self._nettoyer_json_misplaced_events()
         self._update_export_button_state()
+        self._load_analysis_fields()
 
         video_fps = 25.0
         if os.path.exists(self.current_video_path):
@@ -1357,9 +1461,10 @@ class EvenementsController:
             return
 
         parent_video_directory = os.path.dirname(self.current_video_path)
-        session_root = os.path.dirname(parent_video_directory)
+        session_root = os.path.dirname(parent_video_directory)   # = dossier campagne
         json_path = os.path.join(session_root, "matrices.json")
         is_stereo_mode = getattr(self.event_player, "is_stereo", False)
+        video_out_dir = self._get_video_out_dir(self.current_video_path)
 
         dialog = ExportOptionsDialog(self.page, is_stereo=is_stereo_mode)
         dialog.set_language(self.current_language)
@@ -1395,7 +1500,7 @@ class EvenementsController:
 
         self.export_worker = ExportWorker(
             video_path=self.current_video_path,
-            base_output_dir=parent_video_directory,
+            base_output_dir=video_out_dir,
             start_ms=start_ms, end_ms=end_ms,
             target_fps=target_fps, events=[],
             apply_he=apply_he, apply_dh=apply_dh,
@@ -1412,8 +1517,29 @@ class EvenementsController:
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setValue(progress)
 
+    def _copy_companion_files(self, video_path: str):
+        """Copie les fichiers compagnon du dossier source vers le sous-dossier de travail.
+
+        Tous les fichiers du dossier vidéo d'origine sont copiés, sauf les .mp4
+        (trop volumineux). Les fichiers déjà présents ne sont pas écrasés.
+        """
+        if not self._working_dir:
+            return
+        src_dir = os.path.dirname(os.path.normpath(video_path))
+        dst_dir = self._get_video_out_dir(video_path)
+        os.makedirs(dst_dir, exist_ok=True)
+        for fname in os.listdir(src_dir):
+            if fname.lower().endswith('.mp4'):
+                continue
+            src_file = os.path.join(src_dir, fname)
+            if os.path.isfile(src_file):
+                dst_file = os.path.join(dst_dir, fname)
+                if not os.path.exists(dst_file):
+                    shutil.copy2(src_file, dst_file)
+
     def _on_export_finished(self, saved_count: int):
         """Affiche le résultat de l'export et génère le CSV d'événements."""
+        self._copy_companion_files(self.current_video_path)
         message = self.translate(f"Export terminé : {saved_count} images sauvegardées.", f"Export complete: {saved_count} images saved.")
         if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms):
             message += self.translate("\nCSV d'événements généré.", "\nEvents CSV generated.")
@@ -1433,12 +1559,25 @@ class EvenementsController:
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setVisible(False)
 
+    def set_working_dir(self, path: str):
+        """Définit le répertoire de travail IHM pour les exports."""
+        self._working_dir = path
+
+    def _get_video_out_dir(self, video_path: str) -> str:
+        """Retourne le dossier de sortie pour une vidéo : répertoire de travail si défini, sinon fallback campagne."""
+        if self._working_dir:
+            return get_working_video_dir(self._working_dir, video_path)
+        parent_dir = os.path.dirname(os.path.normpath(video_path))
+        campaign_folder = os.path.dirname(parent_dir)
+        return get_video_output_dir(campaign_folder, video_path)
+
     def _generate_events_csv(self, video_path, start_ms, end_ms):
-        """Génère events.csv dans le dossier vidéo en associant événements JSON et rotations moteur aux images exportées."""
+        """Génère events_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         template_json_path = get_video_json_path(video_path)
-        events_csv_path = os.path.normpath(os.path.join(parent_dir, "events.csv"))
-        img_dir_root = os.path.normpath(os.path.join(parent_dir, "img"))
+        video_out = self._get_video_out_dir(video_path)
+        events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
+        img_dir_root = os.path.normpath(os.path.join(video_out, "img"))
         stereo_left_path = os.path.join(img_dir_root, "LEFT")
         img_dir = stereo_left_path if os.path.exists(stereo_left_path) else img_dir_root
 

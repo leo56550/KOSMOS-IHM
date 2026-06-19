@@ -1,0 +1,69 @@
+{
+  "system": {
+    "camera": "imx477",
+    "model": "Raspberry Pi 5 Model B Rev 1.0",
+    "system": "K51",
+    "version": "4.0"
+  },
+  "campaign": {
+    "zoneDict": {
+      "campaign": "zer",
+      "zone": "zer",
+      "locality": "zert",
+      "protection": "zert"
+    },
+    "dateDict": {
+      "date": "2026-02-12"
+    },
+    "deploiementDict": {
+      "boat": "zert",
+      "pilot": "zert",
+      "crew": "zert",
+      "partners": "zert"
+    }
+  },
+  "video": {
+    "analyseDict": {
+      "exploitability": null,
+      "fauna": null,
+      "habitat": null,
+      "visibility": null
+    },
+    "astroDict": {
+      "coefficient": null,
+      "moon": null,
+      "tide": null
+    },
+    "ctdDict": {
+      "depth": 0.01,
+      "salinity": null,
+      "temperature": 10.7
+    },
+    "gpsDict": {
+      "latitude": null,
+      "longitude": null,
+      "site": null
+    },
+    "hourDict": {
+      "HMSOS": "17:13:49",
+      "hour": "17",
+      "minute": "13",
+      "second": "49",
+      "ymdOS": "2026-02-12"
+    },
+    "meteoAirDict": {
+      "atmPress": 1030.4,
+      "direction": null,
+      "sky": null,
+      "tempAir": 12.1,
+      "wind": null
+    },
+    "meteoMerDict": {
+      "seaState": null,
+      "swell": null
+    },
+    "stationDict": {
+      "increment": "0011"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "system": {
+    "camera": "imx296",
+    "model": "Raspberry Pi 5 Model B Rev 1.0",
+    "system": "Kofb",
+    "version": "5.0"
+  },
+  "campaign": {
+    "zoneDict": {
+      "campaign": null,
+      "zone": null,
+      "locality": null,
+      "protection": null
+    },
+    "dateDict": {
+      "date": null
+    },
+    "deploiementDict": {
+      "boat": null,
+      "pilot": null,
+      "crew": null,
+      "partners": null
+    }
+  },
+  "video": {
+    "stationDict": {
+      "increment": "0043",
+      "codestation": null
+    },
+    "hourDict": {
+      "hour": null,
+      "minute": null,
+      "second": null,
+      "ymdOS": "2026-06-17",
+      "HMSOS": "11:25:24"
+    },
+    "gpsDict": {
+      "site": null,
+      "latitude": null,
+      "longitude": null
+    },
+    "ctdDict": {
+      "depth": 0.05,
+      "temperature": 18.0,
+      "salinity": null
+    },
+    "astroDict": {
+      "moon": null,
+      "tide": null,
+      "coefficient": null
+    },
+    "meteoAirDict": {
+      "sky": null,
+      "wind": null,
+      "direction": null,
+      "tempAir": 17.8,
+      "atmPress": 1006.1
+    },
+    "meteoMerDict": {
+      "seaState": null,
+      "swell": null
+    },
+    "analyseDict": {
+      "exploitability": null,
+      "habitat": null,
+      "fauna": null,
+      "visibility": null
+    }
+  }
+}

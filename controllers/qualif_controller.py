@@ -9,7 +9,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, check_stereo_status
-from services.campaign_service import get_video_gps_coords, get_video_json_path
+from services.campaign_service import get_video_gps_coords, get_video_json_path, get_working_video_json_path
 from services.migration_service import migrate_json_file_if_needed, initialise_video_json_if_needed
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
@@ -37,6 +37,7 @@ class QualifController:
         self.selected_video_name = None
         self.all_coords = {}
         self.campaign_fields = {}
+        self._working_dir = ""
         self.detached_player = None
         self.current_campaign_folder = None
 
@@ -80,6 +81,9 @@ class QualifController:
         self.set_language(self.current_language)
 
     # --- Language ---
+
+    def set_working_dir(self, path: str):
+        self._working_dir = path
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
@@ -256,13 +260,16 @@ class QualifController:
     # --- Campaign opening ---
 
     def open_system_explorer(self, derusher_name: str):
-        """Ouvre un sélecteur de dossier, scanne les MP4, charge la poubelle et patch le dérusher dans les JSON."""
+        """Ouvre un sélecteur de dossier puis charge la campagne (compatibilité)."""
         directory = QtWidgets.QFileDialog.getExistingDirectory(
             self.parent or self.widget, "Select Campaign Folder"
         )
         if not directory:
             return
+        self.load_campaign_folder(directory, derusher_name)
 
+    def load_campaign_folder(self, directory: str, derusher_name: str):
+        """Charge une campagne depuis *directory* sans ouvrir de QFileDialog."""
         self.current_campaign_folder = directory
         self.video_model.removeRows(0, self.video_model.rowCount())
         if self.trash_video_tree:
@@ -504,17 +511,21 @@ class QualifController:
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not video_path or not os.path.exists(video_path):
                 continue
-            json_path = get_video_json_path(video_path)
-            if os.path.exists(json_path):
-                try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    if "survey" in data and key in data["survey"]:
-                        data["survey"][key]["value"] = value
-                        with open(json_path, 'w', encoding='utf-8') as f:
-                            json.dump(data, f, indent=2, ensure_ascii=False)
-                except Exception as e:
-                    print(f"[IO SYNC ERROR] {e}")
+            if self._working_dir:
+                json_path = get_working_video_json_path(self._working_dir, video_path)
+            else:
+                json_path = get_video_json_path(video_path)
+            if not os.path.exists(json_path):
+                continue  # ne jamais écrire dans les données source
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if "survey" in data and key in data["survey"]:
+                    data["survey"][key]["value"] = value
+                    with open(json_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=4, ensure_ascii=False)
+            except Exception as e:
+                print(f"[IO SYNC ERROR] {e}")
 
     # --- Video selection ---
 

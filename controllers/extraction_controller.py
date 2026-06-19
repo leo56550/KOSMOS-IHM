@@ -7,6 +7,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.thumbnail_service import THUMB_W, THUMB_H
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
+from services.campaign_service import get_campaign_output_dir, get_working_video_dir
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.dialogs.capture_dialog import CaptureDialog
 
@@ -19,6 +20,7 @@ class ExtractionController:
         self.widget = widget
         self.video_model = video_model
         self._on_video_focused = on_video_focused
+        self._working_dir: str = ""
         self.current_language = 'en'
         self.current_is_stereo = False
         self.current_video_payload = None
@@ -243,6 +245,17 @@ class ExtractionController:
 
         self.update_export_buttons_visibility()
 
+    def set_working_dir(self, path: str):
+        """Définit le répertoire de travail IHM pour les exports."""
+        self._working_dir = path
+
+    def _get_video_out_dir(self, video_path: str) -> str:
+        if self._working_dir:
+            return get_working_video_dir(self._working_dir, video_path)
+        video_dir = os.path.dirname(video_path)
+        campaign_folder = os.path.dirname(video_dir)
+        return os.path.join(get_campaign_output_dir(campaign_folder), "segments")
+
     def on_export_segment(self, side="mono"):
         """Lance le VideoSegmentationWorker pour exporter le segment dans segments/."""
         if not self.current_video_path or self.start_ms >= self.end_ms:
@@ -270,7 +283,7 @@ class ExtractionController:
             self.group_export.setEnabled(False)
             self.lbl_export_status.setText(self.translate("Préparation de l'export...", "Preparing export..."))
 
-            segments_dir = os.path.join(os.path.dirname(self.current_video_path), "segments")
+            segments_dir = os.path.join(self._get_video_out_dir(self.current_video_path), "segments")
             self.segmentation_worker = VideoSegmentationWorker(
                 source_path, self.start_ms, self.end_ms, segments_dir
             )
@@ -476,10 +489,10 @@ class ExtractionController:
         self.lbl_thumbnail.setPixmap(QtGui.QPixmap.fromImage(qimg))
 
     def save_processed_image(self):
-        """Écrit la frame traitée dans captures/ et l'ajoute aux livrables."""
+        """Écrit la frame traitée dans <campagne>_sortie_ihm/captures/ et l'ajoute aux livrables."""
         if self.current_processed_frame is None:
             return
-        out_dir = os.path.join(os.path.dirname(self.current_video_path), "captures")
+        out_dir = os.path.join(self._get_video_out_dir(self.current_video_path), "captures")
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f"{self.current_capture_name}.png")
         cv2.imwrite(path, self.current_processed_frame)

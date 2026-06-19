@@ -329,6 +329,13 @@ def _build_base_template() -> dict:
                 "authorized_values_fr": ["oui", "non", "habitat", "?", "communication"],
                 "authorized_values_en": ["yes", "no", "habitat", "?", "communication"]
             },
+            "derusher": {
+                "name": "Derusher", "name_fr": "Analyseur", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Name of the person derushing",
+                "description_fr": "Nom de la personne qui derushe",
+                "acquisition_mode": "IHM", "example": "Olivier Fauvarque", "ifdo_id": None
+            },
             "estimated_visibility": {
                 "name": "Estimated Visibility", "name_fr": "Visibilité Estimée", "type": "int",
                 "format": "Numérique (Mètres)", "value": None,
@@ -336,12 +343,90 @@ def _build_base_template() -> dict:
                 "description_fr": "Visibilité estimée sur la vidéo (en mètres)",
                 "acquisition_mode": "IHM", "example": "5", "ifdo_id": None
             },
-            "derusher": {
-                "name": "Derusher", "name_fr": "Analyseur", "type": "str",
+            "location_comment": {
+                "name": "Location Comment", "name_fr": "Commentaire localisation", "type": "str",
                 "format": "Texte", "value": None,
-                "description": "Name of the person derushing",
-                "description_fr": "Nom de la personne qui derushe",
-                "acquisition_mode": "IHM", "example": "Olivier Fauvarque", "ifdo_id": None
+                "description": "Field notes regarding the observation location",
+                "description_fr": "Commentaire relevé sur le terrain concernant la localisation",
+                "acquisition_mode": "Field Sheet/Aposteriori", "ifdo_id": None
+            },
+            "habitat": {
+                "name": "Coarse Habitat", "name_fr": "Milieu / Habitat", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Gross habitat determination from video",
+                "description_fr": "Détermination grossière de l'habitat",
+                "acquisition_mode": "IHM/Dérushage",
+                "example": "Herbier, algueraie, roche, sable…", "ifdo_id": None
+            },
+            "timecode_ardoise": {
+                "name": "Timecode Board", "name_fr": "Timecode ardoise", "type": "str",
+                "format": "hh:mm", "value": None,
+                "description": "Time code at which the whiteboard is most visible",
+                "description_fr": "Time code auquel l'ardoise est la plus visible",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "timecode_debut": {
+                "name": "Timecode Start", "name_fr": "Timecode début", "type": "str",
+                "format": "hh:mm", "value": None,
+                "description": "Time code at which annotation starts",
+                "description_fr": "Time code auquel débute l'annotation",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "derush_comment": {
+                "name": "Derush Comment", "name_fr": "Commentaire dérushage", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Comment made during rapid video review",
+                "description_fr": "Commentaire au dérushage rapide",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "interesting_images": {
+                "name": "Interesting Images", "name_fr": "Images intéressantes", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Remarkable images with their time code (mm:ss)",
+                "description_fr": "Images remarquables avec leur time code (mm:ss)",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "moteur": {
+                "name": "Motor", "name_fr": "Moteur", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Motor state during deployment",
+                "description_fr": "État du moteur lors de la pose",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "screenshot": {
+                "name": "Screenshot", "name_fr": "Capture écran", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Reference of the associated screenshot",
+                "description_fr": "Référence de la capture d'écran associée",
+                "acquisition_mode": "IHM/Dérushage", "ifdo_id": None
+            },
+            "fish_annotator": {
+                "name": "Fish Annotator", "name_fr": "Analyseur poisson", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Name of the person who analyses the video for fish",
+                "description_fr": "Nom de la personne qui analyse la vidéo pour les poissons",
+                "acquisition_mode": "IHM/Annotation", "ifdo_id": None
+            },
+            "habitat_annotator": {
+                "name": "Habitat Annotator", "name_fr": "Analyseur habitat", "type": "str",
+                "format": "Texte", "value": None,
+                "description": "Name of the person who analyses the video for habitat",
+                "description_fr": "Nom de la personne qui analyse la vidéo pour l'habitat",
+                "acquisition_mode": "IHM/Annotation", "ifdo_id": None
+            },
+            "distance_min": {
+                "name": "Min Analysable Distance", "name_fr": "Distance analysable min (m)",
+                "type": "float", "format": "Entier, En mètres", "value": None,
+                "description": "Minimum distance at which fish can be identified",
+                "description_fr": "Distance minimale à laquelle les poissons sont identifiables",
+                "acquisition_mode": "IHM/Annotation", "ifdo_id": None
+            },
+            "distance_max": {
+                "name": "Max Analysable Distance", "name_fr": "Distance analysable max (m)",
+                "type": "float", "format": "Entier, En mètres", "value": None,
+                "description": "Maximum distance at which fish can be identified",
+                "description_fr": "Distance maximale à laquelle les poissons sont identifiables",
+                "acquisition_mode": "IHM/Annotation", "ifdo_id": None
             },
             "events_deployment": [events_deployment_schema],
             "events_animal": [events_animal_schema],

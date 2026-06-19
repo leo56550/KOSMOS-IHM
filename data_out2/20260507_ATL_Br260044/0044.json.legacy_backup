@@ -1,0 +1,69 @@
+{
+  "system": {
+    "camera": "imx296",
+    "model": "Raspberry Pi 5 Model B Rev 1.0",
+    "system": "Kofb",
+    "version": "5.0"
+  },
+  "campaign": {
+    "zoneDict": {
+      "campaign": "ATL",
+      "zone": "Br",
+      "locality": "Ensta",
+      "protection": "Aucune"
+    },
+    "dateDict": {
+      "date": "2026-05-07"
+    },
+    "deploiementDict": {
+      "boat": "Aucun",
+      "pilot": "Robin",
+      "crew": "Olivier Clothilde",
+      "partners": " RDT Submeeting"
+    }
+  },
+  "video": {
+    "analyseDict": {
+      "exploitability": null,
+      "fauna": null,
+      "habitat": null,
+      "visibility": null
+    },
+    "astroDict": {
+      "coefficient": null,
+      "moon": null,
+      "tide": null
+    },
+    "ctdDict": {
+      "depth": 0.05,
+      "salinity": null,
+      "temperature": 17.6
+    },
+    "gpsDict": {
+      "latitude": null,
+      "longitude": null,
+      "site": null
+    },
+    "hourDict": {
+      "HMSOS": "15:18:06",
+      "hour": "15",
+      "minute": "18",
+      "second": "20",
+      "ymdOS": "2026-06-17"
+    },
+    "meteoAirDict": {
+      "atmPress": 1001.7,
+      "direction": null,
+      "sky": null,
+      "tempAir": 17.6,
+      "wind": null
+    },
+    "meteoMerDict": {
+      "seaState": null,
+      "swell": null
+    },
+    "stationDict": {
+      "increment": "0044"
+    }
+  }
+}

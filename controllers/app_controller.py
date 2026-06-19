@@ -1,7 +1,9 @@
 from PyQt6 import QtWidgets, QtCore
 import json
 
-from services.campaign_service import get_campaign_json_data, get_video_json_path
+from services.campaign_service import (get_campaign_json_data, get_video_json_path,
+                                       sync_video_to_working_dir, migrate_json_to_template,
+                                       get_working_video_json_path)
 from services.video_service import check_stereo_status
 from services.weather_service import WeatherWorker
 from views.dialogs.sftp_dialog import SftpDialog
@@ -29,11 +31,13 @@ class AppController:
         self._current_campaign_name: str = ""
         self._current_derusher_name: str = ""
         self._current_campaign_mode: str = ""  # "MONO" | "STEREO" | ""
+        self.working_dir: str = ""
+        self._campaign_ready: bool = False
 
         # Instantiate page controllers
         self.accueil_ctrl = AccueilController(
             window.page_accueil,
-            self.handle_campaign_opening
+            self.handle_campaign_opening,
         )
         self.qualif_ctrl = QualifController(
             window.page_qualification, parent=window,
@@ -53,7 +57,7 @@ class AppController:
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
-            on_events_changed=self._schedule_overview_refresh,
+            on_events_changed=self._on_events_changed,
         )
         self.metadonnees_ctrl = MetadonneesController(
             window.page_metadonnees,
@@ -149,6 +153,46 @@ class AppController:
             # select_video_by_name n'a pas trouvé la vidéo, restaurer
             self.qualif_ctrl.selected_video_name = prev
 
+    def _sync_all_to_working_dir(self) -> None:
+        """Copie les fichiers compagnon de toutes les vidéos et génère l'Infostation CSV."""
+        if not self.working_dir or not self._campaign_ready:
+            return
+        model = self.qualif_ctrl.video_model
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if video_path:
+                try:
+                    sync_video_to_working_dir(self.working_dir, video_path)
+                    wjson = get_working_video_json_path(self.working_dir, video_path)
+                    migrate_json_to_template(wjson)
+                except Exception as e:
+                    print(f"[SYNC] {video_path}: {e}")
+        self.metadonnees_ctrl.generate_infostation_csv()
+
+    def _open_working_dir(self):
+        """Ouvre un sélecteur de dossier pour choisir le répertoire de travail IHM."""
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            "Choisir le répertoire de travail (ex : 2026)",
+            self.working_dir or "",
+        )
+        if not path:
+            return
+        self.working_dir = path
+        # Propager aux controllers
+        for ctrl in [self.qualif_ctrl, self.validation_ctrl,
+                     self.evenements_ctrl, self.metadonnees_ctrl, self.extraction_ctrl]:
+            if hasattr(ctrl, 'set_working_dir'):
+                ctrl.set_working_dir(path)
+        # Arrêter le clignotement, passer le bouton en vert
+        self.accueil_ctrl.confirm_working_dir(path)
+        # Déverrouiller la navigation maintenant que les deux conditions sont remplies
+        if self._campaign_ready:
+            self.lock_navigation(False)
+        # Synchroniser tous les fichiers compagnon maintenant que le répertoire est connu
+        self._sync_all_to_working_dir()
+
     def _on_metadata_saved(self):
         """Reconstruit la minimap si elle est visible, sinon invalide pour le prochain affichage."""
         if self.qualif_ctrl.map_dialog.isVisible():
@@ -237,6 +281,14 @@ class AppController:
         """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit stats + vue globale."""
         self.refresh_status_bar()
         self._do_refresh_overview()  # immédiat — un seul clic, pas besoin de debounce
+
+    def _on_events_changed(self, *_):
+        """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés.
+
+        Notifie la vue globale ET la feuille terrain (champs auto-dérivés ardoise/images).
+        """
+        self._schedule_overview_refresh()
+        self.metadonnees_ctrl.refresh_feuille_terrain()
 
     def _schedule_overview_refresh(self, *_):
         """Déclenche un refresh de la vue globale avec debounce 500ms."""
@@ -331,8 +383,9 @@ class AppController:
 
     # --- Campaign opening ---
 
-    def handle_campaign_opening(self, nom_derusher: str):
-        """Ouvre la campagne sélectionnée, rafraîchit tous les modèles et déverrouille la navigation."""
+    def handle_campaign_opening(self, nom_derusher: str,
+                               campaign_folder: str = "", working_dir: str = ""):
+        """Charge la campagne, propage le répertoire de travail et déverrouille la navigation."""
         w = self.window
         self.qualification_completed = False
         self.validation_completed = False
@@ -348,7 +401,12 @@ class AppController:
 
         self._current_derusher_name = nom_derusher
 
-        self.qualif_ctrl.open_system_explorer(nom_derusher)
+        # Charger la campagne — directement si le dossier est fourni par le dialog
+        if campaign_folder:
+            self.qualif_ctrl.load_campaign_folder(campaign_folder, nom_derusher)
+        else:
+            self.qualif_ctrl.open_system_explorer(nom_derusher)
+
         self._refresh_all_page_models()
         self._detect_campaign_mode()
         self.refresh_status_bar()
@@ -372,13 +430,23 @@ class AppController:
         data_systeme = get_campaign_json_data(dossier, extract_system=True)
         data_complete = get_campaign_json_data(dossier, extract_system=False)
 
+        # Répertoire de travail fourni par le dialog → propager immédiatement
+        if working_dir:
+            self.working_dir = working_dir
+            for ctrl in [self.qualif_ctrl, self.validation_ctrl,
+                         self.evenements_ctrl, self.metadonnees_ctrl, self.extraction_ctrl]:
+                if hasattr(ctrl, 'set_working_dir'):
+                    ctrl.set_working_dir(working_dir)
+
+        self._campaign_ready = True
+        # Sync immédiat si le répertoire de travail est déjà connu
+        self._sync_all_to_working_dir()
+
         if data_systeme:
-            # Unlock ALL pages — the workflow buttons (Finir qualif/valid) restent
-            # disponibles comme guide mais ne doivent pas bloquer la navigation
-            # quand on change de campagne.
             self.qualification_completed = True
             self.validation_completed = True
-            self.lock_navigation(False)
+            if self.working_dir:
+                self.lock_navigation(False)
             self.metadonnees_ctrl.load_global_campaign_metadata(dossier)
 
             try:
@@ -403,8 +471,8 @@ class AppController:
             # Pas de JSON système trouvé (campagne fraîche) — déverrouiller quand même
             # Qualification si des vidéos ont été chargées, sinon tout garder verrouillé.
             has_videos = self.qualif_ctrl.video_model.rowCount() > 0
-            if has_videos:
-                self.lock_navigation(False)   # Val/Events restent locked (flags=False)
+            if has_videos and self.working_dir:
+                self.lock_navigation(False)
                 self.switch_page(w.page_qualification)
             else:
                 self.lock_navigation(True)

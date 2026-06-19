@@ -1,6 +1,8 @@
 import json
 import os
 
+from services.campaign_service import get_video_json_path
+
 
 class MetadataModel:
     """Modèle des métadonnées d'une vidéo : chargement, mise à jour et persistance JSON."""
@@ -79,14 +81,14 @@ class MetadataModel:
 
     def update_field_all_videos(self, block_key: str, field_id: str, new_value: str,
                                  video_paths: list):
-        """Propage une mise à jour de champ à tous les template.json de la campagne.
+        """Propage une mise à jour de champ à tous les JSON vidéo de la campagne.
 
         Utilisé pour les blocs 'system' et 'survey' communs à toutes les vidéos.
         """
         for video_path in video_paths:
             if not os.path.exists(video_path):
                 continue
-            json_video_path = os.path.join(os.path.dirname(video_path), "template.json")
+            json_video_path = get_video_json_path(video_path)
             if not os.path.exists(json_video_path):
                 continue
             try:

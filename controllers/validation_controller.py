@@ -5,7 +5,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from services.motor_service import get_motor_stable_timestamps
 from services.video_service import check_stereo_status
-from services.campaign_service import get_video_json_path
+from services.campaign_service import get_video_json_path, resolve_video_json_path
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
@@ -24,6 +24,7 @@ class ValidationController:
         self.current_language = 'en'
         self.current_json_path = None
         self.current_video_path = None
+        self._working_dir = ""
 
         self.video_tree = self.page.findChild(QtWidgets.QTreeView, "tree_video_validation")
         self.player_container = self.page.findChild(QtWidgets.QFrame, "lecteur_timeline_container")
@@ -233,6 +234,9 @@ class ValidationController:
                 " background: transparent; border: none;"
             )
 
+    def set_working_dir(self, path: str):
+        self._working_dir = path
+
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
@@ -286,7 +290,7 @@ class ValidationController:
         is_stereo, video_to_load = check_stereo_status(selected_video_path)
 
         self.current_video_path = selected_video_path
-        self.current_json_path = get_video_json_path(selected_video_path)
+        self.current_json_path = resolve_video_json_path(self._working_dir, selected_video_path)
         self.refresh_combobox_values()
         if self._on_video_focused:
             self._on_video_focused(item.text())

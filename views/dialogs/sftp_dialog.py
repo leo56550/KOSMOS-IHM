@@ -331,6 +331,7 @@ class SftpDialog(QtWidgets.QDialog):
         self.pb_total.setRange(0, 1000)
         self.pb_total.setValue(0)
         self.pb_total.setFixedHeight(18)
+        self.pb_total.setFormat("0 %")
         lay.addWidget(self.pb_total)
 
         row_tot = QtWidgets.QHBoxLayout()
