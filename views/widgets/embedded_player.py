@@ -48,7 +48,9 @@ QPushButton:hover:checked {
 class _FullscreenWindow(QtWidgets.QWidget):
     """Fenêtre plein écran — double-clic ou Échap pour quitter."""
 
-    exit_requested = QtCore.pyqtSignal()
+    exit_requested  = QtCore.pyqtSignal()
+    step_frame      = QtCore.pyqtSignal(int)   # direction en frames
+    toggle_play     = QtCore.pyqtSignal()
 
     def __init__(self):
         super().__init__(None, QtCore.Qt.WindowType.Window)
@@ -66,9 +68,6 @@ class _FullscreenWindow(QtWidgets.QWidget):
         self.video_R.setVisible(False)
         layout.addWidget(self.video_R)
 
-        sc = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), self)
-        sc.activated.connect(self.exit_requested)
-
         self._hint = QtWidgets.QLabel("Double-clic ou Échap pour quitter le plein écran", self)
         self._hint.setStyleSheet(
             "color: rgba(255,255,255,200); background: rgba(0,0,0,140);"
@@ -78,6 +77,21 @@ class _FullscreenWindow(QtWidgets.QWidget):
         self._hint_timer = QtCore.QTimer(self)
         self._hint_timer.setSingleShot(True)
         self._hint_timer.timeout.connect(self._hint.hide)
+
+    def keyPressEvent(self, event):
+        key  = event.key()
+        mods = event.modifiers()
+        shift = bool(mods & QtCore.Qt.KeyboardModifier.ShiftModifier)
+        if key == QtCore.Qt.Key.Key_Escape:
+            self.exit_requested.emit()
+        elif key == QtCore.Qt.Key.Key_Right:
+            self.step_frame.emit(+1 if shift else +10)
+        elif key == QtCore.Qt.Key.Key_Left:
+            self.step_frame.emit(-1 if shift else -10)
+        elif key == QtCore.Qt.Key.Key_Space:
+            self.toggle_play.emit()
+        else:
+            super().keyPressEvent(event)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -346,13 +360,16 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_stop = QtWidgets.QPushButton()
         self.btn_stop.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPause))
         self.btn_m10 = QtWidgets.QPushButton("-10s")
+        self.btn_m5  = QtWidgets.QPushButton("-5s")
+        self.btn_p5  = QtWidgets.QPushButton("+5s")
         self.btn_p10 = QtWidgets.QPushButton("+10s")
         self.btn_x1 = QtWidgets.QPushButton("x1")
         self.btn_x2 = QtWidgets.QPushButton("x2")
         self.btn_x5 = QtWidgets.QPushButton("x5")
         self.btn_x10 = QtWidgets.QPushButton("x10")
 
-        for btn in [self.btn_start, self.btn_stop, self.btn_m10, self.btn_p10,
+        for btn in [self.btn_start, self.btn_stop,
+                    self.btn_m10, self.btn_m5, self.btn_p5, self.btn_p10,
                     self.btn_x1, self.btn_x2, self.btn_x5, self.btn_x10]:
             btn.setStyleSheet(_BTN_STYLE)
             buttons_layout.addWidget(btn)
@@ -482,6 +499,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_start.clicked.connect(self.play_all)
         self.btn_stop.clicked.connect(self.pause_all)
         self.btn_m10.clicked.connect(lambda: self.jump_time_offset(-10000))
+        self.btn_m5.clicked.connect(lambda: self.jump_time_offset(-5000))
+        self.btn_p5.clicked.connect(lambda: self.jump_time_offset(5000))
         self.btn_p10.clicked.connect(lambda: self.jump_time_offset(10000))
         self.btn_x1.clicked.connect(lambda: self.set_playback_rate_all(1.0))
         self.btn_x2.clicked.connect(lambda: self.set_playback_rate_all(2.0))
@@ -513,10 +532,18 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         sc_space.activated.connect(self._toggle_play_pause)
         sc_right = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self)
         sc_right.setContext(_ctx)
-        sc_right.activated.connect(lambda: self._step_frame(+1))
+        sc_right.activated.connect(lambda: self._step_frame(+10))
         sc_left = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self)
         sc_left.setContext(_ctx)
-        sc_left.activated.connect(lambda: self._step_frame(-1))
+        sc_left.activated.connect(lambda: self._step_frame(-10))
+        sc_right_1 = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Right), self)
+        sc_right_1.setContext(_ctx)
+        sc_right_1.activated.connect(lambda: self._step_frame(+1))
+        sc_left_1 = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Left), self)
+        sc_left_1.setContext(_ctx)
+        sc_left_1.activated.connect(lambda: self._step_frame(-1))
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -673,6 +700,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     def _enter_fullscreen(self):
         win = _FullscreenWindow()
         win.exit_requested.connect(self._exit_fullscreen)
+        win.step_frame.connect(self._step_frame)
+        win.toggle_play.connect(self._toggle_play_pause)
         self.player.setVideoOutput(win.video_L)
         if self.is_stereo:
             self.player_R.setVideoOutput(win.video_R)
