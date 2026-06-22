@@ -244,7 +244,7 @@ class QualifController:
 
         scroll_area = QtWidgets.QScrollArea(self.frame_miniature)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("background-color: #2778a2; border: none;")
+        scroll_area.setStyleSheet("background-color: #111820; border: none;")
 
         scroll_content = QtWidgets.QWidget()
         self.scroll_layout = QtWidgets.QVBoxLayout(scroll_content)

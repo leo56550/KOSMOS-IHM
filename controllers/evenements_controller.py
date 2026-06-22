@@ -562,7 +562,7 @@ class EvenementsController:
 
         self.export_status_label = QtWidgets.QLabel("", self.export_container)
         self.export_status_label.setWordWrap(True)
-        self.export_status_label.setStyleSheet("color: white; font-size: 12px;")
+        self.export_status_label.setStyleSheet("color: #F2BFB4; font-size: 11px; border: none;")
 
         layout.addWidget(self.export_button)
         layout.addWidget(self.export_progress)
@@ -571,7 +571,7 @@ class EvenementsController:
         # ── Analyse vidéo ────────────────────────────────────────────────
         sep_analyse = QtWidgets.QFrame()
         sep_analyse.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep_analyse.setStyleSheet("color: #1e3448;")
+        sep_analyse.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         layout.addWidget(sep_analyse)
 
         lbl_analyse = QtWidgets.QLabel(self.translate("Analyse vidéo", "Video analysis"))
@@ -629,7 +629,7 @@ class EvenementsController:
         # ── Histogramme ──────────────────────────────────────────────────
         sep = QtWidgets.QFrame()
         sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #1e3448;")
+        sep.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         layout.addWidget(sep)
 
         lbl_hist = QtWidgets.QLabel(self.translate("Histogramme frame courante", "Current frame histogram"))
@@ -1409,23 +1409,30 @@ class EvenementsController:
         """Lit les frames atterrissage et décollage du JSON et retourne (start_ms, end_ms), ou None."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
             return None
-        template_path = get_video_json_path(self.current_video_path)
-        if not os.path.exists(template_path):
+        # Utilise le JSON actif (répertoire de travail si disponible, sinon source)
+        json_path = self.current_json_path or get_video_json_path(self.current_video_path)
+        if not json_path or not os.path.exists(json_path):
             return None
         try:
-            with open(template_path, 'r', encoding='utf-8') as f:
+            with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
             events_deployment = json_data.get('video_observation', {}).get('events_deployment', [])
             if not isinstance(events_deployment, list) or not events_deployment:
                 return None
-            values = events_deployment[0].get('values', [])
+            # Chercher dans tous les groupes d'événements deployment
             landing_frame = takeoff_frame = None
-            for item in values:
-                val = str(item.get('value', '')).strip().lower()
-                if val in ('atterrissage', 'landing'):
-                    landing_frame = item.get('frame_number_start')
-                elif val in ('décollage', 'take_off', 'takeoff'):
-                    takeoff_frame = item.get('frame_number_start')
+            for group in events_deployment:
+                for item in group.get('values', []):
+                    val = str(item.get('value', '')).strip()
+                    fn = item.get('frame_number_start')
+                    if fn is None:
+                        continue
+                    if self._is_landing_event(val) and landing_frame is None:
+                        landing_frame = fn
+                    elif self._is_takeoff_event(val) and takeoff_frame is None:
+                        takeoff_frame = fn
+                if landing_frame is not None and takeoff_frame is not None:
+                    break
             if landing_frame is None or takeoff_frame is None:
                 return None
             landing_frame = int(landing_frame)

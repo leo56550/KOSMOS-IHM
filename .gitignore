@@ -1,6 +1,8 @@
 *.mp4
 
 data/
+data_out/
+data_out_2/
 
 __pycache__/
 *.pyc
