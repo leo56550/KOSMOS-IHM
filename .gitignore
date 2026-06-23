@@ -1,10 +1,38 @@
+# ── Données campagne ──────────────────────────────────────────────────────────
 *.mp4
-
+*.avi
+*.mkv
 data/
 data_out/
 data_out2/
 
+# ── Build PyInstaller ─────────────────────────────────────────────────────────
+build/
+dist/
+*.spec.bak
+
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── Logs et crashes ───────────────────────────────────────────────────────────
+*.log
+kosmos_crash.log
+
+# ── Fichiers générés / temporaires ───────────────────────────────────────────
+*.excluded_videos.json
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

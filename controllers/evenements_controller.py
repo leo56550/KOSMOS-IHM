@@ -758,14 +758,18 @@ class EvenementsController:
                 old.result_ready.disconnect()
             except RuntimeError:
                 pass
-            if old.isRunning():
-                old.requestInterruption()
-                old.wait(300)  # 300 ms max — évite que le signal arrive après le nouveau worker
+            try:
+                if old.isRunning():
+                    old.requestInterruption()
+                    old.wait(300)
+            except RuntimeError:
+                pass  # C++ object déjà détruit — on ignore
 
         position_ms = self.event_player.player.position()
         worker = _HistWorker(video_path, position_ms)
         worker.result_ready.connect(self._on_hist_ready)
-        worker.finished.connect(worker.deleteLater)
+        # Pas de deleteLater : on garde la référence Python sur self._hist_worker
+        # pour éviter que Qt détruise l'objet C++ pendant que Python le référence encore
         self._hist_worker = worker
         worker.start()
 
