@@ -1,0 +1,122 @@
+
+============================================================
+2026-06-23 13:28:39.839284
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:28:43.837132
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:28:47.850282
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:28:51.836670
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:28:55.837563
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:28:59.849434
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:29:03.673413
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 705, in _on_hist_playback_state
+    self._update_histogram()
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:39.703371
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 705, in _on_hist_playback_state
+    self._update_histogram()
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:40.236063
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 705, in _on_hist_playback_state
+    self._update_histogram()
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:40.594863
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 705, in _on_hist_playback_state
+    self._update_histogram()
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:41.772465
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:45.490086
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:37:48.352848
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 705, in _on_hist_playback_state
+    self._update_histogram()
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 761, in _update_histogram
+    if old.isRunning():
+       ^^^^^^^^^^^^^^^
+RuntimeError: wrapped C/C++ object of type _HistWorker has been deleted
+
+============================================================
+2026-06-23 13:39:03.135931
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

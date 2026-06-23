@@ -1,15 +1,18 @@
 import os
 import io
 import json
-import shutil
 import math
+import shutil
 import folium
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, check_stereo_status
-from services.campaign_service import get_video_gps_coords, get_video_json_path, get_working_video_json_path
+from services.campaign_service import (
+    get_video_gps_coords, get_video_json_path, get_working_video_json_path,
+    get_working_video_dir, sync_video_to_working_dir,
+)
 from services.migration_service import migrate_json_file_if_needed, initialise_video_json_if_needed
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
@@ -24,7 +27,7 @@ class QualifController:
     def __init__(self, widget: QtWidgets.QWidget, parent=None, on_before_delete=None):
         """
         Args:
-            on_before_delete: Callback appelé avec le chemin vidéo avant tout shutil.move
+            on_before_delete: Callback appelé avec le chemin vidéo avant exclusion
                               (libère les handles fichiers des autres controllers).
         """
         self.widget = widget
@@ -275,10 +278,8 @@ class QualifController:
         if self.trash_video_tree:
             self.trash_model.removeRows(0, self.trash_model.rowCount())
         self.all_coords.clear()
-        self.map_initialized = False   # Force la recréation de la carte pour la nouvelle campagne
+        self.map_initialized = False
         self._start_watching_campaign(directory)
-
-        self._load_existing_trash(directory)
 
         videos = get_all_mp4_files(directory)
         if not videos:
@@ -303,7 +304,7 @@ class QualifController:
             if coords:
                 self.all_coords[video["name"]] = coords
 
-        self.update_minimap(self.selected_video_name)
+        self.update_minimap(self.selected_video_name, show_dialog=False)
         self._start_thumbnail_generation()
 
         update_counter = 0
@@ -374,7 +375,7 @@ class QualifController:
             item.setIcon(icon)
 
     def _start_watching_campaign(self, directory: str):
-        """Surveille la racine campagne, ses enfants directs et le dossier .trash (pas en profondeur)."""
+        """Surveille la racine campagne et ses sous-dossiers vidéo directs."""
         old = self._fs_watcher.directories()
         if old:
             self._fs_watcher.removePaths(old)
@@ -387,13 +388,7 @@ class QualifController:
         try:
             for name in os.listdir(directory):
                 child = os.path.join(directory, name)
-                if not os.path.isdir(child):
-                    continue
-                if name == '.trash':
-                    # Surveiller uniquement le dossier .trash lui-même, pas ses enfants
-                    dirs_to_watch.append(child)
-                elif name not in ('segments',):
-                    # Dossiers vidéo (00XX…) : surveiller le dossier direct
+                if os.path.isdir(child) and name not in ('segments',):
                     dirs_to_watch.append(child)
         except OSError:
             pass
@@ -407,24 +402,31 @@ class QualifController:
         if not self.current_campaign_folder:
             return
 
-        # --- vidéos principales ---
         videos = get_all_mp4_files(self.current_campaign_folder)
+
+        # Chemins actuellement dans les deux modèles (exclus = trash)
+        excluded_paths = {
+            self.trash_model.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+            for r in range(self.trash_model.rowCount())
+            if self.trash_model.item(r, 0)
+        }
         current_paths = {
             self.video_model.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole)
             for r in range(self.video_model.rowCount())
             if self.video_model.item(r, 0)
         }
-        new_paths = {v["path"] for v in videos}
+        all_known = current_paths | excluded_paths
 
         # Supprimer les lignes dont le fichier n'existe plus
         for row in range(self.video_model.rowCount() - 1, -1, -1):
             item = self.video_model.item(row, 0)
-            if item and item.data(QtCore.Qt.ItemDataRole.UserRole) not in new_paths:
+            p = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if p and not os.path.exists(p):
                 self.video_model.removeRow(row)
 
-        # Ajouter les nouveaux fichiers
+        # Ajouter les nouveaux fichiers (non exclus)
         for video in videos:
-            if video["path"] not in current_paths:
+            if video["path"] not in all_known:
                 col_name = QtGui.QStandardItem(video["name"])
                 col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
                 self.video_model.appendRow([
@@ -439,12 +441,6 @@ class QualifController:
                 if coords:
                     self.all_coords[video["name"]] = coords
 
-        # --- trash ---
-        if self.trash_video_tree:
-            self.trash_model.removeRows(0, self.trash_model.rowCount())
-            self._load_existing_trash(self.current_campaign_folder)
-
-        # Surveiller les nouveaux sous-dossiers éventuellement créés
         self._start_watching_campaign(self.current_campaign_folder)
 
     def load_and_display_campaign_json(self, json_path: str):
@@ -546,7 +542,7 @@ class QualifController:
             self.update_camera_views(video_path, csv_system)
             engine_events = get_motor_stable_timestamps(csv_path=csv_system, delay=6.0)
 
-        self.update_minimap(selected_name=video_name)
+        self.update_minimap(selected_name=video_name, show_dialog=True)
 
         if self.detached_player is not None:
             try:
@@ -559,8 +555,13 @@ class QualifController:
 
     # --- Minimap ---
 
-    def update_minimap(self, selected_name=None):
-        """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge."""
+    def update_minimap(self, selected_name=None, show_dialog=False):
+        """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge.
+
+        show_dialog=True → ouvre la fenêtre carte si elle n'est pas déjà visible (uniquement
+        lors d'un clic explicite sur une vidéo).  Les autres appels passent False pour ne pas
+        forcer la réouverture.
+        """
         valid_coords = {}
         if self.all_coords:
             for name, coords in self.all_coords.items():
@@ -723,14 +724,14 @@ class QualifController:
             m.save(data, close_file=False)
             self.map_dialog.map_view.setHtml(data.getvalue().decode())
             self.map_initialized = True
-            self.map_dialog.show()
-            self.map_dialog.raise_()
+            if show_dialog and not self.map_dialog.isVisible():
+                self.map_dialog.show()
             if selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
-            self.map_dialog.show()
-            self.map_dialog.raise_()
-            if selected_name and selected_name in valid_coords:
+            if show_dialog and not self.map_dialog.isVisible():
+                self.map_dialog.show()
+            if self.map_dialog.isVisible() and selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
 
     def apply_red_marker_js(self, selected_name: str):
@@ -778,7 +779,7 @@ class QualifController:
                         pass
                 self.detached_player = VideoPlayerWindow(video_path, events_data=motor_events, parent=self.widget)
                 self.detached_player.show()
-                self.update_minimap(video_name)
+                self.update_minimap(video_name, show_dialog=False)
                 break
 
     # --- Camera views / thumbnails ---
@@ -897,37 +898,31 @@ class QualifController:
             self.detached_player = None
 
     def delete_video_by_index(self, index: QtCore.QModelIndex):
-        """Déplace le dossier vidéo dans .trash et transfère la ligne dans trash_model."""
+        """Déplace la vidéo dans la liste 'supprimées' (en mémoire) et supprime son dossier de sortie."""
         row = index.row()
         name_item = self.video_model.item(row, 0)
         if not name_item:
             return
         video_name = name_item.text()
-        original_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        new_video_path = original_path
+        video_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
 
-        if original_path and os.path.exists(original_path):
-            # Libérer tous les players qui tiendraient ce fichier (verrou Windows)
-            if self._on_before_delete:
-                self._on_before_delete(original_path)
-            self._close_detached_player()
-            try:
-                orig_dir = os.path.dirname(original_path)
-                campaign_dir = os.path.dirname(orig_dir)
-                trash_dir = os.path.join(campaign_dir, ".trash")
-                os.makedirs(trash_dir, exist_ok=True)
-                target = os.path.join(trash_dir, os.path.basename(orig_dir))
-                if os.path.exists(target):
-                    shutil.rmtree(target)
-                new_folder = shutil.move(orig_dir, trash_dir)
-                new_video_path = os.path.join(new_folder, os.path.basename(original_path))
-            except Exception as e:
-                print(f"Error moving {video_name} to trash: {e}")
-                return
+        if self._on_before_delete:
+            self._on_before_delete(video_path)
+        self._close_detached_player()
+
+        # Supprimer le sous-dossier de sortie de cette vidéo dans le working_dir
+        if self._working_dir and video_path:
+            output_dir = get_working_video_dir(self._working_dir, video_path)
+            if os.path.isdir(output_dir):
+                try:
+                    shutil.rmtree(output_dir)
+                    print(f"[QUALIF] Dossier de sortie supprimé : {output_dir}")
+                except Exception as e:
+                    print(f"[QUALIF] Impossible de supprimer le dossier de sortie : {e}")
 
         items = [self.video_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)
-        col_name.setData(new_video_path, QtCore.Qt.ItemDataRole.UserRole)
+        col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
         self.trash_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
@@ -935,80 +930,41 @@ class QualifController:
         if self.selected_video_name == video_name:
             self.selected_video_name = None
 
-    def _load_existing_trash(self, campaign_dir: str):
-        """Repeupler le modèle trash depuis le dossier .trash sur disque."""
-        trash_dir = os.path.join(campaign_dir, ".trash")
-        if not os.path.exists(trash_dir):
-            return
-        for folder_name in sorted(os.listdir(trash_dir)):
-            folder_path = os.path.join(trash_dir, folder_name)
-            if not os.path.isdir(folder_path):
-                continue
-            for file in sorted(os.listdir(folder_path)):
-                if not file.lower().endswith(".mp4") or file.lower().endswith("_stereo.mp4"):
-                    continue
-                video_path = os.path.join(folder_path, file)
-                try:
-                    import cv2 as _cv2
-                    cap = _cv2.VideoCapture(video_path)
-                    if cap.isOpened():
-                        fps = cap.get(_cv2.CAP_PROP_FPS)
-                        fc = cap.get(_cv2.CAP_PROP_FRAME_COUNT)
-                        w = int(cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
-                        cap.release()
-                        dur_sec = fc / fps if fps > 0 else 0
-                        duration = f"{int(dur_sec // 60):02d}:{int(dur_sec % 60):02d}"
-                        fps_str = f"{fps:.2f}"
-                        res_str = f"{w}x{h}"
-                    else:
-                        cap.release()
-                        duration = fps_str = res_str = "--"
-                    size_str = f"{os.path.getsize(video_path) / (1024*1024):.2f} MB"
-                except Exception:
-                    duration = fps_str = res_str = size_str = "--"
-
-                col_name = QtGui.QStandardItem(file)
-                col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
-                self.trash_model.appendRow([
-                    col_name,
-                    QtGui.QStandardItem(duration),
-                    QtGui.QStandardItem(fps_str),
-                    QtGui.QStandardItem(res_str),
-                    QtGui.QStandardItem(size_str),
-                ])
 
     def restore_video_by_index(self, index: QtCore.QModelIndex):
-        """Restaure un dossier vidéo depuis .trash vers la campagne et le transfère dans video_model."""
+        """Remet la vidéo dans la liste principale et recrée son dossier de sortie."""
         row = index.row()
         item_name = self.trash_model.item(row, 0)
         if not item_name:
             return
         video_name = item_name.text()
-        video_path_trash = item_name.data(QtCore.Qt.ItemDataRole.UserRole)
-        new_video_path = video_path_trash
+        video_path = item_name.data(QtCore.Qt.ItemDataRole.UserRole)
 
-        if video_path_trash and os.path.exists(video_path_trash):
+        # Recréer le sous-dossier de sortie dans le working_dir
+        if self._working_dir and video_path and os.path.exists(video_path):
             try:
-                video_dir_in_trash = os.path.dirname(video_path_trash)
-                global_trash_dir = os.path.dirname(video_dir_in_trash)
-                campaign_dir = os.path.dirname(global_trash_dir)
-                destination = os.path.join(campaign_dir, os.path.basename(video_dir_in_trash))
-                if os.path.exists(destination):
-                    shutil.rmtree(destination)
-                new_folder = shutil.move(video_dir_in_trash, campaign_dir)
-                new_video_path = os.path.join(new_folder, os.path.basename(video_path_trash))
+                sync_video_to_working_dir(self._working_dir, video_path)
+                print(f"[QUALIF] Dossier de sortie recréé : {get_working_video_dir(self._working_dir, video_path)}")
             except Exception as e:
-                print(f"Error restoring {video_name}: {e}")
-                return
+                print(f"[QUALIF] Impossible de recréer le dossier de sortie : {e}")
 
         items = [self.trash_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)
-        col_name.setData(new_video_path, QtCore.Qt.ItemDataRole.UserRole)
+        col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
         self.video_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
         self.trash_model.removeRow(row)
+
+        # Régénérer la miniature pour cette ligne (stocker sur self pour éviter le GC)
+        new_row = self.video_model.rowCount() - 1
+        if video_path:
+            if hasattr(self, '_thumb_worker') and self._thumb_worker and self._thumb_worker.isRunning():
+                self._thumb_worker.requestInterruption()
+                self._thumb_worker.wait(200)
+            self._thumb_worker = ThumbnailWorkerMulti([('main', new_row, video_path)])
+            self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
+            self._thumb_worker.start()
 
     def trash_drag_enter_event(self, event: QtGui.QDragEnterEvent):
         """Accepte le glisser-déposer depuis video_tree vers la poubelle."""

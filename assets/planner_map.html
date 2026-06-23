@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <title>Planification KOSMOS</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          crossorigin=""></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <style>
+    html, body   { margin: 0; padding: 0; height: 100%; background: #111820; }
+    #map         { width: 100%; height: 100%; }
+    #coord-tip {
+      position: fixed;
+      background: rgba(0,0,0,.78);
+      color: #7ec8e3;
+      font: 12px/1 'Courier New', monospace;
+      padding: 4px 10px;
+      border-radius: 4px;
+      pointer-events: none;
+      display: none;
+      z-index: 9999;
+      white-space: nowrap;
+      border: 1px solid #1e3448;
+    }
+    .leaflet-container { background: #162433; }
+  </style>
+</head>
+<body>
+  <div id="coord-tip"></div>
+  <div id="map"></div>
+  <script src="planner_map.js"></script>
+</body>
+</html>

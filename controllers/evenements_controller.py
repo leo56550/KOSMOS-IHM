@@ -750,19 +750,22 @@ class EvenementsController:
         if not video_path or not os.path.exists(video_path):
             return
 
-        # Annule le worker précédent s'il tourne encore
-        try:
-            if self._hist_worker is not None and self._hist_worker.isRunning():
-                self._hist_worker.requestInterruption()
-                self._hist_worker.result_ready.disconnect()
-        except RuntimeError:
-            pass
+        # Stoppe proprement l'ancien worker : déconnexion d'abord, puis attente
+        old = self._hist_worker
         self._hist_worker = None
+        if old is not None:
+            try:
+                old.result_ready.disconnect()
+            except RuntimeError:
+                pass
+            if old.isRunning():
+                old.requestInterruption()
+                old.wait(300)  # 300 ms max — évite que le signal arrive après le nouveau worker
 
         position_ms = self.event_player.player.position()
         worker = _HistWorker(video_path, position_ms)
         worker.result_ready.connect(self._on_hist_ready)
-        # Pas de deleteLater : on garde la référence Python pour éviter le RuntimeError
+        worker.finished.connect(worker.deleteLater)
         self._hist_worker = worker
         worker.start()
 
@@ -1041,52 +1044,54 @@ class EvenementsController:
                 frame_tolerance = max(1, int(fps * 0.25))
 
                 for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
-                    if json_key in video_obs and video_obs[json_key]:
-                        values_list = video_obs[json_key][0].get("values", [])
-                        category_name = self._get_label_from_json_key(json_key)
+                    raw = video_obs.get(json_key)
+                    if not isinstance(raw, list) or not raw:
+                        continue
+                    values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                    category_name = self._get_label_from_json_key(json_key)
 
-                        for val in values_list:
-                            frame_start = val.get("frame_number_start", 0)
-                            frame_end = val.get("frame_number_end", 0)
-                            value = val.get("value", "")
-                            json_comment = val.get("comment", "")
-                            start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
-                            end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
-                            is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
-                            timeline_title = f"Pic: {value}" if is_pic else value
-                            zone_index = self._zone_index_for_event_type(json_key)
+                    for val in values_list:
+                        frame_start = val.get("frame_number_start", 0)
+                        frame_end = val.get("frame_number_end", 0)
+                        value = val.get("value", "")
+                        json_comment = val.get("comment", "")
+                        start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
+                        end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
+                        is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
+                        timeline_title = f"Pic: {value}" if is_pic else value
+                        zone_index = self._zone_index_for_event_type(json_key)
 
-                            is_duplicate = any(
-                                e.get("title") == timeline_title
-                                and abs(e.get("start", 0) - start_ms) <= (frame_tolerance * 1000 / fps)
-                                for e in timeline_events
-                            )
-                            if not is_duplicate:
-                                txt_start = self.event_player.timeline._format_ms(start_ms)
-                                txt_end = self.event_player.timeline._format_ms(end_ms) if not is_pic else "-"
-                                event_dict = {
-                                    "start": start_ms, "end": end_ms,
-                                    "title": timeline_title,
-                                    "type": "custom_event",
-                                    "zone": zone_index,
-                                    "comment": json_comment,
-                                    "_json_key": json_key
-                                }
-                                if "event_id" in val and val["event_id"]:
-                                    event_dict["_event_uid"] = val["event_id"]
-                                timeline_events.append(event_dict)
+                        is_duplicate = any(
+                            e.get("title") == timeline_title
+                            and abs(e.get("start", 0) - start_ms) <= (frame_tolerance * 1000 / fps)
+                            for e in timeline_events
+                        )
+                        if not is_duplicate:
+                            txt_start = self.event_player.timeline._format_ms(start_ms)
+                            txt_end = self.event_player.timeline._format_ms(end_ms) if not is_pic else "-"
+                            event_dict = {
+                                "start": start_ms, "end": end_ms,
+                                "title": timeline_title,
+                                "type": "custom_event",
+                                "zone": zone_index,
+                                "comment": json_comment,
+                                "_json_key": json_key
+                            }
+                            if "event_id" in val and val["event_id"]:
+                                event_dict["_event_uid"] = val["event_id"]
+                            timeline_events.append(event_dict)
 
-                                if hasattr(self, 'tree_captures') and self.tree_captures:
-                                    tree_item = QtWidgets.QTreeWidgetItem(
-                                        [txt_start, txt_end, category_name, value, json_comment, ""]
-                                    )
-                                    tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
-                                    if is_pic:
-                                        tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
-                                    else:
-                                        tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778a2")))
-                                    self.tree_captures.addTopLevelItem(tree_item)
-                                    self.add_tree_thumbnail(tree_item, start_ms)
+                            if hasattr(self, 'tree_captures') and self.tree_captures:
+                                tree_item = QtWidgets.QTreeWidgetItem(
+                                    [txt_start, txt_end, category_name, value, json_comment, ""]
+                                )
+                                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                                if is_pic:
+                                    tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
+                                else:
+                                    tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778a2")))
+                                self.tree_captures.addTopLevelItem(tree_item)
+                                self.add_tree_thumbnail(tree_item, start_ms)
             except Exception as e:
                 print(f"[EVENTS] JSON Parsing failed: {e}")
 

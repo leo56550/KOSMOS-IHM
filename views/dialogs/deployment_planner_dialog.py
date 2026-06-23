@@ -1,129 +1,23 @@
 """Dialog de planification de deploiement — carte Leaflet interactive + liste de waypoints."""
 
 import json
-from datetime import date
+import os
+import sys
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 
-# ── HTML Leaflet inline ──────────────────────────────────────────────────────
 
-_LEAFLET_HTML = """<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8"/>
-<title>Planification</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-<style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #111820; }
-  #map { width: 100%; height: 100%; }
-  #coord-tip {
-    position: fixed;
-    background: rgba(0,0,0,.78);
-    color: #7ec8e3;
-    font: 12px/1 'Courier New', monospace;
-    padding: 4px 10px;
-    border-radius: 4px;
-    pointer-events: none;
-    display: none;
-    z-index: 9999;
-    white-space: nowrap;
-    border: 1px solid #1e3448;
-  }
-  .leaflet-container { background: #162433; }
-</style>
-</head>
-<body>
-<div id="coord-tip"></div>
-<div id="map"></div>
-<script>
-var map = L.map('map', { zoomControl: true }).setView([47.5, -3.5], 9);
+def _resource(rel: str) -> str:
+    """Chemin absolu d'un asset — compatible dev et PyInstaller (sys._MEIPASS)."""
+    if getattr(sys, "frozen", False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.normpath(os.path.join(base, rel))
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  maxZoom: 19
-}).addTo(map);
 
-var tip = document.getElementById('coord-tip');
-map.on('mousemove', function(e) {
-  tip.style.display = 'block';
-  tip.style.left = (e.originalEvent.clientX + 14) + 'px';
-  tip.style.top  = (e.originalEvent.clientY - 30) + 'px';
-  tip.textContent = e.latlng.lat.toFixed(6) + ',  ' + e.latlng.lng.toFixed(6);
-});
-map.on('mouseout', function() { tip.style.display = 'none'; });
-
-var markers = [];
-
-function _icon(n, label) {
-  var text = label || String(n);
-  return L.divIcon({
-    className: '',
-    html: '<div style="background:#2778a2;color:#fff;border:2px solid #7ec8e3;'
-        + 'border-radius:50%;min-width:26px;height:26px;line-height:22px;'
-        + 'text-align:center;font:bold 11px sans-serif;padding:0 4px;'
-        + 'box-shadow:0 2px 6px #0008;white-space:nowrap;">'
-        + n + '</div>',
-    iconSize: null, iconAnchor: [13, 13], popupAnchor: [0, -16]
-  });
-}
-
-var bridge = null;
-new QWebChannel(qt.webChannelTransport, function(ch) {
-  bridge = ch.objects.planBridge;
-});
-
-function _updateMarkerPopup(m, idx, label) {
-  m.setPopupContent('<b>' + label + '</b><br>'
-    + m.getLatLng().lat.toFixed(6) + ', ' + m.getLatLng().lng.toFixed(6));
-}
-
-function updateMarkerLabel(idx, label) {
-  if (idx < 0 || idx >= markers.length) return;
-  var m = markers[idx];
-  m.setIcon(_icon(idx + 1, label));
-  _updateMarkerPopup(m, idx, label);
-}
-
-function removeMarkerByIndex(idx) {
-  if (idx < 0 || idx >= markers.length) return;
-  map.removeLayer(markers[idx]);
-  markers.splice(idx, 1);
-  markers.forEach(function(m, i) {
-    m.setIcon(_icon(i + 1));
-    _updateMarkerPopup(m, i, 'Point ' + (i + 1));
-  });
-}
-
-function clearAllMarkers() {
-  markers.forEach(function(m) { map.removeLayer(m); });
-  markers = [];
-}
-
-map.on('click', function(e) {
-  var lat = e.latlng.lat, lng = e.latlng.lng;
-  var idx = markers.length;
-  var defaultLabel = 'Point ' + (idx + 1);
-  var m = L.marker([lat, lng], { icon: _icon(idx + 1) })
-           .addTo(map)
-           .bindPopup('<b>' + defaultLabel + '</b><br>'
-             + lat.toFixed(6) + ', ' + lng.toFixed(6));
-  markers.push(m);
-  if (bridge) {
-    bridge.onPointAdded(JSON.stringify({
-      index: idx,
-      lat: lat.toFixed(6),
-      lng: lng.toFixed(6),
-      label: defaultLabel
-    }));
-  }
-});
-</script>
-</body>
-</html>
-"""
+_MAP_HTML_PATH = _resource("assets/planner_map.html")
 
 # ── Bridge Python <-> JS ─────────────────────────────────────────────────────
 
@@ -233,7 +127,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         # Carte
         self._map_view = QWebEngineView()
         self._map_view.page().setWebChannel(self._channel)
-        self._map_view.setHtml(_LEAFLET_HTML, QtCore.QUrl("about:blank"))
+        self._map_view.setUrl(QtCore.QUrl.fromLocalFile(_MAP_HTML_PATH))
         body.addWidget(self._map_view)
 
         # ── Panneau droit ─────────────────────────────────────────────────

@@ -14,6 +14,9 @@ datas_web, binaries_web, hiddenimports_web = collect_all('PyQt6.QtWebEngineCore'
 # pyqtgraph importe dynamiquement des modules de rendement
 datas_pg, binaries_pg, hiddenimports_pg = collect_all('pyqtgraph')
 
+# pandas — extensions C + data files
+datas_pd, binaries_pd, hiddenimports_pd = collect_all('pandas')
+
 # folium et ses templates HTML
 datas_folium = collect_data_files('folium')
 datas_branca = collect_data_files('branca')  # dépendance folium
@@ -23,16 +26,18 @@ block_cipher = None
 a = Analysis(
     ['main.py'],
     pathex=['C:\\KOSMOS_IHM'],
-    binaries=binaries_web + binaries_pg,
+    binaries=binaries_web + binaries_pg + binaries_pd,
     datas=[
         # ── Fichiers propres au projet ─────────────────────────────────
         ('ihm2.ui',         '.'),          # Interface Qt Designer
         ('img',             'img'),        # Logos et drapeaux
+        ('assets',          'assets'),     # Carte Leaflet HTML+JS
         ('template.json',   '.'),          # Template JSON vidéo
 
         # ── Dépendances collectées ────────────────────────────────────
         *datas_web,
         *datas_pg,
+        *datas_pd,
         *datas_folium,
         *datas_branca,
     ],
@@ -49,12 +54,18 @@ a = Analysis(
         # pyqtgraph backends
         *hiddenimports_web,
         *hiddenimports_pg,
+        *hiddenimports_pd,
 
         # Calcul / vision
         'cv2',
         'numpy',
         'matplotlib',
         'matplotlib.backends.backend_qtagg',
+        'matplotlib.backends.backend_pdf',
+        'matplotlib.backends.backend_agg',
+        'matplotlib.offsetbox',
+        'matplotlib.gridspec',
+        'matplotlib.figure',
         'paramiko',
         'paramiko.transport',
         'cryptography',
@@ -82,7 +93,6 @@ a = Analysis(
         'IPython',
         'notebook',
         'scipy',
-        'pandas',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -102,7 +112,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,          # UPX casse parfois les DLL Qt — désactivé
-    console=False,      # Pas de fenêtre console
+    console=True,       # DEBUG — affiche le traceback
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

@@ -320,8 +320,15 @@ class MetadonneesController:
         """Remplace le modèle vidéo et reconnecte le signal de sélection au nouveau selectionModel."""
         self.video_model = model
         if self.tree_videos:
+            # Déconnecter l'ANCIEN selectionModel avant setModel() pour éviter les connexions multiples
+            old_sel = self.tree_videos.selectionModel()
+            if old_sel is not None:
+                try:
+                    old_sel.selectionChanged.disconnect(self.on_selection_changed)
+                except RuntimeError:
+                    pass
             self.tree_videos.setModel(self.video_model)
-            # setModel() remplace le selectionModel — on reconnecte le signal au nouveau
+            # setModel() crée un nouveau selectionModel — on se connecte à celui-ci
             self.tree_videos.selectionModel().selectionChanged.connect(self.on_selection_changed)
 
     def select_video_by_name(self, video_name: str):
