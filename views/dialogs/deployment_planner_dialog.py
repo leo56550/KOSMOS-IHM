@@ -5,6 +5,7 @@ import os
 import sys
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebChannel import QWebChannel
 
 
@@ -84,6 +85,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.setWindowTitle("Planification de deploiement")
         self.setModal(True)
         self.resize(1150, 700)
@@ -126,6 +128,11 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
         # Carte
         self._map_view = QWebEngineView()
+        # Autoriser le fichier local à charger des ressources distantes (Leaflet CDN)
+        # et des ressources QRC (qwebchannel.js)
+        s = self._map_view.page().settings()
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         self._map_view.page().setWebChannel(self._channel)
         self._map_view.setUrl(QtCore.QUrl.fromLocalFile(_MAP_HTML_PATH))
         body.addWidget(self._map_view)

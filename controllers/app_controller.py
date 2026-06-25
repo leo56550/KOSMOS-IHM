@@ -193,12 +193,15 @@ class AppController:
         self._sync_all_to_working_dir()
 
     def _on_metadata_saved(self):
-        """Reconstruit la minimap si elle est visible, sinon invalide pour le prochain affichage."""
+        """Reconstruit la minimap et rafraîchit l'indicateur de complétion de la vidéo courante."""
         if self.qualif_ctrl.map_dialog.isVisible():
             self.qualif_ctrl.map_initialized = False
             self.qualif_ctrl.update_minimap(self.qualif_ctrl.selected_video_name)
         else:
             self.qualif_ctrl.map_initialized = False
+        vp = self.metadonnees_ctrl.current_video_path
+        if vp:
+            self.qualif_ctrl.refresh_completion_color_for_video(vp)
 
     def _open_single_video(self):
         """Ouvre un fichier MP4 standalone dans un player complet, sans campagne."""

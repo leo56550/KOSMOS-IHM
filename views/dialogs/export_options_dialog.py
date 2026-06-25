@@ -82,6 +82,11 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.chk_rectify.setEnabled(self.is_stereo)
         layout.addWidget(self.chk_rectify)
 
+        self.chk_include_images = QtWidgets.QCheckBox("", self)
+        self.chk_include_images.setChecked(True)
+        self.chk_include_images.toggled.connect(self._on_include_images_toggled)
+        layout.addWidget(self.chk_include_images)
+
         layout.addSpacing(10)
 
         self.buttons_box = QtWidgets.QDialogButtonBox(
@@ -99,6 +104,11 @@ class ExportOptionsDialog(QtWidgets.QDialog):
 
         self.set_language(self.current_language)
 
+    def _on_include_images_toggled(self, checked: bool):
+        self.fps_group.setEnabled(checked)
+        self.filters_group.setEnabled(checked)
+        self.chk_rectify.setEnabled(checked and self.is_stereo)
+
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
@@ -114,6 +124,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.check_dh.setText(self.translate("Suppression de la brume / flou (Dehaze)", "Haze / Blur Removal (Dehaze)"))
         self.check_water.setText(self.translate("Mode sous-marin (Option Dehaze)", "Underwater Mode (Dehaze Option)"))
         self.chk_rectify.setText(self.translate("Rectifier les images (Stéréo)", "Rectify images (Stereo)"))
+        self.chk_include_images.setText(self.translate("Exporter le lot d'images", "Export image batch"))
         if self.export_button:
             self.export_button.setText(self.translate("Exporter", "Export"))
         if self.cancel_button:
@@ -126,5 +137,6 @@ class ExportOptionsDialog(QtWidgets.QDialog):
             "apply_he": self.check_he.isChecked(),
             "apply_dh": self.check_dh.isChecked(),
             "is_water": self.check_water.isEnabled() and self.check_water.isChecked(),
-            "apply_rectify": self.chk_rectify.isEnabled() and self.chk_rectify.isChecked()
+            "apply_rectify": self.chk_rectify.isEnabled() and self.chk_rectify.isChecked(),
+            "include_images": self.chk_include_images.isChecked(),
         }

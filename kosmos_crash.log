@@ -120,3 +120,43 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-06-23 14:09:17.815351
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-23 14:23:41.173671
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 490, in mouseMoveEvent
+    def mouseMoveEvent(self, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-23 14:23:43.438557
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\video_player_dialog.py", line 152, in closeEvent
+    def closeEvent(self, event: QtGui.QCloseEvent):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:21:38.595348
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:23:45.551375
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

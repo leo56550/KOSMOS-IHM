@@ -7,6 +7,7 @@ class WeatherWebDialog(QtWidgets.QDialog):
     def __init__(self, web_data: dict, lang: str = "fr", display_date: str = None, parent=None):
         """Initialise le dialogue avec les données météo web et la langue d'affichage."""
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.web_data = web_data
         self.lang = lang
         self.display_date = display_date

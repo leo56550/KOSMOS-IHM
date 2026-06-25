@@ -18,6 +18,7 @@ class MapDialog(QtWidgets.QDialog):
 
     def __init__(self, bridge: MapBridge, channel, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.setWindowTitle("Carte de Campagne")
         self.resize(800, 600)
 

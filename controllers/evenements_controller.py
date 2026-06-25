@@ -1493,6 +1493,7 @@ class EvenementsController:
         apply_dh = options.get("apply_dh", False)
         is_water = options.get("is_water", False)
         apply_rectify = options.get("apply_rectify", False)
+        include_images = options.get("include_images", True)
 
         if apply_rectify and not os.path.exists(json_path):
             QtWidgets.QMessageBox.critical(
@@ -1508,6 +1509,18 @@ class EvenementsController:
         start_ms, end_ms = bounds
         self.export_start_ms = start_ms
         self.export_end_ms = end_ms
+
+        if not include_images:
+            self.export_button.setEnabled(False)
+            self.export_status_label.setText(self.translate("Génération du CSV...", "Generating CSV..."))
+            self._copy_companion_files(self.current_video_path)
+            ok = self._generate_events_csv_no_images(self.current_video_path, start_ms, end_ms)
+            msg = (self.translate("CSV d'événements généré.", "Events CSV generated.")
+                   if ok else
+                   self.translate("Échec de la génération du CSV.", "Failed to generate CSV."))
+            self.export_status_label.setText(msg)
+            self.export_button.setEnabled(bool(self.current_video_path))
+            return
 
         self.export_progress.setVisible(True)
         self.export_progress.setValue(0)
@@ -1586,6 +1599,72 @@ class EvenementsController:
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         campaign_folder = os.path.dirname(parent_dir)
         return get_video_output_dir(campaign_folder, video_path)
+
+    def _generate_events_csv_no_images(self, video_path, start_ms, end_ms):
+        """Génère events_VIAME.csv avec références vidéo+frame, sans lot d'images."""
+        template_json_path = get_video_json_path(video_path)
+        video_out = self._get_video_out_dir(video_path)
+        events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
+        parent_dir = os.path.dirname(os.path.normpath(video_path))
+
+        if not os.path.exists(template_json_path):
+            return False
+        try:
+            with open(template_json_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            cap = cv2.VideoCapture(video_path)
+            video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
+
+            video_obs = json_data.get('video_observation', {})
+            video_name = os.path.basename(video_path)
+            start_frame = int((start_ms / 1000.0) * video_fps)
+
+            events_list = []
+            track_id = 0
+            for category in ['events_deployment', 'events_animal', 'events_interesting_images']:
+                for item in video_obs.get(category, [{}])[0].get('values', []) if video_obs.get(category) else []:
+                    f_start = item.get('frame_number_start')
+                    f_end = item.get('frame_number_end')
+                    name = str(item.get('value', 'unknown')).strip()
+                    if f_start is not None:
+                        f_start = int(f_start)
+                        f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
+                        events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
+                        track_id += 1
+
+            motor_events = []
+            system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))
+            if os.path.exists(system_event_path):
+                try:
+                    motor_events = get_motor_stable_timestamps(system_event_path, delay=6.0, start_track_id=track_id)
+                except Exception as e:
+                    print(f"[CSV] Error motor file: {e}")
+
+            from datetime import datetime
+            os.makedirs(video_out, exist_ok=True)
+            with open(events_csv_path, 'w', newline='', encoding='utf-8') as f:
+                f.write(
+                    "# 1: Detection or Track-id,2: Video or Image Identifier,3: Unique Frame Identifier,"
+                    "4-7: Img-bbox(TL_x,TL_y,BR_x,BR_y),8: Detection or Length Confidence,"
+                    "9: Target Length (0 or -1 if invalid),10-11+: Repeated Species,Confidence Pairs or Attributes\n"
+                )
+                f.write(
+                    f"# metadata,fps: {video_fps:.1f},\"exported_by: \"\"dive:kosmos\"\"\","
+                    f"\"exported_time: \"\"{datetime.now().strftime('%d/%m/%Y at %H:%M:%S')}\"\"\"\n"
+                )
+                for ev in events_list:
+                    for frame in range(ev['start'], ev['end'] + 1):
+                        f.write(f"{ev['id']},{video_name},{frame},0,0,0,0,1,-1,{ev['name']},1,\n")
+                for m_ev in motor_events:
+                    f_s = int(m_ev['timestamp'] * video_fps)
+                    f_e = int((m_ev['timestamp'] + m_ev['duration']) * video_fps)
+                    for frame in range(f_s, f_e + 1):
+                        f.write(f"{m_ev['track_id']},{video_name},{frame},0,0,0,0,1,-1,{m_ev['type']},1,\n")
+            return True
+        except Exception as e:
+            print(f"[CSV NO-IMG ERROR] {e}")
+            return False
 
     def _generate_events_csv(self, video_path, start_ms, end_ms):
         """Génère events_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""

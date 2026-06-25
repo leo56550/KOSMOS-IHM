@@ -112,6 +112,7 @@ class SftpDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.setWindowTitle("KOSMOS — Connexion SFTP / Carte SD")
         self.setModal(True)
         self.resize(780, 650)

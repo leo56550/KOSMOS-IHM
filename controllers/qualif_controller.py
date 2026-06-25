@@ -11,7 +11,7 @@ from PyQt6.QtWebChannel import QWebChannel
 from services.video_service import get_all_mp4_files, check_stereo_status
 from services.campaign_service import (
     get_video_gps_coords, get_video_json_path, get_working_video_json_path,
-    get_working_video_dir, sync_video_to_working_dir,
+    get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
 )
 from services.migration_service import migrate_json_file_if_needed, initialise_video_json_if_needed
 from services.motor_service import get_motor_stable_timestamps
@@ -343,6 +343,65 @@ class QualifController:
             self.load_and_display_campaign_json(first_loaded_json)
 
         self._reset_left_splitter_sizes()
+        self.refresh_completion_colors()
+
+    # ── Indicateur de complétion ─────────────────────────────────────────
+
+    def _get_completion_color(self, video_path: str) -> QtGui.QColor:
+        """Rouge / orange / vert selon le remplissage des champs critiques du JSON."""
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        if not os.path.exists(json_path):
+            return QtGui.QColor("#D94F38")
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return QtGui.QColor("#D94F38")
+
+        def _filled(block: dict, key: str) -> bool:
+            entry = block.get(key, {})
+            val = entry.get("value") if isinstance(entry, dict) else entry
+            return bool(val and str(val).strip() not in ("", "None", "null"))
+
+        obs  = data.get("video_observation", {})
+        surv = data.get("survey", {})
+        critical  = [_filled(obs, "codeObs"), _filled(obs, "exploitable")]
+        important = [_filled(obs, "habitat"), _filled(obs, "depth"), _filled(surv, "date")]
+
+        if not all(critical):
+            return QtGui.QColor("#D94F38")   # rouge — champ critique absent
+        if sum(important) < 2:
+            return QtGui.QColor("#E8A838")   # orange — incomplet
+        return QtGui.QColor("#5DBB63")       # vert — complet
+
+    def _apply_completion_color(self, row: int):
+        """Applique un fond semi-transparent sur la ligne selon la complétion JSON."""
+        item0 = self.video_model.item(row, 0)
+        if not item0:
+            return
+        video_path = item0.data(QtCore.Qt.ItemDataRole.UserRole)
+        if not video_path:
+            return
+        color = self._get_completion_color(str(video_path))
+        color.setAlpha(35)
+        brush = QtGui.QBrush(color)
+        for col in range(self.video_model.columnCount()):
+            cell = self.video_model.item(row, col)
+            if cell:
+                cell.setBackground(brush)
+
+    def refresh_completion_colors(self):
+        """Recalcule les couleurs de complétion pour toutes les lignes du modèle vidéo."""
+        for row in range(self.video_model.rowCount()):
+            self._apply_completion_color(row)
+
+    def refresh_completion_color_for_video(self, video_path: str):
+        """Recalcule la couleur de complétion uniquement pour la vidéo donnée."""
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == str(video_path):
+                self._apply_completion_color(row)
+                return
 
     def _start_thumbnail_generation(self):
         """Lance un worker pour générer les vignettes de toutes les vidéos (modèle principal + corbeille)."""

@@ -194,15 +194,33 @@ def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
     pour que le JSON reste à jour après chaque sauvegarde de métadonnées.
     Les répertoires (img/, captures/…) ne sont jamais touchés.
     """
+    import json as _json
     src_dir = os.path.dirname(os.path.normpath(video_path))
     dst_dir = get_working_video_dir(working_dir, video_path)
     os.makedirs(dst_dir, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(video_path))[0]
     for fname in os.listdir(src_dir):
         if fname.lower().endswith('.mp4'):
             continue
         src_file = os.path.join(src_dir, fname)
-        if os.path.isfile(src_file):
-            shutil.copy2(src_file, os.path.join(dst_dir, fname))
+        if not os.path.isfile(src_file):
+            continue
+        dst_file = os.path.join(dst_dir, fname)
+        shutil.copy2(src_file, dst_file)
+        # Après copie du JSON : injecter le nom standardisé dans video_file_name
+        if fname.lower().endswith('.json') and fname.lower() != 'template.json':
+            try:
+                with open(dst_file, 'r', encoding='utf-8') as f:
+                    data = _json.load(f)
+                vo = data.get('video_observation', {})
+                vfn = vo.get('video_file_name', {})
+                if isinstance(vfn, dict):
+                    ext = os.path.splitext(video_path)[1]
+                    vfn['value'] = build_video_output_name(video_path) + ext
+                    with open(dst_file, 'w', encoding='utf-8') as f:
+                        _json.dump(data, f, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
 
 
 def get_working_video_json_path(working_dir: str, video_path: str) -> str:

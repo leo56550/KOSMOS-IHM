@@ -12,6 +12,7 @@ class QuickVideoDialog(QtWidgets.QDialog):
 
     def __init__(self, video_path: str, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowTitle(f"Lecture — {os.path.basename(video_path)}")
         self.resize(1140, 700)

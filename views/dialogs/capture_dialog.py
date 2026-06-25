@@ -23,6 +23,7 @@ class CaptureDialog(QtWidgets.QDialog):
             lang: Langue d'affichage ('fr' ou 'en').
         """
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.is_stereo = is_stereo
         self.lang = lang
         stereo_label = self.translate("(Stéréo)", "(Stereo)") if is_stereo else self.translate("(Mono)", "(Mono)")

@@ -24,6 +24,7 @@ class TelemetryDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         """Initialise les graphes pyqtgraph et les curseurs dynamiques pour chaque métrique."""
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.current_language = 'fr'
         self.setWindowTitle("Analyse Télémétrie")
         self.resize(900, 800)

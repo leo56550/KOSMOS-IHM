@@ -36,6 +36,26 @@ _CUSTOM_VOB_FIELDS: list[str] = [
     "distance_min", "distance_max",
 ]
 
+# Colonnes du CSV infostation (source unique de vérité — utilisée dans upsert ET génération complète)
+_INFOSTATION_COLUMNS: list[str] = [
+    "Codestation", "Zone", "Type", "Région", "Nom campagne",
+    "Latitude", "Longitude", "Date", "Heure",
+    "Exploitable", "Nom du point", "Nom du point GPS",
+    "Codestatut", "Codestatut2", "Site", "Pt de Suivi", "Profondeur",
+    "Commentaires terrain pose", "Commentaires terrain localisation",
+    "Nom du fichier", "Timecode ardoise", "Timecode début",
+    "Commentaires video", "Images interessantes", "Capture écran",
+    "Milieu/Habitat", "Visibilite",
+    "Camera", "Modèle MCU", "Version système", "Moteur", "Systeme",
+    "Maree", "Coefficient marée", "Lune",
+    "Meteo", "Vent (beaufort)", "Direction vent",
+    "Mer (beaufort)", "Houle", "Direction houle",
+    "Température air", "Température eau",
+    "Bateau", "Pilote", "Equipage",
+    "Dérusher", "Analyseur poisson", "Analyseur habitat",
+    "Distance analysable min (m)", "Distance analysable max (m)",
+]
+
 _FIELD_STYLE = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
                 " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
 _EMPTY_STYLE = ("background-color: #162433; color: #5a7a8a; border: 1px solid #1e3448;"
@@ -209,6 +229,15 @@ class MetadonneesController:
         hrow.addWidget(self.lbl_video_count)
         hrow.addWidget(self.lbl_trash_count)
         hrow.addStretch()
+
+        btn_export = QtWidgets.QPushButton(self.translate("Générer CSV Infostation", "Generate Infostation CSV"))
+        btn_export.setStyleSheet(
+            "QPushButton{background:#1a4a1a;color:#90EE90;border:1px solid #5DBB63;"
+            "border-radius:4px;padding:3px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2a6a2a;}"
+        )
+        btn_export.clicked.connect(self._export_infostation_action)
+        hrow.addWidget(btn_export)
 
         outer.addWidget(header)
 
@@ -418,8 +447,12 @@ class MetadonneesController:
             self._display_block_in_scroll("system", self._json_data["system"],
                                           self._scroll_system, self.translate("Système", "System"))
         if "survey" in self._json_data:
-            self._display_block_in_scroll("survey", self._json_data["survey"],
-                                          self._scroll_survey, self.translate("Campagne", "Campaign"))
+            self._display_block_in_scroll(
+                "survey", self._json_data["survey"],
+                self._scroll_survey, self.translate("Campagne", "Campaign"),
+                extra_btn=(self.translate("Appliquer à toutes les vidéos", "Apply to all videos"),
+                           self._apply_survey_to_all)
+            )
         if "video_observation" in self._json_data:
             self._ensure_custom_fields()
             obs = self._json_data["video_observation"]
@@ -731,19 +764,7 @@ class MetadonneesController:
     def _upsert_infostation_row(self, video_path: str):
         """Met à jour (ou insère) la ligne de video_path dans le CSV infostation global."""
         csv_path = get_infostation_path(self._working_dir)
-        columns = [
-            "Codestation", "Zone", "Type", "Latitude", "Longitude", "Date",
-            "Exploitable", "Heure", "Nom du point", "Nom du point GPS",
-            "Codestatut", "Codestatut2", "Site", "Pt de Suivi", "Profondeur",
-            "Commentaires terrain pose", "Commentaires terrain localisation",
-            "Nom du fichier", "Timecode ardoise", "Timecode début",
-            "Commentaires video", "Images interessantes", "Capture écran",
-            "Milieu/Habitat", "Visibilite", "Camera", "Moteur", "Systeme",
-            "Maree", "Lune", "Meteo", "Vent (beaufort)", "Mer (beaufort)",
-            "Houle", "Bateau", "Pilote", "Equipage",
-            "Analyseur poisson", "Analyseur habitat",
-            "Distance analysable min (m)", "Disatance analysable max (m)",
-        ]
+        columns = _INFOSTATION_COLUMNS
         try:
             new_row = self._build_infostation_row(video_path)
             new_row = {k: str(v).replace('\n', ' | ').replace('\r', '')
@@ -812,7 +833,7 @@ class MetadonneesController:
     def _build_infostation_row(self, video_path: str) -> dict:
         """Construit un dictionnaire de valeurs pour une ligne Infostation depuis le JSON."""
         stem = os.path.splitext(os.path.basename(video_path))[0]
-        codestat, heure = self._extract_stem_parts(stem)
+        codestat, heure_stem = self._extract_stem_parts(stem)
 
         json_path = resolve_video_json_path(self._working_dir, video_path)
         jdata = {}
@@ -822,13 +843,25 @@ class MetadonneesController:
                     jdata = json.load(f)
             except Exception:
                 pass
-        sys_  = jdata.get("system", {})
-        surv  = jdata.get("survey", {})
-        obs   = jdata.get("video_observation", {})
+        sys_ = jdata.get("system", {})
+        surv = jdata.get("survey", {})
+        obs  = jdata.get("video_observation", {})
 
+        # Lat/lon : JSON en priorité, fallback fichier GPS
         gps = get_video_gps_coords(video_path)
-        lat = str(gps[0]).replace('.', ',') if gps else ""
-        lon = str(gps[1]).replace('.', ',') if gps else ""
+        lat_gps = str(gps[0]).replace('.', ',') if gps else ""
+        lon_gps = str(gps[1]).replace('.', ',') if gps else ""
+        lat_json = self._v(obs, "latitude")
+        lon_json = self._v(obs, "longitude")
+        lat = lat_json.replace('.', ',') if lat_json else lat_gps
+        lon = lon_json.replace('.', ',') if lon_json else lon_gps
+
+        # codeObs : JSON en priorité, fallback stem du fichier
+        code_obs   = self._v(obs, "codeObs") or codestat
+        # point_name : JSON en priorité, fallback stem du fichier
+        point_name = self._v(obs, "point_name") or codestat
+        # heure : JSON en priorité, fallback extraite du stem
+        heure      = self._v(obs, "time") or heure_stem
 
         def _derive_tc_ardoise():
             v = self._v(obs, "timecode_ardoise")
@@ -859,15 +892,17 @@ class MetadonneesController:
             return " ; ".join(parts)
 
         return {
-            "Codestation":                       codestat,
+            "Codestation":                       code_obs,
             "Zone":                              self._v(surv, "zone"),
             "Type":                              self._v(surv, "type"),
+            "Région":                            self._v(surv, "region"),
+            "Nom campagne":                      self._v(surv, "survey_name"),
             "Latitude":                          lat,
             "Longitude":                         lon,
             "Date":                              self._fmt_date(self._v(surv, "date")),
-            "Exploitable":                       self._v(obs, "exploitable"),
             "Heure":                             heure,
-            "Nom du point":                      codestat,
+            "Exploitable":                       self._v(obs, "exploitable"),
+            "Nom du point":                      point_name,
             "Nom du point GPS":                  self._v(obs, "gps_waypoint"),
             "Codestatut":                        self._v(surv, "protectionStatus1"),
             "Codestatut2":                       self._v(surv, "protectionStatus2"),
@@ -885,65 +920,257 @@ class MetadonneesController:
             "Milieu/Habitat":                    self._v(obs, "habitat"),
             "Visibilite":                        self._v(obs, "estimated_visibility"),
             "Camera":                            self._v(sys_, "camera"),
+            "Modèle MCU":                        self._v(sys_, "model_mcu"),
+            "Version système":                   self._v(sys_, "system_version"),
             "Moteur":                            self._v(obs, "moteur"),
             "Systeme":                           self._v(sys_, "type_system"),
             "Maree":                             self._v(obs, "tide"),
+            "Coefficient marée":                 self._v(obs, "coefficient"),
             "Lune":                              self._v(obs, "moon"),
             "Meteo":                             self._v(obs, "weather"),
             "Vent (beaufort)":                   self._v(obs, "wind"),
+            "Direction vent":                    self._v(obs, "wind_direction"),
             "Mer (beaufort)":                    self._v(obs, "seaState"),
             "Houle":                             self._v(obs, "swell_height"),
+            "Direction houle":                   self._v(obs, "swell_direction"),
+            "Température air":                   self._v(obs, "airTemp"),
+            "Température eau":                   self._v(obs, "water_temperature"),
             "Bateau":                            self._v(surv, "boat_name"),
             "Pilote":                            self._v(surv, "pilot_name"),
             "Equipage":                          self._v(surv, "crew_names"),
+            "Dérusher":                          self._v(obs, "derusher"),
             "Analyseur poisson":                 self._v(obs, "fish_annotator"),
             "Analyseur habitat":                 self._v(obs, "habitat_annotator"),
             "Distance analysable min (m)":       self._v(obs, "distance_min"),
-            "Disatance analysable max (m)":      self._v(obs, "distance_max"),
+            "Distance analysable max (m)":       self._v(obs, "distance_max"),
         }
 
-    def generate_infostation_csv(self):
-        """Génère le fichier Infostation CSV dans le répertoire de travail (appelé automatiquement)."""
-        if not self._working_dir:
+    # ── Feature : vérification cohérence ────────────────────────────────
+
+    def _run_consistency_check(self, video_paths: list[str]) -> list[tuple]:
+        """Scanne tous les champs de chaque JSON et retourne (nom_vidéo, [labels manquants])."""
+        issues = []
+        lang = self.current_language
+        for vp in video_paths:
+            json_path = resolve_video_json_path(self._working_dir, vp)
+            name = os.path.basename(vp)
+            if not os.path.exists(json_path):
+                issues.append((name, ["JSON absent"]))
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                issues.append((name, ["JSON illisible"]))
+                continue
+
+            missing = []
+            for block in data.values():
+                if not isinstance(block, dict):
+                    continue
+                for field_key, field_def in block.items():
+                    if not isinstance(field_def, dict) or "value" not in field_def:
+                        continue  # liste d'événements ou entrée non-champ
+                    val = field_def.get("value")
+                    if val is None or str(val).strip() in ("", "None", "null"):
+                        label = field_def.get(f"name_{lang}") or field_def.get("name") or field_key
+                        missing.append(label)
+
+            if missing:
+                issues.append((name, missing))
+        return issues
+
+    def _show_consistency_dialog(self, issues: list[tuple]):
+        """Affiche tous les champs manquants par vidéo dans un arbre expandable. Export bloqué."""
+        dlg = QtWidgets.QDialog(self.widget)
+        dlg.setWindowTitle(self.translate(
+            "Métadonnées incomplètes — export bloqué",
+            "Incomplete metadata — export blocked"
+        ))
+        dlg.setWindowFlags(dlg.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
+        dlg.setMinimumSize(640, 500)
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        total_fields = sum(len(probs) for _, probs in issues)
+        banner = QtWidgets.QLabel(self.translate(
+            f"⛔  {len(issues)} vidéo(s) incomplète(s) — {total_fields} champ(s) manquant(s).\n"
+            "Complétez les champs manquants dans la page Métadonnées puis relancez l'export.",
+            f"⛔  {len(issues)} incomplete video(s) — {total_fields} missing field(s).\n"
+            "Fill the missing fields in the Metadata page then retry the export."
+        ))
+        banner.setWordWrap(True)
+        banner.setStyleSheet(
+            "background:#2a1a1a; color:#F2BFB4; border:1px solid #D94F38;"
+            "border-radius:4px; padding:8px 10px; font-size:12px;"
+        )
+        layout.addWidget(banner)
+
+        tree = QtWidgets.QTreeWidget()
+        tree.setHeaderLabels([
+            self.translate("Vidéo / Champ manquant", "Video / Missing field")
+        ])
+        tree.setColumnCount(1)
+        tree.header().setStretchLastSection(True)
+        tree.setAlternatingRowColors(True)
+        tree.setStyleSheet(
+            "QTreeWidget { background:#162433; color:#F2BFB4; border:1px solid #2a4057; }"
+            "QHeaderView::section { background:#1a2e40; color:#2778a2; border:none; padding:4px; }"
+            "QTreeWidget::item:alternate { background:#111f2e; }"
+            "QTreeWidget::item { padding: 2px 0; }"
+        )
+
+        for name, probs in issues:
+            parent = QtWidgets.QTreeWidgetItem(
+                [f"🎬  {name}  ({len(probs)} champ(s) manquant(s))"]
+            )
+            parent.setForeground(0, QtGui.QBrush(QtGui.QColor("#F2BFB4")))
+            parent.setFont(0, QtGui.QFont("Segoe UI", 10, QtGui.QFont.Weight.Bold))
+            for label in probs:
+                child = QtWidgets.QTreeWidgetItem([f"    ✗  {label}"])
+                child.setForeground(0, QtGui.QBrush(QtGui.QColor("#E8A838")))
+                parent.addChild(child)
+            tree.addTopLevelItem(parent)
+            parent.setExpanded(True)
+
+        layout.addWidget(tree)
+
+        btn_close = QtWidgets.QPushButton(self.translate("Fermer et corriger", "Close and fix"))
+        btn_close.setStyleSheet(
+            "QPushButton{background:#20415d;color:#F2BFB4;border:1px solid #2778a2;"
+            "border-radius:4px;padding:5px 14px;font-size:11px;}"
+            "QPushButton:hover{background:#2778a2;}"
+        )
+        btn_close.clicked.connect(dlg.accept)
+        layout.addWidget(btn_close, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+
+        dlg.exec()
+
+    # ── Feature : batch survey ────────────────────────────────────────────
+
+    def _apply_survey_to_all(self):
+        """Propage les valeurs survey et system du JSON actif à toutes les vidéos du dossier de travail."""
+        if not self._json_data or not self._working_dir:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Impossible", "Impossible"),
+                self.translate("Ouvrez d'abord une vidéo et un répertoire de travail.",
+                               "Open a video and a working directory first.")
+            )
             return
-        video_paths = []
+
+        survey_data = self._json_data.get("survey", {})
+        system_data = self._json_data.get("system", {})
+        count, skipped = 0, 0
+
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path or not os.path.exists(video_path):
+                continue
+            json_path = get_working_video_json_path(self._working_dir, str(video_path))
+            if not os.path.exists(json_path):
+                skipped += 1
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for field_id, field_def in survey_data.items():
+                    if isinstance(field_def, dict) and "value" in field_def:
+                        if field_id in data.get("survey", {}):
+                            data["survey"][field_id]["value"] = field_def["value"]
+                for field_id, field_def in system_data.items():
+                    if isinstance(field_def, dict) and "value" in field_def:
+                        if field_id in data.get("system", {}):
+                            data["system"][field_id]["value"] = field_def["value"]
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                count += 1
+            except Exception as e:
+                print(f"[BATCH SURVEY] {os.path.basename(str(video_path))}: {e}")
+                skipped += 1
+
+        msg = self.translate(
+            f"Données campagne & système appliquées à {count} vidéo(s).",
+            f"Campaign & system data applied to {count} video(s)."
+        )
+        if skipped:
+            msg += self.translate(f"\n{skipped} vidéo(s) ignorée(s) (JSON absent dans le dossier de sortie).",
+                                   f"\n{skipped} video(s) skipped (no output JSON yet).")
+        QtWidgets.QMessageBox.information(
+            self.widget,
+            self.translate("Propagation terminée", "Propagation complete"),
+            msg
+        )
+
+    # ── CSV export ────────────────────────────────────────────────────────
+
+    def _collect_video_paths(self) -> list[str]:
+        """Retourne la liste des chemins vidéo du modèle courant."""
+        paths = []
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item:
                 vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
                 if vp:
-                    video_paths.append(str(vp))
+                    paths.append(str(vp))
+        return paths
+
+    def _export_infostation_action(self):
+        """Point d'entrée utilisateur : vérifie toutes les métadonnées, bloque si incomplet."""
+        if not self._working_dir:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Répertoire manquant", "Missing directory"),
+                self.translate("Sélectionnez d'abord un répertoire de travail (page Accueil).",
+                               "Please select a working directory first (Home page.")
+            )
+            return
+        video_paths = self._collect_video_paths()
+        if not video_paths:
+            return
+
+        issues = self._run_consistency_check(video_paths)
+        if issues:
+            # Des champs manquent → on affiche le bilan et on bloque l'export
+            self._show_consistency_dialog(issues)
+            return
+
+        # Toutes les métadonnées sont complètes → export
+        self.generate_infostation_csv()
+        csv_path = get_infostation_path(self._working_dir)
+        QtWidgets.QMessageBox.information(
+            self.widget,
+            self.translate("Export terminé", "Export complete"),
+            self.translate(f"CSV Infostation généré :\n{csv_path}",
+                           f"Infostation CSV generated:\n{csv_path}")
+        )
+
+    def generate_infostation_csv(self):
+        """Génère silencieusement le CSV Infostation (appelé aussi par l'auto-sync)."""
+        if not self._working_dir:
+            return
+        video_paths = self._collect_video_paths()
         if not video_paths:
             return
 
         csv_path = get_infostation_path(self._working_dir)
         os.makedirs(self._working_dir, exist_ok=True)
 
-        columns = [
-            "Codestation", "Zone", "Type", "Latitude", "Longitude", "Date",
-            "Exploitable", "Heure", "Nom du point", "Nom du point GPS",
-            "Codestatut", "Codestatut2", "Site", "Pt de Suivi", "Profondeur",
-            "Commentaires terrain pose", "Commentaires terrain localisation",
-            "Nom du fichier", "Timecode ardoise", "Timecode début",
-            "Commentaires video", "Images interessantes", "Capture écran",
-            "Milieu/Habitat", "Visibilite", "Camera", "Moteur", "Systeme",
-            "Maree", "Lune", "Meteo", "Vent (beaufort)", "Mer (beaufort)",
-            "Houle", "Bateau", "Pilote", "Equipage",
-            "Analyseur poisson", "Analyseur habitat",
-            "Distance analysable min (m)", "Disatance analysable max (m)",
-        ]
-
         try:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
-                writer = csv.DictWriter(f, fieldnames=columns, delimiter=';',
+                writer = csv.DictWriter(f, fieldnames=_INFOSTATION_COLUMNS, delimiter=';',
                                         extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
                 writer.writeheader()
                 for vp in sorted(video_paths):
                     try:
-                        row = self._build_infostation_row(vp)
-                        row = {k: str(v).replace('\n', ' | ').replace('\r', '')
-                               for k, v in row.items()}
-                        writer.writerow(row)
+                        row_data = self._build_infostation_row(vp)
+                        row_data = {k: str(v).replace('\n', ' | ').replace('\r', '')
+                                    for k, v in row_data.items()}
+                        writer.writerow(row_data)
                     except Exception as e:
                         print(f"[INFOSTATION] {os.path.basename(vp)}: {e}")
         except Exception as e:

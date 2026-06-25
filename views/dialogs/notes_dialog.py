@@ -44,6 +44,7 @@ class NotesDialog(QtWidgets.QDialog):
 
     def __init__(self, campaign_folder: str, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self._campaign_folder = campaign_folder
         self._notes_path = os.path.join(campaign_folder, _NOTES_FILENAME)
 
