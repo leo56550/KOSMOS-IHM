@@ -839,8 +839,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.player.setPosition(pos)
 
     def on_zoom_changed(self, value):
-        """Applique le niveau de zoom du slider à la timeline."""
+        """Applique le niveau de zoom du slider à la timeline et recentre sur la position courante."""
         self.timeline.set_zoom(float(value))
+        # Délai 1 tick pour laisser la QScrollArea recalculer son maximum avant de scroller
+        QtCore.QTimer.singleShot(1, self.center_scroll_on_cursor)
 
     def on_timeline_zoom_changed(self, zoom_factor: float):
         """Synchronise le slider de zoom quand la timeline change son facteur de zoom."""
@@ -899,7 +901,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.player.duration() <= 0 or self.slider_zoom.value() == 1:
             return
         ratio = self.player.position() / self.player.duration()
-        cursor_x = int(ratio * self.timeline.width())
+        # Utiliser min_zoomed_width() car timeline.width() n'est pas encore à jour après set_zoom()
+        cursor_x = int(ratio * self.timeline.min_zoomed_width())
         scrollbar = self.scroll_area_timeline.horizontalScrollBar()
         scrollbar.setValue(cursor_x - (self.scroll_area_timeline.width() // 2))
 

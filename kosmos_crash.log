@@ -168,3 +168,67 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-06-25 15:53:35.026613
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:20.704650
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:20.853953
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:21.004596
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 148, in paintEvent
+    def paintEvent(self, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:21.154504
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:21.304175
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:21.453936
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-06-25 15:54:21.654343
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 880, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt

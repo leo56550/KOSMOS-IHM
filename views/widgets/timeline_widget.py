@@ -58,12 +58,16 @@ class VideoTimeline(QtWidgets.QWidget):
     def set_zoom(self, factor):
         """Applique le facteur de zoom et déclenche un repaint."""
         self.zoom_factor = max(1.0, factor)
+        # setMinimumWidth force la QScrollArea (même en setWidgetResizable(True)) à créer
+        # une scrollbar réelle — sans ça le max scrollbar reste 0 et tout reste ancré à t=0.
+        self.setMinimumWidth(self.min_zoomed_width())
         self.updateGeometry()
         self.update()
 
     def min_zoomed_width(self):
-        """Retourne la largeur effective en pixels (largeur parent × zoom_factor)."""
-        base_width = self.parent().width() if self.parent() else self.width()
+        """Retourne la largeur effective en pixels (largeur viewport × zoom_factor)."""
+        p = self.parent()
+        base_width = p.width() if p is not None else self.width()
         return int(base_width * self.zoom_factor)
 
     def sizeHint(self):
@@ -574,9 +578,20 @@ class VideoTimeline(QtWidgets.QWidget):
         if self.total_duration <= 0:
             return
 
-        pos_x_local = event.position().x()
+        # Chercher la scroll area parente
+        scroll_area = None
+        p = self.parent()
+        while p is not None:
+            if isinstance(p, QtWidgets.QScrollArea):
+                scroll_area = p
+                break
+            p = p.parent()
+
+        scroll_offset = scroll_area.horizontalScrollBar().value() if scroll_area else 0
+        # pos_x dans l'espace du contenu (coordonnée widget + scroll courant)
+        pos_x_content = event.position().x() + scroll_offset
         current_width = self.min_zoomed_width()
-        time_ratio = pos_x_local / current_width if current_width > 0 else 0
+        time_ratio = pos_x_content / current_width if current_width > 0 else 0
         target_time = time_ratio * self.total_duration
 
         zoom_step = 1.2
@@ -591,25 +606,18 @@ class VideoTimeline(QtWidgets.QWidget):
             return
 
         self.zoomChanged.emit(self.zoom_factor)
+        self.setMinimumWidth(self.min_zoomed_width())
         self.updateGeometry()
-        if self.parent():
-            self.parent().adjustSize()
 
         new_width = self.min_zoomed_width()
-        new_pos_x_local = (target_time / self.total_duration) * new_width
-
-        scroll_area = None
-        p = self.parent()
-        while p is not None:
-            if isinstance(p, QtWidgets.QScrollArea):
-                scroll_area = p
-                break
-            p = p.parent()
+        new_pos_x_content = (target_time / self.total_duration) * new_width
 
         if scroll_area:
-            delta_scroll = int(new_pos_x_local - pos_x_local)
-            horizontal_bar = scroll_area.horizontalScrollBar()
-            horizontal_bar.setValue(horizontal_bar.value() + delta_scroll)
+            # Repositionner pour que le temps sous le curseur reste au même endroit
+            new_scroll = int(new_pos_x_content - event.position().x())
+            QtCore.QTimer.singleShot(1, lambda: (
+                scroll_area.horizontalScrollBar().setValue(new_scroll),
+            ))
 
         self.timeChanged.emit(self.current_pos)
         self.update()
