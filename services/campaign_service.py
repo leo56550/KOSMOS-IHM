@@ -206,9 +206,18 @@ def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
         if not os.path.isfile(src_file):
             continue
         dst_file = os.path.join(dst_dir, fname)
+
+        is_video_json = fname.lower().endswith('.json') and fname.lower() != 'template.json'
+
+        # Ne jamais écraser un JSON existant dans le dossier de travail :
+        # il contient les événements et métadonnées annotés par l'utilisateur.
+        if is_video_json and os.path.exists(dst_file):
+            continue
+
         shutil.copy2(src_file, dst_file)
-        # Après copie du JSON : injecter le nom standardisé dans video_file_name
-        if fname.lower().endswith('.json') and fname.lower() != 'template.json':
+
+        # Première copie du JSON : injecter le nom standardisé dans video_file_name
+        if is_video_json:
             try:
                 with open(dst_file, 'r', encoding='utf-8') as f:
                     data = _json.load(f)

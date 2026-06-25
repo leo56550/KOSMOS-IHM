@@ -61,6 +61,37 @@ class _HistWorker(QtCore.QThread):
             self.result_ready.emit(hists, mean_luma, dominant)
 
 
+class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
+    """QComboBox en ligne pour éditer le type d'événement (colonne 2) dans l'arbre."""
+
+    def __init__(self, get_types_fn, parent=None):
+        super().__init__(parent)
+        self._get_types = get_types_fn
+
+    def createEditor(self, parent, option, index):
+        combo = QtWidgets.QComboBox(parent)
+        combo.addItems(self._get_types())
+        combo.setStyleSheet(
+            "QComboBox { background-color:#212a35; color:white; border:1px solid #2778a2; padding:4px; }"
+            "QComboBox QAbstractItemView { background-color:#212a35; color:white;"
+            " selection-background-color:#2778a2; }"
+        )
+        combo.activated.connect(lambda: (
+            self.commitData.emit(combo),
+            self.closeEditor.emit(combo, QtWidgets.QAbstractItemDelegate.EndEditHint.NoHint),
+        ))
+        return combo
+
+    def setEditorData(self, editor, index):
+        current = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        idx = editor.findText(current)
+        if idx >= 0:
+            editor.setCurrentIndex(idx)
+
+    def setModelData(self, editor, model, index):
+        model.setData(index, editor.currentText(), QtCore.Qt.ItemDataRole.EditRole)
+
+
 class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
@@ -251,6 +282,10 @@ class EvenementsController:
             lambda pos: self.open_context_menu(pos, self.tree_captures)
         )
         self.tree_captures.itemSelectionChanged.connect(self.on_tree_event_selected)
+
+        self._event_type_delegate = _EventTypeDelegate(lambda: list(self.event_dictionary.keys()))
+        self.tree_captures.setItemDelegateForColumn(2, self._event_type_delegate)
+
         main_layout.addWidget(self.tree_captures)
 
     # --- Two-way tree/timeline sync ---
@@ -1256,7 +1291,10 @@ class EvenementsController:
         self.save_event_to_json(modified_event, display_type)
 
     def on_arbre_item_changed(self, item: QtWidgets.QTreeWidgetItem, column: int):
-        """Persiste le commentaire édité directement dans l'arbre (colonne 4) vers le JSON."""
+        """Persiste les éditions directes de l'arbre (type col 2, commentaire col 4) vers le JSON."""
+        if column == 2:
+            self._move_event_to_category(item, item.text(2))
+            return
         if column != 4:
             return
         if not self.current_json_path or not os.path.exists(self.current_json_path):
@@ -1289,6 +1327,51 @@ class EvenementsController:
                     json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[BACKEND] Error editing comment: {e}")
+
+    def _move_event_to_category(self, item: QtWidgets.QTreeWidgetItem, new_label: str):
+        """Déplace un événement vers une nouvelle catégorie dans la timeline et le JSON."""
+        new_json_key = self._get_json_key_from_label(new_label)
+        value = item.text(3)
+
+        if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+            for evt in self.event_player.timeline.events:
+                if evt.get("title", "").replace("Pic: ", "") == value:
+                    evt["_json_key"] = new_json_key
+                    evt["zone"] = self._zone_index_for_event_type(new_label)
+                    self.event_player.timeline.update()
+                    break
+
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            video_obs = data.get("video_observation", {})
+
+            moved_entry = None
+            for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
+                if json_key == new_json_key:
+                    continue
+                cat = video_obs.get(json_key)
+                if not isinstance(cat, list) or not cat:
+                    continue
+                values = cat[0].get("values", [])
+                for i, v in enumerate(values):
+                    if v.get("value") == value:
+                        moved_entry = values.pop(i)
+                        break
+                if moved_entry is not None:
+                    break
+
+            if moved_entry is not None:
+                if new_json_key not in video_obs or not isinstance(video_obs[new_json_key], list) or not video_obs[new_json_key]:
+                    video_obs[new_json_key] = [{"authorized_values_fr": [], "values": []}]
+                video_obs[new_json_key][0].setdefault("values", []).append(moved_entry)
+                data["video_observation"] = video_obs
+                with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[MOVE CATEGORY] Error: {e}")
 
     # --- Context menu ---
 

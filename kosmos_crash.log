@@ -160,3 +160,11 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-06-25 15:29:07.665575
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
