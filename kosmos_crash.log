@@ -256,3 +256,11 @@ Traceback (most recent call last):
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
     
 KeyboardInterrupt
+
+============================================================
+2026-07-28 15:26:18.996676
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

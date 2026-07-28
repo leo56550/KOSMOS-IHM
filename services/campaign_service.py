@@ -187,49 +187,36 @@ def migrate_json_to_template(json_path: str) -> bool:
 
 
 def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
-    """Copie / met à jour les fichiers compagnon d'une vidéo dans son sous-dossier de travail.
+    """Copie uniquement le JSON source dans son sous-dossier de travail.
 
-    Tous les fichiers du dossier source sont copiés (JSON, CSV GPS, systemEvent…),
-    sauf le .mp4 (trop volumineux). Les fichiers existants sont toujours écrasés
-    pour que le JSON reste à jour après chaque sauvegarde de métadonnées.
-    Les répertoires (img/, captures/…) ne sont jamais touchés.
+    Le JSON n'est jamais écrasé s'il existe déjà (il contient les annotations).
+    Lors de la première copie, video_file_name est mis à jour avec le nom standardisé.
     """
     import json as _json
     src_dir = os.path.dirname(os.path.normpath(video_path))
     dst_dir = get_working_video_dir(working_dir, video_path)
     os.makedirs(dst_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(video_path))[0]
-    for fname in os.listdir(src_dir):
-        if fname.lower().endswith('.mp4'):
-            continue
-        src_file = os.path.join(src_dir, fname)
-        if not os.path.isfile(src_file):
-            continue
-        dst_file = os.path.join(dst_dir, fname)
-
-        is_video_json = fname.lower().endswith('.json') and fname.lower() != 'template.json'
-
-        # Ne jamais écraser un JSON existant dans le dossier de travail :
-        # il contient les événements et métadonnées annotés par l'utilisateur.
-        if is_video_json and os.path.exists(dst_file):
-            continue
-
-        shutil.copy2(src_file, dst_file)
-
-        # Première copie du JSON : injecter le nom standardisé dans video_file_name
-        if is_video_json:
-            try:
-                with open(dst_file, 'r', encoding='utf-8') as f:
-                    data = _json.load(f)
-                vo = data.get('video_observation', {})
-                vfn = vo.get('video_file_name', {})
-                if isinstance(vfn, dict):
-                    ext = os.path.splitext(video_path)[1]
-                    vfn['value'] = build_video_output_name(video_path) + ext
-                    with open(dst_file, 'w', encoding='utf-8') as f:
-                        _json.dump(data, f, indent=2, ensure_ascii=False)
-            except Exception:
-                pass
+    json_fname = f"{stem}.json"
+    src_file = os.path.join(src_dir, json_fname)
+    if not os.path.isfile(src_file):
+        return
+    dst_file = os.path.join(dst_dir, json_fname)
+    if os.path.exists(dst_file):
+        return
+    shutil.copy2(src_file, dst_file)
+    try:
+        with open(dst_file, 'r', encoding='utf-8') as f:
+            data = _json.load(f)
+        vo = data.get('video_observation', {})
+        vfn = vo.get('video_file_name', {})
+        if isinstance(vfn, dict):
+            ext = os.path.splitext(video_path)[1]
+            vfn['value'] = build_video_output_name(video_path) + ext
+            with open(dst_file, 'w', encoding='utf-8') as f:
+                _json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def get_working_video_json_path(working_dir: str, video_path: str) -> str:

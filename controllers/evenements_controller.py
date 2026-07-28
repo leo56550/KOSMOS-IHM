@@ -1632,25 +1632,19 @@ class EvenementsController:
             self.export_progress.setValue(progress)
 
     def _copy_companion_files(self, video_path: str):
-        """Copie les fichiers compagnon du dossier source vers le sous-dossier de travail.
-
-        Tous les fichiers du dossier vidéo d'origine sont copiés, sauf les .mp4
-        (trop volumineux). Les fichiers déjà présents ne sont pas écrasés.
-        """
+        """Copie uniquement le JSON source dans le sous-dossier de travail (si absent)."""
         if not self._working_dir:
             return
         src_dir = os.path.dirname(os.path.normpath(video_path))
         dst_dir = self._get_video_out_dir(video_path)
         os.makedirs(dst_dir, exist_ok=True)
-        _EXCLUDED_EXTS = {'.mp4', '.csv', '.txt'}
-        for fname in os.listdir(src_dir):
-            if os.path.splitext(fname)[1].lower() in _EXCLUDED_EXTS:
-                continue
-            src_file = os.path.join(src_dir, fname)
-            if os.path.isfile(src_file):
-                dst_file = os.path.join(dst_dir, fname)
-                if not os.path.exists(dst_file):
-                    shutil.copy2(src_file, dst_file)
+        stem = os.path.splitext(os.path.basename(video_path))[0]
+        json_fname = f"{stem}.json"
+        src_file = os.path.join(src_dir, json_fname)
+        if os.path.isfile(src_file):
+            dst_file = os.path.join(dst_dir, json_fname)
+            if not os.path.exists(dst_file):
+                shutil.copy2(src_file, dst_file)
 
     def _on_export_finished(self, saved_count: int):
         """Affiche le résultat de l'export et génère le CSV d'événements."""
