@@ -16,24 +16,36 @@ from services.campaign_service import (
 )
 from views.dialogs.weather_dialog import WeatherWebDialog
 
-# Mapping widget-id du formulaire → clé dans video_observation du JSON (noms du tableau officiel)
-_INFOSTATION_FIELD_MAP: dict[str, str] = {
-    "codeObs":            "codeObs",
-    "point_name":         "point_name",
-    "gps_waypoint":       "gps_waypoint",
-    "depth":              "depth",
-    "deployment_comment": "deployment_comment",
-    "pt_suivi":           "monitoring_program",
-    "habitat":            "habitat",
-    "loc_comment":        "location_comment",
-    "visibility_text":    "estimated_visibility",
+# En-tête feuille terrain : form_widget_id → (block_name, json_key)
+_INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
+    "ft_date":            ("survey", "date"),
+    "ft_equipage":        ("survey", "crew_names"),
+    "ft_site":            ("survey", "site"),
+    "ft_bateau":          ("survey", "boat_name"),
+    "ft_pilote":          ("survey", "pilot_name"),
+    "ft_gps_device":      ("survey", "gps_device"),
+    "ft_comment_general": ("survey", "campaign_comment"),
 }
+
+# Colonnes du tableau (une ligne = une vidéo) : (label, block, json_key)
+_FT_TABLE_COLS: list[tuple] = [
+    ("N°Point",              "video_observation", "point_name"),
+    ("Heure",                "video_observation", "time"),
+    ("Système",              "video_observation", "codeObs"),
+    ("GPS",                  "video_observation", "gps_waypoint"),
+    ("Latitude (xx,xxxxx)",  "video_observation", "latitude"),
+    ("Longitude (xx,xxxxx)", "video_observation", "longitude"),
+    ("Profondeur",           "video_observation", "depth"),
+    ("Météo",                "video_observation", "weather"),
+    ("Commentaire",          "video_observation", "deployment_comment"),
+]
 # Champs du template non présents dans les anciens JSONs → à initialiser à null si absents
 _CUSTOM_VOB_FIELDS: list[str] = [
     "habitat", "timecode_ardoise", "timecode_debut",
     "location_comment", "moteur", "derush_comment", "interesting_images",
     "screenshot", "fish_annotator", "habitat_annotator",
     "distance_min", "distance_max",
+    "time", "latitude", "longitude",
 ]
 
 # Colonnes du CSV infostation (source unique de vérité — utilisée dans upsert ET génération complète)
@@ -100,6 +112,7 @@ class MetadonneesController:
         ]
 
         self._infostation_widgets: dict[str, QtWidgets.QWidget] = {}
+        self._ft_table_video_paths: list = []
         self._working_dir: str = ""
 
         # Debounce pour l'upsert infostation (2 s après la dernière modif)
@@ -189,36 +202,36 @@ class MetadonneesController:
         self._scroll_video = self._make_scroll_area(self.specific_container_data)
 
     def _init_infostation_panel(self):
-        """Remplace le graph matplotlib par un formulaire de saisie des données infostation."""
+        """Construit le panneau feuille terrain : en-tête campagne + tableau des points + commentaire."""
         if not self.graph_trash_container:
             return
 
-        self.graph_trash_container.setMaximumHeight(16777215)   # retire la contrainte de 155px
+        self.graph_trash_container.setMaximumHeight(16777215)
         self.graph_trash_container.setMinimumHeight(0)
 
         old = self.graph_trash_container.layout()
         if old:
             while old.count():
-                item = old.takeAt(0)
-                if item.widget():
-                    item.widget().setParent(None)
-            dummy = QtWidgets.QWidget()
-            dummy.setLayout(old)
+                child = old.takeAt(0)
+                if child.widget():
+                    child.widget().setParent(None)
+            QtWidgets.QWidget().setLayout(old)
 
         outer = QtWidgets.QVBoxLayout(self.graph_trash_container)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # ── En-tête : titre + compteurs ──────────────────────────────────
-        header = QtWidgets.QWidget()
-        header.setStyleSheet("background-color: #111f2e; border-bottom: 1px solid #1e3448;")
-        hrow = QtWidgets.QHBoxLayout(header)
-        hrow.setContentsMargins(10, 5, 10, 5)
-        hrow.setSpacing(12)
+        # ── Barre titre : compteurs + bouton export ───────────────────────
+        title_bar = QtWidgets.QWidget()
+        title_bar.setStyleSheet("background-color: #111f2e; border-bottom: 1px solid #1e3448;")
+        title_bar.setFixedHeight(32)
+        tb_row = QtWidgets.QHBoxLayout(title_bar)
+        tb_row.setContentsMargins(10, 0, 10, 0)
+        tb_row.setSpacing(10)
 
         lbl_title = QtWidgets.QLabel("Feuille terrain")
         lbl_title.setStyleSheet(_SECTION_TITLE_STYLE)
-        hrow.addWidget(lbl_title)
+        tb_row.addWidget(lbl_title)
 
         self.lbl_video_count = QtWidgets.QLabel("—")
         self.lbl_video_count.setStyleSheet(
@@ -226,111 +239,239 @@ class MetadonneesController:
         self.lbl_trash_count = QtWidgets.QLabel("—")
         self.lbl_trash_count.setStyleSheet(
             "color: #D94F38; font-size: 10px; border: none; font-family: 'Segoe UI', sans-serif;")
-        hrow.addWidget(self.lbl_video_count)
-        hrow.addWidget(self.lbl_trash_count)
-        hrow.addStretch()
+        tb_row.addWidget(self.lbl_video_count)
+        tb_row.addWidget(self.lbl_trash_count)
+        tb_row.addStretch()
 
         btn_export = QtWidgets.QPushButton(self.translate("Générer CSV Infostation", "Generate Infostation CSV"))
         btn_export.setStyleSheet(
             "QPushButton{background:#1a4a1a;color:#90EE90;border:1px solid #5DBB63;"
-            "border-radius:4px;padding:3px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#2a6a2a;}"
         )
         btn_export.clicked.connect(self._export_infostation_action)
-        hrow.addWidget(btn_export)
+        tb_row.addWidget(btn_export)
+        outer.addWidget(title_bar)
 
-        outer.addWidget(header)
+        # ── En-tête campagne ─────────────────────────────────────────────
+        _lbl_h = ("color: #7ec8e3; font-size: 10px; font-weight: bold; border: none;"
+                  " font-family: 'Segoe UI', sans-serif;")
+        _inp_h = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
+                  " border-radius: 2px; padding: 1px 5px; font-size: 10px;"
+                  " font-family: 'Segoe UI', sans-serif;")
 
-        # ── Formulaire scrollable ─────────────────────────────────────────
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }"
-                             "QScrollBar:vertical { width: 6px; background: #1a1a1a; }"
-                             "QScrollBar::handle:vertical { background: #2778a2; border-radius: 3px; }")
-        outer.addWidget(scroll, stretch=1)
-
-        form_root = QtWidgets.QWidget()
-        form_root.setStyleSheet("background: transparent;")
-        grid = QtWidgets.QGridLayout(form_root)
-        grid.setContentsMargins(10, 8, 10, 8)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(4)
-        grid.setColumnStretch(1, 2)
-        grid.setColumnStretch(3, 2)
-        scroll.setWidget(form_root)
-
-        def _lbl(text):
-            l = QtWidgets.QLabel(text)
-            l.setStyleSheet(_LABEL_STYLE)
+        def _hl(text):
+            l = QtWidgets.QLabel(text + " :")
+            l.setStyleSheet(_lbl_h)
+            l.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
             return l
 
-        def _line(field_id, placeholder=""):
+        def _hi(fid, placeholder="", width=100):
             w = QtWidgets.QLineEdit()
             w.setPlaceholderText(placeholder)
-            w.setStyleSheet(_EMPTY_STYLE)
-            w.textChanged.connect(lambda t, fid=field_id: self._on_infostation_changed(fid, t, w))
-            self._infostation_widgets[field_id] = w
+            w.setStyleSheet(_inp_h)
+            w.setFixedHeight(20)
+            w.setMinimumWidth(width)
+            w.textChanged.connect(lambda t, fi=fid: self._on_infostation_changed(fi, t, w))
+            self._infostation_widgets[fid] = w
             return w
 
-        def _text(field_id, placeholder=""):
-            w = QtWidgets.QPlainTextEdit()
-            w.setPlaceholderText(placeholder)
-            w.setFixedHeight(52)
-            w.setStyleSheet(_TEXT_STYLE)
-            w.textChanged.connect(lambda fid=field_id: self._on_infostation_changed(
-                fid, w.toPlainText(), w))
-            self._infostation_widgets[field_id] = w
-            return w
+        campaign_panel = QtWidgets.QWidget()
+        campaign_panel.setStyleSheet("background-color: #0d1620; border-bottom: 1px solid #1e3448;")
+        cp = QtWidgets.QVBoxLayout(campaign_panel)
+        cp.setContentsMargins(10, 5, 10, 5)
+        cp.setSpacing(4)
 
-        def _combo(field_id, items):
-            w = QtWidgets.QComboBox()
-            w.setStyleSheet(_COMBO_STYLE)
-            w.addItems(items)
-            w.currentTextChanged.connect(lambda t, fid=field_id: self._on_infostation_changed(fid, t))
-            self._infostation_widgets[field_id] = w
-            return w
+        # Ligne 1 : Date et heure | Équipage | SITE
+        row1 = QtWidgets.QHBoxLayout()
+        row1.setSpacing(6)
+        row1.addWidget(_hl("Date et heure"))
+        row1.addWidget(_hi("ft_date", "09/07/2026", 80))
+        row1.addSpacing(10)
+        row1.addWidget(_hl("Équipage"))
+        row1.addWidget(_hi("ft_equipage", "O.F – OA – CH", 110))
+        row1.addSpacing(10)
+        row1.addWidget(_hl("SITE"))
+        row1.addWidget(_hi("ft_site", "Gléhan, Guériden", 130))
+        row1.addStretch()
+        cp.addLayout(row1)
 
-        r = 0
-        # Ligne 1 : codeObs | Point de suivi (nom du point)
-        grid.addWidget(_lbl("Code obs"), r, 0)
-        grid.addWidget(_line("codeObs", "ex : CC190001"), r, 1)
-        grid.addWidget(_lbl("Nom du point"), r, 2)
-        grid.addWidget(_line("point_name", "ex : 0042"), r, 3)
-        r += 1
+        # Ligne 2 : Bateau | Pilote | GPS utilisé
+        row2 = QtWidgets.QHBoxLayout()
+        row2.setSpacing(6)
+        row2.addWidget(_hl("Bateau"))
+        row2.addWidget(_hi("ft_bateau", "Siliou", 90))
+        row2.addSpacing(10)
+        row2.addWidget(_hl("Pilote"))
+        row2.addWidget(_hi("ft_pilote", "O.A", 80))
+        row2.addSpacing(10)
+        row2.addWidget(_hl("GPS utilisé"))
+        row2.addWidget(_hi("ft_gps_device", "Garmin", 80))
+        row2.addStretch()
+        cp.addLayout(row2)
 
-        # Ligne 2 : Waypoint GPS | Profondeur
-        grid.addWidget(_lbl("Waypoint GPS"), r, 0)
-        grid.addWidget(_line("gps_waypoint", "ex : 101"), r, 1)
-        grid.addWidget(_lbl("Profondeur (m)"), r, 2)
-        grid.addWidget(_line("depth", "ex : 25.5"), r, 3)
-        r += 1
+        outer.addWidget(campaign_panel)
 
-        # Ligne 3 : Commentaire de pose (multiline)
-        grid.addWidget(_lbl("Commentaire pose"), r, 0)
-        grid.addWidget(_text("deployment_comment", "ex : substrat incliné, courant modéré…"), r, 1, 1, 3)
-        r += 1
+        # ── Tableau des points (une ligne = une vidéo) ────────────────────
+        self._ft_table = QtWidgets.QTableWidget()
+        self._ft_table.setColumnCount(len(_FT_TABLE_COLS))
+        self._ft_table.setHorizontalHeaderLabels([c[0] for c in _FT_TABLE_COLS])
+        self._ft_table.horizontalHeader().setStretchLastSection(True)
+        self._ft_table.horizontalHeader().setMinimumSectionSize(50)
+        self._ft_table.verticalHeader().setDefaultSectionSize(22)
+        self._ft_table.verticalHeader().hide()
+        self._ft_table.setAlternatingRowColors(True)
+        self._ft_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        self._ft_table.setSortingEnabled(True)
+        self._ft_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #111820; alternate-background-color: #0d1620;
+                color: #F2BFB4; border: none; gridline-color: #1a2e40;
+                font-size: 10px; font-family: 'Segoe UI', sans-serif;
+            }
+            QHeaderView::section {
+                background-color: #162433; color: #7ec8e3; font-weight: bold;
+                border: 1px solid #1e3448; padding: 3px 4px; font-size: 10px;
+            }
+            QTableWidget::item { padding: 1px 4px; }
+            QTableWidget::item:selected { background-color: #20415d; color: white; }
+            QTableWidget::item:alternate { background-color: #0d1620; }
+            QLineEdit { background:#1a2e3d; color:#F2BFB4; border:none;
+                        font-size:10px; font-family:'Segoe UI',sans-serif; }
+        """)
+        # Largeurs de colonnes initiales
+        for col_i, width in enumerate([62, 52, 68, 55, 95, 95, 65, 100]):
+            self._ft_table.setColumnWidth(col_i, width)
 
-        # Ligne 4 : Pt de Suivi | Milieu/Habitat
-        grid.addWidget(_lbl("Pt de Suivi"), r, 0)
-        grid.addWidget(_line("pt_suivi", "ex : 1"), r, 1)
-        grid.addWidget(_lbl("Milieu / Habitat"), r, 2)
-        grid.addWidget(_combo("habitat", [
-            "", "sable", "roche", "herbier", "algues",
-            "roche et algues", "sable et algues", "sable grossier",
-            "algues et roches", "herbier et sable", "sable grossier et herbier", "autre"
-        ]), r, 3)
-        r += 1
+        self._ft_table.cellChanged.connect(self._on_ft_table_cell_changed)
+        self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
+        outer.addWidget(self._ft_table, stretch=1)
 
-        # Ligne 5 : Comm. localisation | Visibilité
-        grid.addWidget(_lbl("Comm. localisation"), r, 0)
-        grid.addWidget(_line("loc_comment", "ex : proche tête de roche"), r, 1)
-        grid.addWidget(_lbl("Visibilité (m)"), r, 2)
-        grid.addWidget(_line("visibility_text", "ex : 2 ou 1,5-2"), r, 3)
-        r += 1
+        # ── Pied : commentaire général ────────────────────────────────────
+        footer = QtWidgets.QWidget()
+        footer.setStyleSheet("background-color: #0d1620; border-top: 1px solid #1e3448;")
+        footer.setFixedHeight(30)
+        flay = QtWidgets.QHBoxLayout(footer)
+        flay.setContentsMargins(10, 4, 10, 4)
+        flay.setSpacing(6)
+        lbl_comm = QtWidgets.QLabel("Commentaire :")
+        lbl_comm.setStyleSheet(_lbl_h)
+        flay.addWidget(lbl_comm)
+        w_comm = QtWidgets.QLineEdit()
+        w_comm.setStyleSheet(_inp_h)
+        w_comm.setFixedHeight(20)
+        w_comm.textChanged.connect(
+            lambda t: self._on_infostation_changed("ft_comment_general", t, w_comm))
+        self._infostation_widgets["ft_comment_general"] = w_comm
+        flay.addWidget(w_comm, stretch=1)
+        outer.addWidget(footer)
 
-        grid.setRowStretch(r, 1)
         self.refresh_statistics()
+
+    # ── Tableau feuille terrain ───────────────────────────────────────────
+
+    def _rebuild_ft_table(self):
+        """Reconstruit le tableau des points depuis les JSONs de toutes les vidéos."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        self._ft_table.setSortingEnabled(False)
+        self._ft_table.blockSignals(True)
+        self._ft_table.setRowCount(0)
+
+        for model_row in range(self.video_model.rowCount()):
+            item = self.video_model.item(model_row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            video_path = str(video_path)
+
+            json_path = resolve_video_json_path(self._working_dir, video_path)
+            jdata = {}
+            if os.path.isfile(json_path):
+                try:
+                    with open(json_path, 'r', encoding='utf-8') as f:
+                        jdata = json.load(f)
+                except Exception:
+                    pass
+
+            obs = jdata.get("video_observation", {})
+            stem = os.path.splitext(os.path.basename(video_path))[0]
+            _, heure_stem = self._extract_stem_parts(stem)
+
+            trow = self._ft_table.rowCount()
+            self._ft_table.insertRow(trow)
+
+            for col_i, (col_label, block_name, json_key) in enumerate(_FT_TABLE_COLS):
+                entry = obs.get(json_key, {})
+                val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
+                val = str(val) if val is not None else ""
+                if json_key == "time" and not val:
+                    val = heure_stem
+
+                cell = QtWidgets.QTableWidgetItem(val)
+                cell.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
+                if col_i == 0:
+                    cell.setData(QtCore.Qt.ItemDataRole.UserRole, video_path)
+                self._ft_table.setItem(trow, col_i, cell)
+
+        self._ft_table.blockSignals(False)
+        self._ft_table.setSortingEnabled(True)
+
+    def _on_ft_table_cell_changed(self, row: int, col: int):
+        """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
+        first_item = self._ft_table.item(row, 0)
+        if first_item is None:
+            return
+        video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if not video_path:
+            return
+
+        _col_label, block_name, json_key = _FT_TABLE_COLS[col]
+        cell = self._ft_table.item(row, col)
+        new_value = cell.text().strip() if cell else ""
+
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        if not os.path.isfile(json_path):
+            return
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                jdata = json.load(f)
+            obs = jdata.setdefault("video_observation", {})
+            if json_key in obs and isinstance(obs[json_key], dict):
+                obs[json_key]["value"] = new_value or None
+            else:
+                obs[json_key] = {"value": new_value or None}
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(jdata, f, indent=4, ensure_ascii=False)
+            self._schedule_infostation_upsert(video_path)
+            if self._on_metadata_saved:
+                self._on_metadata_saved()
+        except Exception as e:
+            print(f"[FT TABLE] Error saving {json_key}: {e}")
+
+    def _on_ft_table_row_clicked(self, row: int, _col: int):
+        """Sélectionne dans l'arbre la vidéo de la ligne cliquée."""
+        first_item = self._ft_table.item(row, 0)
+        if first_item is None or not self.tree_videos:
+            return
+        video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if not video_path:
+            return
+        for r in range(self.video_model.rowCount()):
+            item = self.video_model.item(r, 0)
+            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
+                index = self.video_model.indexFromItem(item)
+                self.tree_videos.selectionModel().setCurrentIndex(
+                    index,
+                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
+                    QtCore.QItemSelectionModel.SelectionFlag.Rows
+                )
+                self.tree_videos.scrollTo(index)
+                break
 
     # ── Public interface ─────────────────────────────────────────────────
 
@@ -460,12 +601,12 @@ class MetadonneesController:
             # Champs gérés dans la feuille terrain ou dans la page Événements → masqués ici
             _feuille_terrain_keys = {
                 "depth", "point_name", "gps_waypoint", "deployment_comment",
-                "location_comment", "habitat",
                 "fish_annotator", "habitat_annotator",
                 "distance_min", "distance_max",
                 "timecode_ardoise", "timecode_debut",
                 "derush_comment", "interesting_images",
                 "moteur", "screenshot",
+                "latitude", "longitude", "time",
             }
             specific = {k: v for k, v in obs.items()
                         if k not in self.weather_sea_keys and k not in _feuille_terrain_keys}
@@ -648,13 +789,14 @@ class MetadonneesController:
     # ── Statistics chart ──────────────────────────────────────────────────
 
     def refresh_statistics(self):
-        """Met à jour les compteurs vidéo/poubelle."""
+        """Met à jour les compteurs vidéo/poubelle et reconstruit le tableau feuille terrain."""
         if not hasattr(self, 'lbl_video_count'):
             return
         v = self.video_model.rowCount()
         t = self.trash_model.rowCount()
         self.lbl_video_count.setText(self.translate(f"● {v} vidéo(s)", f"● {v} video(s)"))
         self.lbl_trash_count.setText(self.translate(f"● {t} poubelle", f"● {t} trash"))
+        self._rebuild_ft_table()
 
     # ── Infostation — persisté dans video_observation du JSON ────────────
 
@@ -667,13 +809,16 @@ class MetadonneesController:
 
     def _on_infostation_changed(self, field_id: str, value: str,
                                  widget: QtWidgets.QWidget | None = None):
-        """Persiste la valeur dans _json_data (video_observation) et déclenche la sauvegarde."""
+        """Persiste la valeur dans le bon bloc de _json_data et déclenche la sauvegarde."""
         if not self.current_video_path:
             return
-        json_key = _INFOSTATION_FIELD_MAP.get(field_id, field_id)
+        mapping = _INFOSTATION_FIELD_BLOCKS.get(field_id)
+        if not mapping:
+            return
+        block_name, json_key = mapping
         if widget and isinstance(widget, QtWidgets.QLineEdit):
             widget.setStyleSheet(_FIELD_STYLE if value else _EMPTY_STYLE)
-        self._update_value("video_observation", json_key, value)
+        self._update_value(block_name, json_key, value)
 
     def _auto_derive_from_json(self):
         """Dérive timecode_ardoise, timecode_début et interesting_images depuis les événements JSON.
@@ -712,17 +857,19 @@ class MetadonneesController:
                 self._json_data["video_observation"]["interesting_images"]["value"] = " ; ".join(parts)
 
     def _load_infostation_fields(self, video_path: str):
-        """Peuple le formulaire feuille terrain depuis _json_data (video_observation)."""
+        """Peuple les champs d'en-tête de la feuille terrain depuis _json_data."""
         self._ensure_custom_fields()
         self._auto_derive_from_json()
-        obs = self._json_data.get("video_observation", {})
-        for form_id, json_key in _INFOSTATION_FIELD_MAP.items():
+
+        for form_id, (block_name, json_key) in _INFOSTATION_FIELD_BLOCKS.items():
             widget = self._infostation_widgets.get(form_id)
             if widget is None:
                 continue
-            entry = obs.get(json_key, {})
+            block = self._json_data.get(block_name, {})
+            entry = block.get(json_key, {})
             val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
             val = str(val) if val is not None else ""
+
             widget.blockSignals(True)
             if isinstance(widget, QtWidgets.QComboBox):
                 idx = widget.findText(val)
@@ -736,12 +883,13 @@ class MetadonneesController:
             widget.blockSignals(False)
 
     def refresh_feuille_terrain(self):
-        """Ré-dérive les champs auto (ardoise, images) depuis le JSON puis met à jour les widgets.
+        """Ré-dérive les champs auto depuis le JSON, recharge l'en-tête et reconstruit le tableau.
 
         Appelé par app_controller quand des événements changent sur la vidéo courante.
         """
         if self.current_video_path:
             self._load_infostation_fields(self.current_video_path)
+        self._rebuild_ft_table()
 
     def set_working_dir(self, path: str):
         """Définit le répertoire de travail IHM (choisi à l'accueil)."""

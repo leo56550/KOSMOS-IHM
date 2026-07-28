@@ -1577,6 +1577,7 @@ class EvenementsController:
         is_water = options.get("is_water", False)
         apply_rectify = options.get("apply_rectify", False)
         include_images = options.get("include_images", True)
+        event_categories = options.get("event_categories", ["events_deployment", "events_animal", "events_interesting_images"])
 
         if apply_rectify and not os.path.exists(json_path):
             QtWidgets.QMessageBox.critical(
@@ -1592,12 +1593,13 @@ class EvenementsController:
         start_ms, end_ms = bounds
         self.export_start_ms = start_ms
         self.export_end_ms = end_ms
+        self._export_event_categories = event_categories
 
         if not include_images:
             self.export_button.setEnabled(False)
             self.export_status_label.setText(self.translate("Génération du CSV...", "Generating CSV..."))
             self._copy_companion_files(self.current_video_path)
-            ok = self._generate_events_csv_no_images(self.current_video_path, start_ms, end_ms)
+            ok = self._generate_events_csv_no_images(self.current_video_path, start_ms, end_ms, event_categories)
             msg = (self.translate("CSV d'événements généré.", "Events CSV generated.")
                    if ok else
                    self.translate("Échec de la génération du CSV.", "Failed to generate CSV."))
@@ -1653,7 +1655,8 @@ class EvenementsController:
         """Affiche le résultat de l'export et génère le CSV d'événements."""
         self._copy_companion_files(self.current_video_path)
         message = self.translate(f"Export terminé : {saved_count} images sauvegardées.", f"Export complete: {saved_count} images saved.")
-        if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms):
+        categories = getattr(self, '_export_event_categories', ["events_deployment", "events_animal", "events_interesting_images"])
+        if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms, categories):
             message += self.translate("\nCSV d'événements généré.", "\nEvents CSV generated.")
         if hasattr(self, 'export_status_label') and self.export_status_label:
             self.export_status_label.setText(message)
@@ -1683,8 +1686,10 @@ class EvenementsController:
         campaign_folder = os.path.dirname(parent_dir)
         return get_video_output_dir(campaign_folder, video_path)
 
-    def _generate_events_csv_no_images(self, video_path, start_ms, end_ms):
+    def _generate_events_csv_no_images(self, video_path, start_ms, end_ms, event_categories=None):
         """Génère events_VIAME.csv avec références vidéo+frame, sans lot d'images."""
+        if event_categories is None:
+            event_categories = ['events_deployment', 'events_animal', 'events_interesting_images']
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
         events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
@@ -1705,7 +1710,7 @@ class EvenementsController:
 
             events_list = []
             track_id = 0
-            for category in ['events_deployment', 'events_animal', 'events_interesting_images']:
+            for category in event_categories:
                 for item in video_obs.get(category, [{}])[0].get('values', []) if video_obs.get(category) else []:
                     f_start = item.get('frame_number_start')
                     f_end = item.get('frame_number_end')
@@ -1749,8 +1754,10 @@ class EvenementsController:
             print(f"[CSV NO-IMG ERROR] {e}")
             return False
 
-    def _generate_events_csv(self, video_path, start_ms, end_ms):
+    def _generate_events_csv(self, video_path, start_ms, end_ms, event_categories=None):
         """Génère events_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""
+        if event_categories is None:
+            event_categories = ['events_deployment', 'events_animal', 'events_interesting_images']
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
@@ -1792,7 +1799,7 @@ class EvenementsController:
 
             events_list = []
             track_id = 0
-            for category in ['events_deployment', 'events_animal', 'events_interesting_images']:
+            for category in event_categories:
                 cat_data = video_obs.get(category, [])
                 if isinstance(cat_data, list) and len(cat_data) > 0:
                     for item in cat_data[0].get('values', []):

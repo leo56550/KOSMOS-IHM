@@ -232,3 +232,27 @@ Traceback (most recent call last):
     def on_player_position_changed(self, position_ms: int):
     
 KeyboardInterrupt
+
+============================================================
+2026-06-26 15:47:42.748891
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\dialogs\kosmos_connexion_dialog.py", line 146, in _open_planner
+    dlg.exec()
+KeyboardInterrupt
+
+============================================================
+2026-07-01 16:00:24.018804
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\dialogs\sftp_dialog.py", line 695, in reject
+    self.closeEvent(QtGui.QCloseEvent())
+  File "c:\KOSMOS_IHM\views\dialogs\sftp_dialog.py", line 691, in closeEvent
+    w.wait(2000)
+KeyboardInterrupt
+
+============================================================
+2026-07-01 16:03:56.251607
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 665, in eventFilter
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    
+KeyboardInterrupt

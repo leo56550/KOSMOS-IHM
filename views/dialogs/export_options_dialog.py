@@ -16,7 +16,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
 
         self.setWindowTitle("Options d'exportation")
         self.setModal(True)
-        self.resize(350, 320)
+        self.resize(350, 430)
 
         self.setStyleSheet("""
             QDialog { background-color: #111820; color: #ffffff; }
@@ -87,6 +87,19 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.chk_include_images.toggled.connect(self._on_include_images_toggled)
         layout.addWidget(self.chk_include_images)
 
+        self.event_types_group = QtWidgets.QGroupBox("", self)
+        event_types_layout = QtWidgets.QVBoxLayout(self.event_types_group)
+        self.check_deployment = QtWidgets.QCheckBox("", self.event_types_group)
+        self.check_deployment.setChecked(True)
+        self.check_animal = QtWidgets.QCheckBox("", self.event_types_group)
+        self.check_animal.setChecked(True)
+        self.check_images_type = QtWidgets.QCheckBox("", self.event_types_group)
+        self.check_images_type.setChecked(True)
+        event_types_layout.addWidget(self.check_deployment)
+        event_types_layout.addWidget(self.check_animal)
+        event_types_layout.addWidget(self.check_images_type)
+        layout.addWidget(self.event_types_group)
+
         layout.addSpacing(10)
 
         self.buttons_box = QtWidgets.QDialogButtonBox(
@@ -125,6 +138,10 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.check_water.setText(self.translate("Mode sous-marin (Option Dehaze)", "Underwater Mode (Dehaze Option)"))
         self.chk_rectify.setText(self.translate("Rectifier les images (Stéréo)", "Rectify images (Stereo)"))
         self.chk_include_images.setText(self.translate("Exporter le lot d'images", "Export image batch"))
+        self.event_types_group.setTitle(self.translate("Types d'événements à exporter", "Event types to export"))
+        self.check_deployment.setText(self.translate("Déploiement", "Deployment"))
+        self.check_animal.setText(self.translate("Faune / Animal", "Fauna / Animal"))
+        self.check_images_type.setText(self.translate("Images intéressantes", "Interesting Images"))
         if self.export_button:
             self.export_button.setText(self.translate("Exporter", "Export"))
         if self.cancel_button:
@@ -132,6 +149,14 @@ class ExportOptionsDialog(QtWidgets.QDialog):
 
     def get_processing_options(self) -> dict:
         """Retourne un dict avec les options de traitement sélectionnées."""
+        selected_categories = [
+            cat for cat, chk in [
+                ("events_deployment", self.check_deployment),
+                ("events_animal", self.check_animal),
+                ("events_interesting_images", self.check_images_type),
+            ]
+            if chk.isChecked()
+        ]
         return {
             "target_fps": self.fps_spinbox.value(),
             "apply_he": self.check_he.isChecked(),
@@ -139,4 +164,5 @@ class ExportOptionsDialog(QtWidgets.QDialog):
             "is_water": self.check_water.isEnabled() and self.check_water.isChecked(),
             "apply_rectify": self.chk_rectify.isEnabled() and self.chk_rectify.isChecked(),
             "include_images": self.chk_include_images.isChecked(),
+            "event_categories": selected_categories,
         }

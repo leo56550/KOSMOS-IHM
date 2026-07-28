@@ -1,5 +1,6 @@
 """Dialog de planification de deploiement — carte Leaflet interactive + liste de waypoints."""
 
+import csv
 import json
 import os
 import sys
@@ -162,6 +163,34 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
         rl.addWidget(_sep())
 
+        # Chargement infoStation
+        lbl_info = QtWidgets.QLabel("Infostation de référence")
+        lbl_info.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 12px; border: none;")
+        rl.addWidget(lbl_info)
+
+        btn_load_info = QtWidgets.QPushButton("CHARGER infostation")
+        btn_load_info.setStyleSheet(
+            "QPushButton { background-color: #1a3010; color: #e68c14;"
+            " border: 1px solid #e68c14; border-radius: 4px;"
+            " padding: 6px 14px; font-size: 11px; font-weight: bold; }"
+            " QPushButton:hover { background-color: #e68c14; color: #fff; }"
+        )
+        btn_load_info.clicked.connect(self._load_infostation)
+        rl.addWidget(btn_load_info)
+
+        self._lbl_infostation_info = QtWidgets.QLabel("")
+        self._lbl_infostation_info.setWordWrap(True)
+        self._lbl_infostation_info.setStyleSheet(
+            "color: #7ec8e3; font-size: 10px; border: none; font-style: italic;")
+        rl.addWidget(self._lbl_infostation_info)
+
+        btn_clr_info = QtWidgets.QPushButton("Effacer points infostation")
+        btn_clr_info.setObjectName("btn_clear")
+        btn_clr_info.clicked.connect(self._clear_infostation)
+        rl.addWidget(btn_clr_info)
+
+        rl.addWidget(_sep())
+
         # Liste waypoints
         lbl_wp = QtWidgets.QLabel("Waypoints")
         lbl_wp.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 12px; border: none;")
@@ -228,6 +257,95 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         btn_close.clicked.connect(self.reject)
         fl.addWidget(btn_close)
         root.addWidget(footer)
+
+    # ── Infostation ──────────────────────────────────────────────────────────
+
+    def _load_infostation(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Charger un fichier infoStation", "",
+            "Tous les fichiers (*);;CSV (*.csv *.CSV *.txt)"
+        )
+        if not path:
+            return
+
+        points = []
+        campaign_name = ""
+        year = ""
+
+        try:
+            for enc in ("cp1252", "utf-8-sig", "utf-8", "latin-1"):
+                try:
+                    with open(path, newline='', encoding=enc) as f:
+                        reader = csv.DictReader(f, delimiter=';')
+                        rows = list(reader)
+                    break
+                except (UnicodeDecodeError, Exception):
+                    rows = []
+
+            for row in rows:
+                try:
+                    lat = float(str(row.get("Latitude", "")).replace(",", ".").strip())
+                    lng = float(str(row.get("Longitude", "")).replace(",", ".").strip())
+                except (ValueError, TypeError):
+                    continue
+
+                code = str(row.get("Codestation", "")).strip()
+                nom  = str(row.get("Nom du point", "") or row.get("Nom du point GPS", "")).strip()
+                date = str(row.get("Date", "")).strip()
+
+                if not campaign_name:
+                    campaign_name = str(row.get("Nom campagne", "")).strip()
+                if not year and date:
+                    # format DD/MM/YYYY → year = 4 derniers chars
+                    parts = date.split("/")
+                    if len(parts) == 3 and len(parts[2]) == 4:
+                        year = parts[2]
+
+                points.append({
+                    "lat":  lat,
+                    "lng":  lng,
+                    "code": code,
+                    "nom":  nom,
+                    "date": date,
+                })
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Erreur", f"Impossible de lire le fichier :\n{e}")
+            return
+
+        if not points:
+            QtWidgets.QMessageBox.warning(
+                self, "Aucun point",
+                "Aucun point avec coordonnées valides trouvé dans ce fichier.")
+            return
+
+        # Afficher sur la carte
+        self._map_view.page().runJavaScript(
+            f"loadInfostationPoints({json.dumps(points)});"
+        )
+
+        # Auto-remplir la mission et l'année
+        if campaign_name and not self._edit_mission.text().strip():
+            label = f"{campaign_name} {year}".strip()
+            self._edit_mission.setText(label)
+        if year:
+            try:
+                d = self._date_edit.date()
+                self._date_edit.setDate(QtCore.QDate(int(year), d.month(), d.day()))
+            except Exception:
+                pass
+
+        # Info label
+        info = f"{len(points)} point(s) chargé(s)"
+        if campaign_name:
+            info += f"\nCampagne : {campaign_name}"
+        if year:
+            info += f"  —  Année : {year}"
+        self._lbl_infostation_info.setText(info)
+
+    def _clear_infostation(self):
+        self._map_view.page().runJavaScript("clearInfostationMarkers();")
+        self._lbl_infostation_info.setText("")
 
     # ── Gestion des points ────────────────────────────────────────────────────
 

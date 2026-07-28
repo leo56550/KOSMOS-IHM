@@ -19,8 +19,51 @@ map.on('mousemove', function (e) {
 
 map.on('mouseout', function () { tip.style.display = 'none'; });
 
-/* ── Marqueurs numérotés ────────────────────────────────────────────────── */
+/* ── Marqueurs numérotés (waypoints utilisateur) ────────────────────────── */
 var markers = [];
+
+/* ── Marqueurs infoStation (points de référence, orange) ────────────────── */
+var infoMarkers = [];
+
+function _infoIcon(code) {
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:#e68c14;color:#fff;border:2px solid #f09624;'
+        + 'border-radius:4px;min-width:20px;height:20px;line-height:16px;'
+        + 'text-align:center;font:bold 9px sans-serif;padding:0 3px;'
+        + 'box-shadow:0 2px 6px #0008;white-space:nowrap;">'
+        + code + '</div>',
+    iconSize: null, iconAnchor: [10, 10], popupAnchor: [0, -14]
+  });
+}
+
+function loadInfostationPoints(jsonStr) {
+  clearInfostationMarkers();
+  var points;
+  try { points = JSON.parse(jsonStr); } catch(e) { return; }
+  points.forEach(function (p) {
+    if (p.lat == null || p.lng == null) return;
+    var m = L.marker([p.lat, p.lng], { icon: _infoIcon(p.code || '?') })
+             .addTo(map)
+             .bindPopup(
+               '<b>' + (p.code || '') + '</b>'
+               + (p.nom  ? '<br>' + p.nom  : '')
+               + (p.date ? '<br>' + p.date : '')
+               + '<br><span style="color:#aaa;font-size:11px;">'
+               + p.lat.toFixed(6) + ',&nbsp;' + p.lng.toFixed(6) + '</span>'
+             );
+    infoMarkers.push(m);
+  });
+  if (infoMarkers.length > 0) {
+    var group = L.featureGroup(infoMarkers);
+    map.fitBounds(group.getBounds().pad(0.15));
+  }
+}
+
+function clearInfostationMarkers() {
+  infoMarkers.forEach(function (m) { map.removeLayer(m); });
+  infoMarkers = [];
+}
 
 function _icon(n, label) {
   var text = label || String(n);
