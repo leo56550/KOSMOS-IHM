@@ -54,7 +54,8 @@ class ExportWorker(QThread):
             print(f"\n--- DÉBUT DE L'EXPORT ---")
             print(f"Mode Stéréo: {self.is_stereo} | Rectification: {self.apply_rectify}")
 
-            img_dir = os.path.normpath(os.path.join(self.base_output_dir, "img"))
+            img_folder_name = "img_dehaze" if self.apply_dh else "img"
+            img_dir = os.path.normpath(os.path.join(self.base_output_dir, img_folder_name))
 
             if self.is_stereo:
                 dirs = {

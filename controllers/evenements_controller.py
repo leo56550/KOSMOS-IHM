@@ -1762,7 +1762,9 @@ class EvenementsController:
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
         events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
-        img_dir_root = os.path.normpath(os.path.join(video_out, "img"))
+        img_dir_root_dehaze = os.path.normpath(os.path.join(video_out, "img_dehaze"))
+        img_dir_root = img_dir_root_dehaze if os.path.exists(img_dir_root_dehaze) else \
+                       os.path.normpath(os.path.join(video_out, "img"))
         stereo_left_path = os.path.join(img_dir_root, "LEFT")
         img_dir = stereo_left_path if os.path.exists(stereo_left_path) else img_dir_root
 
