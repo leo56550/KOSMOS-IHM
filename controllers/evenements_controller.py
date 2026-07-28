@@ -1642,8 +1642,9 @@ class EvenementsController:
         src_dir = os.path.dirname(os.path.normpath(video_path))
         dst_dir = self._get_video_out_dir(video_path)
         os.makedirs(dst_dir, exist_ok=True)
+        _EXCLUDED_EXTS = {'.mp4', '.csv', '.txt'}
         for fname in os.listdir(src_dir):
-            if fname.lower().endswith('.mp4'):
+            if os.path.splitext(fname)[1].lower() in _EXCLUDED_EXTS:
                 continue
             src_file = os.path.join(src_dir, fname)
             if os.path.isfile(src_file):
