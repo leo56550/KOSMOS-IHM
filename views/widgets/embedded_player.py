@@ -1030,6 +1030,10 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # ExpTime et Lux restent tels quels
     }
 
+    # Pression atmosphérique de référence (hPa) et facteur de conversion hPa → mètres
+    _P_ATM_HPA   = 1013.25
+    _HPA_TO_METER = 1.0 / 100.55  # eau de mer : ρ ≈ 1025 kg/m³, g = 9.81 m/s²
+
     def load_dynamic_metadata(self, csv_path: str):
         """Charge le CSV de télémétrie, normalise les noms de colonnes et met à jour le dialog."""
         try:
@@ -1052,6 +1056,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                     df[col] = pd.to_numeric(
                         df[col].astype(str).str.replace(',', '.'), errors='coerce'
                     )
+
+            # Convertir pression (hPa) → profondeur (m) : depth = (P - P_atm) / 100.55
+            if 'pression' in df.columns:
+                df['profondeur'] = (df['pression'] - self._P_ATM_HPA) * self._HPA_TO_METER
+                df['profondeur'] = df['profondeur'].clip(lower=0)
+                df.drop(columns=['pression'], inplace=True)
 
             self.df_telemetry = df
             self.telemetry_dialog.update_data(df)

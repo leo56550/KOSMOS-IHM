@@ -15,10 +15,10 @@ class TelemetryDialog(QtWidgets.QDialog):
     """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, pression, exposition, luminosité)."""
 
     _METRIC_TRANSLATIONS = {
-        "température": ("Température (°C)",       "Temperature (°C)"),
-        "pression":    ("Pression (hPa)",          "Pressure (hPa)"),
-        "ExpTime":     ("Temps d'exposition (ms)", "Exposure Time (ms)"),
-        "Lux":         ("Luminosité (Lux)",        "Luminosity (Lux)"),
+        "température":  ("Température (°C)",       "Temperature (°C)"),
+        "profondeur":   ("Profondeur (m)",          "Depth (m)"),
+        "ExpTime":      ("Temps d'exposition (ms)", "Exposure Time (ms)"),
+        "Lux":          ("Luminosité (Lux)",        "Luminosity (Lux)"),
     }
 
     def __init__(self, parent=None):
@@ -39,10 +39,10 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.missing_labels = {} # key → QLabel (for "données manquantes" text updates)
 
         self.metrics = {
-            "température": ("Température (°C)",       "#ff4d4d"),
-            "pression":    ("Pression (hPa)",          "#4dff88"),
-            "ExpTime":     ("Temps d'exposition (ms)", "#4da6ff"),
-            "Lux":         ("Luminosité (Lux)",        "#ffff4d"),
+            "température":  ("Température (°C)",       "#ff4d4d"),
+            "profondeur":   ("Profondeur (m)",          "#4dff88"),
+            "ExpTime":      ("Temps d'exposition (ms)", "#4da6ff"),
+            "Lux":          ("Luminosité (Lux)",        "#ffff4d"),
         }
 
         main_layout = QtWidgets.QVBoxLayout(self)
