@@ -200,6 +200,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
     """Lecteur vidéo embarqué avec timeline, corrections image et support stéréo."""
 
     playback_state_changed = QtCore.pyqtSignal(bool)
+    corrections_changed    = QtCore.pyqtSignal()
 
     def __init__(self, parent=None, zone_definitions=None):
         """Construit l'interface complète : affichage vidéo, timeline, panneaux corrections et télémétrie."""
@@ -398,7 +399,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             " font-family: 'Segoe UI', sans-serif;")
         corr_layout.addWidget(self.lbl_corrections_title)
 
-        self.btn_corr_he = QtWidgets.QPushButton("HR")
+        self.btn_corr_he = QtWidgets.QPushButton("HE")
         self.btn_corr_he.setCheckable(True)
         self.btn_corr_he.setStyleSheet(_TOGGLE_STYLE)
         self.btn_corr_he.toggled.connect(self._on_corr_he_toggled)
@@ -724,23 +725,27 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Active/désactive l'égalisation d'histogramme et rafraîchit la frame."""
         self._corr_he = checked
         self._refresh_corrections()
+        self.corrections_changed.emit()
 
     def _on_corr_dehaze_toggled(self, checked: bool):
         """Active/désactive le débrumage et rafraîchit la frame."""
         self._corr_dehaze = checked
         self._refresh_corrections()
+        self.corrections_changed.emit()
 
     def _on_contrast_changed(self, value: int):
         """Met à jour le facteur de contraste et rafraîchit la frame."""
         self._corr_contrast = value / 100.0
         self.lbl_contrast_val.setText(f"{self._corr_contrast:.1f}×")
         self._refresh_corrections()
+        self.corrections_changed.emit()
 
     def _on_brightness_changed(self, value: int):
         """Met à jour l'offset de luminosité et rafraîchit la frame."""
         self._corr_brightness = value
         self.lbl_brightness_val.setText(str(value))
         self._refresh_corrections()
+        self.corrections_changed.emit()
 
     def _reset_corrections(self):
         """Réinitialise toutes les corrections (HE, dehaze, contraste, luminosité) à leurs valeurs par défaut."""
@@ -811,7 +816,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def apply_filter(self, correction_type: str):
         """Active une correction HR ou DEHAZE (API de compatibilité legacy)."""
-        if correction_type == "HR":
+        if correction_type in ("HE", "HR"):
             self.apply_histogram = True
             self.apply_dehaze = False
         elif correction_type == "DEHAZE":

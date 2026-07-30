@@ -11,14 +11,21 @@ _MISSING_STYLE = (
 _COMPACT_H = 36
 
 
+_LUX_RGB_COLS = {
+    'RLux': ('#ff4040', 'R'),
+    'GLux': ('#40dd70', 'G'),
+    'BLux': ('#4090ff', 'B'),
+}
+
+
 class TelemetryDialog(QtWidgets.QDialog):
-    """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, pression, exposition, luminosité)."""
+    """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, profondeur, exposition, RGB lux)."""
 
     _METRIC_TRANSLATIONS = {
         "température":  ("Température (°C)",       "Temperature (°C)"),
         "profondeur":   ("Profondeur (m)",          "Depth (m)"),
         "ExpTime":      ("Temps d'exposition (ms)", "Exposure Time (ms)"),
-        "Lux":          ("Luminosité (Lux)",        "Luminosity (Lux)"),
+        "lux_rgb":      ("Luminosité RGB (Lux)",   "RGB Luminosity (Lux)"),
     }
 
     def __init__(self, parent=None):
@@ -37,12 +44,12 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.v_lines      = []   # InfiniteLines des métriques dynamiques seulement
         self.plot_widgets = {}   # key → PlotWidget (for title updates)
         self.missing_labels = {} # key → QLabel (for "données manquantes" text updates)
+        self._lux_rgb_curves = {}  # col → PlotDataItem (RLux, GLux, BLux)
 
         self.metrics = {
             "température":  ("Température (°C)",       "#ff4d4d"),
             "profondeur":   ("Profondeur (m)",          "#4dff88"),
             "ExpTime":      ("Temps d'exposition (ms)", "#4da6ff"),
-            "Lux":          ("Luminosité (Lux)",        "#ffff4d"),
         }
 
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -94,6 +101,51 @@ class TelemetryDialog(QtWidgets.QDialog):
             self.stacks[key] = stack
             main_layout.addWidget(stack, stretch=3)
 
+        # ── Graphe RGB Lux (3 courbes sur un même PlotWidget) ────────────────
+        _lux_label = "Luminosité RGB (Lux)"
+        pw_lux = pg.PlotWidget(title=_lux_label)
+        self.plot_widgets["lux_rgb"] = pw_lux
+        pw_lux.setBackground('#111820')
+        pw_lux.showGrid(x=True, y=True, alpha=0.3)
+        pw_lux.setMouseEnabled(x=True, y=True)
+
+        legend = pw_lux.addLegend(offset=(10, 10))
+        legend.setLabelTextColor('w')
+
+        for col, (color, name) in _LUX_RGB_COLS.items():
+            self._lux_rgb_curves[col] = pw_lux.plot(
+                pen=pg.mkPen(color, width=1.5), name=name
+            )
+
+        v_line_lux = pg.InfiniteLine(
+            pos=0, angle=90,
+            pen=pg.mkPen('w', width=1, style=QtCore.Qt.PenStyle.DashLine),
+            label='{value:0.2f}s',
+            labelOpts={'position': 0.1, 'color': 'w', 'fill': (0, 0, 0, 150)}
+        )
+        pw_lux.addItem(v_line_lux)
+        self.v_lines.append(v_line_lux)
+
+        stack_lux = QtWidgets.QStackedWidget()
+        missing_lux = QtWidgets.QWidget()
+        missing_lux.setStyleSheet("background-color: #111820;")
+        missing_lux.setFixedHeight(_COMPACT_H)
+        row_lux = QtWidgets.QHBoxLayout(missing_lux)
+        row_lux.setContentsMargins(12, 4, 12, 4)
+        dot_lux = QtWidgets.QLabel("● ● ●")
+        dot_lux.setStyleSheet("color: #a060a0; font-size: 10px; border: none;")
+        lbl_lux = QtWidgets.QLabel(f"{_lux_label} — données manquantes")
+        lbl_lux.setStyleSheet(_MISSING_STYLE)
+        self.missing_labels["lux_rgb"] = lbl_lux
+        row_lux.addWidget(dot_lux)
+        row_lux.addWidget(lbl_lux)
+        row_lux.addStretch()
+
+        stack_lux.addWidget(pw_lux)
+        stack_lux.addWidget(missing_lux)
+        self.stacks["lux_rgb"] = stack_lux
+        main_layout.addWidget(stack_lux, stretch=3)
+
     # ── Language ──────────────────────────────────────────────────────────
 
     def translate(self, fr: str, en: str) -> str:
@@ -124,6 +176,7 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.full_df = df
         x_data = self.full_df['Delta'].values
 
+        # Métriques simples (une courbe par graphe)
         for key, curve in self.plots.items():
             stack = self.stacks[key]
             if key not in self.full_df.columns:
@@ -142,6 +195,29 @@ class TelemetryDialog(QtWidgets.QDialog):
             else:
                 curve.setData(x_data, y_data)
                 self._show_graph(key, stack)
+
+        # Graphe RGB Lux (3 courbes sur un même axe)
+        any_lux = False
+        for col, curve in self._lux_rgb_curves.items():
+            if col not in self.full_df.columns:
+                curve.setData([], [])
+                continue
+            try:
+                y = self.full_df[col].values.astype(float)
+            except (ValueError, TypeError):
+                curve.setData([], [])
+                continue
+            valid = y[~np.isnan(y)]
+            if len(valid) > 0 and (valid != 0).sum() > 0:
+                curve.setData(x_data, y)
+                any_lux = True
+            else:
+                curve.setData([], [])
+
+        if any_lux:
+            self._show_graph("lux_rgb", self.stacks["lux_rgb"])
+        else:
+            self._show_missing("lux_rgb", self.stacks["lux_rgb"])
 
         for v_line in self.v_lines:
             v_line.setValue(0)

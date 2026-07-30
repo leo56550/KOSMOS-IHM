@@ -208,13 +208,18 @@ def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
     try:
         with open(dst_file, 'r', encoding='utf-8') as f:
             data = _json.load(f)
-        vo = data.get('video_observation', {})
+        vo = data.setdefault('video_observation', {})
+        # Standardiser le nom de fichier vidéo
         vfn = vo.get('video_file_name', {})
         if isinstance(vfn, dict):
             ext = os.path.splitext(video_path)[1]
             vfn['value'] = build_video_output_name(video_path) + ext
-            with open(dst_file, 'w', encoding='utf-8') as f:
-                _json.dump(data, f, indent=2, ensure_ascii=False)
+        # Forcer exploitable à "?" à la première copie — la source peut avoir "oui" par défaut
+        expl = vo.setdefault('exploitable', {})
+        if expl.get('value') == 'oui':
+            expl['value'] = '?'
+        with open(dst_file, 'w', encoding='utf-8') as f:
+            _json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
 

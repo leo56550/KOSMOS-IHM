@@ -322,7 +322,7 @@ def _build_base_template() -> dict:
             },
             "exploitable": {
                 "name": "Exploitable", "name_fr": "Exploitable", "type": "str",
-                "format": "Texte", "value": "oui",
+                "format": "Texte", "value": "?",
                 "description": "Usability status of the video for analysis",
                 "description_fr": "Exploitabilité de la vidéo",
                 "acquisition_mode": "IHM", "example": "oui, non, habitat, ?", "ifdo_id": None,
@@ -512,7 +512,7 @@ def migrate_legacy_to_new(old_data: dict) -> dict:
     vo["swell_height"]["value"] = meteo_mer.get("swell")
     vo["codeObs"]["value"] = station.get("codestation")
     vo["time"]["value"] = _convert_time(hour.get("HMSOS"))
-    vo["exploitable"]["value"] = analyse.get("exploitability") or "oui"
+    vo["exploitable"]["value"] = analyse.get("exploitability") or "?"
     vo["estimated_visibility"]["value"] = analyse.get("visibility")
 
     return template
@@ -539,6 +539,14 @@ def initialise_video_json_if_needed(video_path: str) -> bool:
     try:
         shutil.copy2(template, target)
         print(f"[INIT] {stem}.json créé depuis template.json")
+        # Forcer exploitable à "?" — la valeur héritée du template peut être "oui"
+        with open(target, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        vo = data.setdefault("video_observation", {})
+        expl = vo.setdefault("exploitable", {})
+        expl["value"] = "?"
+        with open(target, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"[INIT] Impossible de créer {stem}.json : {e}")

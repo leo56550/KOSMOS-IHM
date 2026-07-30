@@ -117,6 +117,9 @@ class AppController:
         if hasattr(window, 'btn_vue_globale'):
             window.btn_vue_globale.clicked.connect(self._open_vue_globale)
 
+        if hasattr(window, 'btn_recent_campaigns'):
+            window.btn_recent_campaigns.clicked.connect(self._open_recent_campaigns)
+
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
@@ -311,6 +314,28 @@ class AppController:
         dlg = KosmosConnexionDialog(self.window)
         dlg.exec()
 
+    def _open_recent_campaigns(self):
+        """Ouvre le dialog de sélection d'une campagne récente."""
+        from views.dialogs.recent_campaigns_dialog import RecentCampaignsDialog
+        dlg = RecentCampaignsDialog(parent=self.window)
+        dlg.campaign_selected.connect(self._open_campaign_from_recent)
+        dlg.exec()
+
+    def _open_campaign_from_recent(self, campaign_folder: str, working_dir: str, derusher_name: str):
+        """Ouvre une campagne depuis la liste des récents."""
+        if not campaign_folder or not os.path.isdir(campaign_folder):
+            QtWidgets.QMessageBox.warning(
+                self.window,
+                "Dossier introuvable",
+                f"Le dossier de campagne n'existe plus :\n{campaign_folder}",
+            )
+            return
+        self.handle_campaign_opening(
+            derusher_name or "—",
+            campaign_folder=campaign_folder,
+            working_dir=working_dir,
+        )
+
     def _load_historical_data(self):
         """Déclenche le chargement des données historiques (back-end à implémenter)."""
         # TODO: implémenter la logique de chargement historique
@@ -441,6 +466,13 @@ class AppController:
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session
         self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
+
+        try:
+            from services.recent_campaigns_service import add_recent_campaign
+            add_recent_campaign(dossier, working_dir or self.working_dir,
+                                self._current_campaign_name, nom_derusher)
+        except Exception:
+            pass
 
         data_systeme = get_campaign_json_data(dossier, extract_system=True)
         data_complete = get_campaign_json_data(dossier, extract_system=False)

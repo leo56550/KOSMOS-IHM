@@ -547,7 +547,7 @@
       "name_fr": "Exploitable",
       "type": "str",
       "format": "Texte",
-      "value": "oui",
+      "value": "?",
       "description": "Usability status of the video for analysis",
       "description_fr": "Exploitabilité de la vidéo",
       "acquisition_mode": "IHM",

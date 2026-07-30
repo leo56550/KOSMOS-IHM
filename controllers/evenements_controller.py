@@ -30,10 +30,11 @@ class _HistWorker(QtCore.QThread):
 
     result_ready = QtCore.pyqtSignal(object, int, str)  # (hists dict, mean_luma, dominant)
 
-    def __init__(self, video_path: str, position_ms: int, parent=None):
+    def __init__(self, video_path: str, position_ms: int, apply_fn=None, parent=None):
         super().__init__(parent)
         self._path = video_path
         self._pos_ms = position_ms
+        self._apply_fn = apply_fn
 
     def run(self):
         cap = cv2.VideoCapture(self._path)
@@ -46,6 +47,11 @@ class _HistWorker(QtCore.QThread):
             return
         if self.isInterruptionRequested():
             return
+        if self._apply_fn is not None:
+            try:
+                frame = self._apply_fn(frame)
+            except Exception:
+                pass
 
         channel_cfg = [('#D94F38', 2, 'R'), ('#4CAF50', 1, 'G'), ('#2778A2', 0, 'B')]
         hists = {}
@@ -172,6 +178,8 @@ class EvenementsController:
             self.event_player.player.playbackStateChanged.connect(self._on_hist_playback_state)
             # Mise à jour immédiate sur seek en pause
             self.event_player.player.positionChanged.connect(self._on_hist_position_changed)
+            # Mise à jour quand une correction image change
+            self.event_player.corrections_changed.connect(self._update_histogram)
 
         self.tree_view_events = self.page.findChild(QtWidgets.QTreeView, "treeView")
         if self.tree_view_events:
@@ -801,7 +809,10 @@ class EvenementsController:
                 pass  # C++ object déjà détruit — on ignore
 
         position_ms = self.event_player.player.position()
-        worker = _HistWorker(video_path, position_ms)
+        apply_fn = None
+        if self.event_player._has_active_corrections():
+            apply_fn = self.event_player._apply_corrections
+        worker = _HistWorker(video_path, position_ms, apply_fn=apply_fn)
         worker.result_ready.connect(self._on_hist_ready)
         # Pas de deleteLater : on garde la référence Python sur self._hist_worker
         # pour éviter que Qt détruise l'objet C++ pendant que Python le référence encore

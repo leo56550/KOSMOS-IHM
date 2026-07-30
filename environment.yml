@@ -1,0 +1,38 @@
+name: kosmos-ihm
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.12
+  - pip
+
+  - pip:
+      # Interface Qt
+      - PyQt6==6.11.0
+      - PyQt6-Qt6==6.11.0
+      - PyQt6-sip==13.11.1
+      - PyQt6-WebEngine==6.11.0
+
+      # Graphes et visualisation
+      - pyqtgraph==0.14.0
+      - matplotlib==3.10.9
+
+      # Traitement vidéo / image
+      - opencv-python==4.13.0.92
+      - numpy==2.4.4
+
+      # Données
+      - pandas==3.0.2
+
+      # Réseau / SSH
+      - paramiko==4.0.0
+      - cryptography==48.0.0
+      - requests==2.33.1
+
+      # Cartographie
+      - folium==0.20.0
+      - branca==0.8.2
+
+      # Build (optionnel — uniquement pour générer l'exécutable)
+      - pyinstaller==6.21.0
