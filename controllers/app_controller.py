@@ -117,6 +117,9 @@ class AppController:
         if hasattr(window, 'btn_vue_globale'):
             window.btn_vue_globale.clicked.connect(self._open_vue_globale)
 
+        if hasattr(window, 'btn_load_history'):
+            window.btn_load_history.clicked.connect(self._load_historical_data)
+
         # Finish buttons
         self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
         if self.btn_finir_qualif:
@@ -307,6 +310,15 @@ class AppController:
         from views.dialogs.kosmos_connexion_dialog import KosmosConnexionDialog
         dlg = KosmosConnexionDialog(self.window)
         dlg.exec()
+
+    def _load_historical_data(self):
+        """Déclenche le chargement des données historiques (back-end à implémenter)."""
+        # TODO: implémenter la logique de chargement historique
+        QtWidgets.QMessageBox.information(
+            self.window,
+            "Données historiques",
+            "Chargement des données historiques — fonctionnalité à venir."
+        )
 
     def _open_vue_globale(self):
         """Ouvre le dialog de vision globale de la campagne (une seule instance)."""
