@@ -356,10 +356,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         buttons_layout.setSpacing(5)
 
         sys_style = QtWidgets.QApplication.style()
-        self.btn_start = QtWidgets.QPushButton()
-        self.btn_start.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
-        self.btn_stop = QtWidgets.QPushButton()
-        self.btn_stop.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPause))
+        self.btn_play_pause = QtWidgets.QPushButton()
+        self.btn_play_pause.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
         self.btn_m10 = QtWidgets.QPushButton("-10s")
         self.btn_m5  = QtWidgets.QPushButton("-5s")
         self.btn_p5  = QtWidgets.QPushButton("+5s")
@@ -369,7 +367,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_x5 = QtWidgets.QPushButton("x5")
         self.btn_x10 = QtWidgets.QPushButton("x10")
 
-        for btn in [self.btn_start, self.btn_stop,
+        for btn in [self.btn_play_pause,
                     self.btn_m10, self.btn_m5, self.btn_p5, self.btn_p10,
                     self.btn_x1, self.btn_x2, self.btn_x5, self.btn_x10]:
             btn.setStyleSheet(_BTN_STYLE)
@@ -497,8 +495,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         main_layout.addWidget(self.splitter)
 
         # ── Signals ───────────────────────────────────────────────────────
-        self.btn_start.clicked.connect(self.play_all)
-        self.btn_stop.clicked.connect(self.pause_all)
+        self.btn_play_pause.clicked.connect(self._toggle_play_pause)
+        self.player.playbackStateChanged.connect(self._update_play_pause_icon)
         self.btn_m10.clicked.connect(lambda: self.jump_time_offset(-10000))
         self.btn_m5.clicked.connect(lambda: self.jump_time_offset(-5000))
         self.btn_p5.clicked.connect(lambda: self.jump_time_offset(5000))
@@ -576,8 +574,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Met à jour la langue et rafraîchit les tooltips et labels de temps."""
         self.current_language = language
         self.lbl_zoom.setText(self.translate("Zoom :", "Zoom:"))
-        self.btn_start.setToolTip(self.translate("LIRE", "PLAY"))
-        self.btn_stop.setToolTip(self.translate("PAUSE", "PAUSE"))
+        self.btn_play_pause.setToolTip(self.translate("LIRE / PAUSE", "PLAY / PAUSE"))
         self.btn_cam_L.setText(self.translate("Cam G", "Cam L"))
         self.btn_cam_L.setToolTip(self.translate("Afficher/masquer caméra gauche", "Show/hide left camera"))
         self.btn_cam_R.setText(self.translate("Cam D", "Cam R"))
@@ -1105,6 +1102,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.pause_all()
         else:
             self.play_all()
+
+    def _update_play_pause_icon(self, state):
+        """Met à jour l'icône du bouton play/pause selon l'état du lecteur."""
+        style = QtWidgets.QApplication.style()
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            icon = style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPause)
+        else:
+            icon = style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay)
+        self.btn_play_pause.setIcon(icon)
 
     def _step_frame(self, direction: int):
         """Avance (+1) ou recule (-1) d'une frame (raccourcis ← →, pause uniquement)."""

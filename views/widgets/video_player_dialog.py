@@ -69,25 +69,23 @@ class VideoPlayerWindow(QtWidgets.QDialog):
 
         system_style = QtWidgets.QApplication.style()
 
-        self.btn_start = QtWidgets.QPushButton()
-        self.btn_start.setIcon(system_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
-        self.btn_stop = QtWidgets.QPushButton()
-        self.btn_stop.setIcon(system_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPause))
+        self.btn_play_pause = QtWidgets.QPushButton()
+        self.btn_play_pause.setIcon(system_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
         self.btn_m10 = QtWidgets.QPushButton("-10s")
         self.btn_p10 = QtWidgets.QPushButton("+10s")
         self.btn_x1 = QtWidgets.QPushButton("x1")
         self.btn_x2 = QtWidgets.QPushButton("x2")
         self.btn_x5 = QtWidgets.QPushButton("x5")
 
-        for btn in [self.btn_start, self.btn_stop, self.btn_m10, self.btn_p10,
+        for btn in [self.btn_play_pause, self.btn_m10, self.btn_p10,
                     self.btn_x1, self.btn_x2, self.btn_x5]:
             btn.setStyleSheet(blue_button_style)
             buttons_layout.addWidget(btn)
 
         main_layout.addLayout(buttons_layout, stretch=0)
 
-        self.btn_start.clicked.connect(self.play_all)
-        self.btn_stop.clicked.connect(self.pause_all)
+        self.btn_play_pause.clicked.connect(self._toggle_play_pause)
+        self.player.playbackStateChanged.connect(self._update_play_pause_icon)
         self.btn_m10.clicked.connect(lambda: self.skip_time(-10000))
         self.btn_p10.clicked.connect(lambda: self.skip_time(10000))
         self.btn_x1.clicked.connect(lambda: self.set_rate(1.0))
@@ -113,6 +111,24 @@ class VideoPlayerWindow(QtWidgets.QDialog):
         self.player.pause()
         if self.is_stereo:
             self.player_R.pause()
+
+    def _toggle_play_pause(self):
+        """Bascule entre lecture et pause."""
+        from PyQt6.QtMultimedia import QMediaPlayer
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.pause_all()
+        else:
+            self.play_all()
+
+    def _update_play_pause_icon(self, state):
+        """Met à jour l'icône du bouton play/pause selon l'état du lecteur."""
+        from PyQt6.QtMultimedia import QMediaPlayer
+        style = QtWidgets.QApplication.style()
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            icon = style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPause)
+        else:
+            icon = style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay)
+        self.btn_play_pause.setIcon(icon)
 
     def set_rate(self, rate: float):
         """Applique une vitesse de lecture sur les deux flux."""
