@@ -136,8 +136,13 @@ class QualifController:
             splitter.insertWidget(index, self.widget_video_container)
 
         self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
-        for i in range(self.video_model.columnCount()):
-            self.video_tree.resizeColumnToContents(i)
+        header = self.video_tree.header()
+        header.setStretchLastSection(False)
+        # Colonne 0 (fichier) : s'étire pour occuper tout l'espace disponible
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        # Autres colonnes : taille calculée sur le contenu
+        for i in range(1, self.video_model.columnCount()):
+            header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.video_tree.clicked.connect(self.on_video_selected)
@@ -175,8 +180,11 @@ class QualifController:
             splitter_trash.insertWidget(index_trash, self.widget_trash_container)
 
         self.trash_video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
-        for i in range(self.trash_model.columnCount()):
-            self.trash_video_tree.resizeColumnToContents(i)
+        trash_header = self.trash_video_tree.header()
+        trash_header.setStretchLastSection(False)
+        trash_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for i in range(1, self.trash_model.columnCount()):
+            trash_header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.trash_video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.trash_video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.trash_video_tree.setAcceptDrops(True)
@@ -217,11 +225,12 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        # 40 % pour les propriétés de campagne, 40 % pour les vidéos, 20 % pour la poubelle
-        campaign_h = max(120, int(total * 0.40))
-        remaining = total - campaign_h
+        # 11 champs × 28 px/champ + titre + marges ≈ 360 px nécessaires
+        # On alloue au moins 360 px ou 58 % de la hauteur, puis le reste aux arbres vidéo
+        campaign_h = max(360, int(total * 0.58))
+        remaining = max(0, total - campaign_h)
         video_h = max(80, int(remaining * 0.65))
-        trash_h = max(60, remaining - video_h)
+        trash_h = max(40, remaining - video_h)
         splitter.setSizes([campaign_h, video_h, trash_h])
 
     def _init_minimap(self):
@@ -519,27 +528,37 @@ class QualifController:
                     json_payload = json.load(f)
                 if "survey" in json_payload:
                     form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
-                    form_layout.setContentsMargins(5, 5, 5, 5)
-                    form_layout.setSpacing(15)
+                    form_layout.setContentsMargins(6, 4, 6, 4)
+                    form_layout.setSpacing(4)
+                    form_layout.setVerticalSpacing(4)
+                    form_layout.setHorizontalSpacing(8)
                     form_layout.setFieldGrowthPolicy(
                         QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
                     for key, meta in json_payload["survey"].items():
                         display_name = meta.get("name_fr", key).capitalize()
                         value = meta.get("value") or ""
+                        value_str = str(value)
                         input_field = QtWidgets.QLineEdit()
-                        input_field.setText(str(value))
-                        input_field.setStyleSheet("""
-                            QLineEdit { font-size: 14px; font-weight: bold; padding: 6px;
-                                        color: #ffffff; background-color: #1a1a1a;
-                                        border: 1px solid #555555; border-radius: 4px; }
-                        """)
+                        input_field.setText(value_str)
+                        input_field.setFixedHeight(24)
+                        input_field.setStyleSheet(
+                            "QLineEdit { font-size: 11px; padding: 1px 5px;"
+                            " color: #ffffff; background-color: #1a1a1a;"
+                            " border: 1px solid #555555; border-radius: 3px; }"
+                        )
                         if meta.get("example"):
                             input_field.setPlaceholderText(str(meta["example"]))
+                        if value_str:
+                            input_field.setToolTip(value_str)
                         self.campaign_fields[key] = input_field
                         input_field.editingFinished.connect(
                             lambda tk=key: self.on_campaign_field_modified(tk))
+                        input_field.textChanged.connect(
+                            lambda txt, f=input_field: f.setToolTip(txt))
                         lbl = QtWidgets.QLabel(f"{display_name} :")
-                        lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #e0e0e0;")
+                        lbl.setStyleSheet(
+                            "font-size: 11px; font-weight: bold; color: #a0b8c8;"
+                        )
                         form_layout.addRow(lbl, input_field)
                     return
             except Exception as e:
