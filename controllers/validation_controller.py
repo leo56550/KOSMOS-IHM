@@ -98,8 +98,8 @@ class ValidationController:
         outer.addWidget(self._panel_widget)
 
         layout = QtWidgets.QVBoxLayout(self._panel_widget)
-        layout.setContentsMargins(14, 14, 14, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 6)
+        layout.setSpacing(6)
 
         # Titre
         self.lbl_exploitable = QtWidgets.QLabel(
@@ -199,8 +199,8 @@ class ValidationController:
 
         # Ajuste la hauteur minimale du container selon le nb de lignes
         n_rows = (len(choices) + 1) // 2
-        btn_h = 32   # hauteur estimée par bouton
-        needed = 20 + 2 + n_rows * (btn_h + 5) + 30 + 24   # titre + sep + grille + badge + marges
+        btn_h = 28   # hauteur estimée par bouton
+        needed = 18 + 2 + n_rows * (btn_h + 5) + 24 + 16   # titre + sep + grille + badge + marges
         self.exploitable_container.setMinimumHeight(needed)
         self.exploitable_container.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,

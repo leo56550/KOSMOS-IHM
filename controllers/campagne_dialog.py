@@ -26,7 +26,7 @@ _BASE_STYLE = """
         color: #F2BFB4;
         border: 1px solid #2778A2;
         border-radius: 4px;
-        padding: 6px 8px;
+        padding: 4px 6px;
         font-size: 12px;
     }
     QLineEdit:focus {
@@ -54,7 +54,7 @@ _BASE_STYLE = """
         font-weight: bold;
         border: 1px solid #2778A2;
         border-radius: 6px;
-        padding: 9px 28px;
+        padding: 6px 20px;
         font-size: 13px;
         min-width: 110px;
     }
@@ -65,7 +65,7 @@ _BASE_STYLE = """
         color: #7ec8e3;
         border: 1px solid #2a4057;
         border-radius: 6px;
-        padding: 9px 22px;
+        padding: 6px 16px;
         font-size: 13px;
         min-width: 90px;
     }
@@ -91,15 +91,15 @@ class CampagneDialog(QtWidgets.QDialog):
         self.setStyleSheet(_BASE_STYLE)
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(28, 24, 28, 20)
-        root.setSpacing(16)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(8)
 
         # ── Titre ──────────────────────────────────────────────────────────
         title = QtWidgets.QLabel(self._t("Nouvelle session de dérushage", "New derushing session"))
         title.setObjectName("section_label")
         title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         f = title.font()
-        f.setPointSize(13)
+        f.setPointSize(11)
         title.setFont(f)
         root.addWidget(title)
 

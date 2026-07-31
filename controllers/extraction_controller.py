@@ -219,14 +219,14 @@ class ExtractionController:
 
         self.btn_export_main = QtWidgets.QPushButton(self.translate("EXPORTER LE SEGMENT", "EXPORT SEGMENT"))
         self.btn_export_main.setStyleSheet(
-            "background-color: #27ae60; color: white; font-weight: bold; padding: 12px;"
+            "background-color: #27ae60; color: white; font-weight: bold; padding: 5px 8px;"
         )
         self.btn_export_main.clicked.connect(lambda: self.on_export_segment("mono"))
 
         self.layout_stereo_export = QtWidgets.QHBoxLayout()
         self.btn_export_L = QtWidgets.QPushButton(self.translate("EXPORT GAUCHE", "EXPORT LEFT"))
         self.btn_export_R = QtWidgets.QPushButton(self.translate("EXPORT DROITE", "EXPORT RIGHT"))
-        style_s = "background-color: #1e8449; color: white; font-weight: bold; padding: 10px;"
+        style_s = "background-color: #1e8449; color: white; font-weight: bold; padding: 5px 8px;"
         self.btn_export_L.setStyleSheet(style_s)
         self.btn_export_R.setStyleSheet(style_s)
         self.btn_export_L.clicked.connect(lambda: self.on_export_segment("left"))

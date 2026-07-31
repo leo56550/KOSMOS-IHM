@@ -464,24 +464,24 @@ class EvenementsController:
         else:
             menu_layout = self.choose_event_container.layout()
 
-        menu_layout.setContentsMargins(16, 16, 16, 16)
-        menu_layout.setSpacing(14)
+        menu_layout.setContentsMargins(8, 8, 8, 8)
+        menu_layout.setSpacing(6)
         self.choose_event_container.setStyleSheet(
             "QFrame { background-color: #181c24; border: 1px solid #2778a2; border-radius: 14px; }"
         )
 
         combo_style = """
             QComboBox { background-color: #212a35; color: white; border: 1px solid #2778a2;
-                        border-radius: 8px; padding: 8px; }
+                        border-radius: 6px; padding: 4px 6px; }
             QComboBox QAbstractItemView { background-color: #212a35; color: white;
                                           selection-background-color: #2778a2; }"""
         btn_style = """
             QPushButton { background-color: #e68c14; color: white; font-weight: bold;
-                          border: 1px solid #f09624; border-radius: 8px; padding: 10px; }
+                          border: 1px solid #f09624; border-radius: 6px; padding: 5px 8px; }
             QPushButton:hover { background-color: #f09624; }
             QPushButton:disabled { background-color: #454545; color: #888888; border: 1px solid #555555; }"""
-        label_style = "color: white; font-weight: bold;"
-        title_style = "font-size: 14px; font-weight: bold; color: #ffffff;"
+        label_style = "color: white; font-weight: bold; font-size: 11px;"
+        title_style = "font-size: 12px; font-weight: bold; color: #ffffff;"
 
         if not hasattr(self, 'combo_type_event') or self.combo_type_event is None:
             self.lbl_title_event = QtWidgets.QLabel(self.translate("Sélection d'événement", "Event Selection"))
@@ -507,21 +507,21 @@ class EvenementsController:
                 self.translate("Écrivez un commentaire...", "Write a comment here..."))
             self.input_commentaire_event.setStyleSheet("""
                 QLineEdit { background-color: #212a35; color: white; border: 1px solid #2778a2;
-                            border-radius: 8px; padding: 8px; }""")
+                            border-radius: 5px; padding: 3px 6px; }""")
 
             self.btn_capturer = QtWidgets.QPushButton(self.translate("CAPTURER L'ÉVÉNEMENT", "CAPTURE EVENT"))
             self.btn_capturer.setStyleSheet(btn_style)
-            self.btn_capturer.setMinimumHeight(38)
+            self.btn_capturer.setMinimumHeight(28)
             self.btn_finir = QtWidgets.QPushButton(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
             self.btn_finir.setStyleSheet(btn_style)
-            self.btn_finir.setMinimumHeight(38)
+            self.btn_finir.setMinimumHeight(28)
             self.btn_finir.setEnabled(False)
 
             menu_layout.addWidget(self.lbl_title_event)
             form_layout = QtWidgets.QFormLayout()
             form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
             form_layout.setFormAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-            form_layout.setSpacing(12)
+            form_layout.setSpacing(5)
             form_layout.setContentsMargins(0, 0, 0, 0)
             form_layout.addRow(self.lbl_type_event, self.combo_type_event)
             form_layout.addRow(self.lbl_valeur_event, self.combo_valeur_event)
@@ -582,13 +582,13 @@ class EvenementsController:
         if not self.export_container:
             return
         layout = self.export_container.layout() or QtWidgets.QVBoxLayout(self.export_container)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
         self.export_button = QtWidgets.QPushButton(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"), self.export_container)
         self.export_button.setStyleSheet(
             "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
-            "border: 1px solid #f09624; border-radius: 8px; padding: 12px; }"
+            "border: 1px solid #f09624; border-radius: 6px; padding: 5px 8px; }"
             "QPushButton:hover { background-color: #f09624; }"
         )
         self.export_button.setEnabled(False)
@@ -686,7 +686,7 @@ class EvenementsController:
         self._hist_ax.set_facecolor('#111820')
         fig.subplots_adjust(left=0.06, right=0.99, top=0.96, bottom=0.18)
         self._hist_canvas = FigureCanvas(fig)
-        self._hist_canvas.setMinimumHeight(220)
+        self._hist_canvas.setMinimumHeight(120)
         self._hist_canvas.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding,
