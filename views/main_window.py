@@ -97,11 +97,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for action in existing_actions:
             if action.text().strip().lower() == "export":
                 continue
-            elif action == self.actionEvenements:
-                continue
             elif action == self.actionMetadonnees:
+                continue
+            elif action == self.actionEvenements:
                 ordered_actions.append(action)
-                ordered_actions.append(self.actionEvenements)
+                ordered_actions.append(self.actionMetadonnees)
             else:
                 ordered_actions.append(action)
 
@@ -357,7 +357,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for attr, key in [
             ('actionAcceuil', 'Accueil'),
             ('actionQualification', 'Qualification'),
-            ('actionValidation', 'Validation'),
             ('actionEvenements', 'Événements'),
             ('actionMetadonnees', 'Métadonnées'),
             ('actionA_propos', 'À propos'),

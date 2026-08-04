@@ -20,7 +20,7 @@ def _build_base_template() -> dict:
         "frame_number_start": None, "frame_number_end": None,
         "description_fr": None, "description_en": None,
         "authorized_values_en": ["landing", "take_off", "whiteboard", "rotation", "annotation_start"],
-        "authorized_values_fr": ["atterrissage", "décollage", "tableau blanc", "rotation", "début_annotation"],
+        "authorized_values_fr": ["atterrissage", "décollage", "ardoise", "rotation", "début_annotation"],
         "values": []
     }
     events_animal_schema = {
