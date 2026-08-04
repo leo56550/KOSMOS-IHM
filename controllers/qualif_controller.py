@@ -1166,6 +1166,47 @@ class QualifController:
         time_lbl.adjustSize()
         time_lbl.move(widget.width() - time_lbl.width() - 5, 5)
 
+        # Double-clic → plein écran
+        for target in (widget, lbl):
+            target.mouseDoubleClickEvent = lambda _e, px=pixmap: self._show_fullscreen_image(px)
+            target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+    def _show_fullscreen_image(self, pixmap: QtGui.QPixmap):
+        """Affiche le pixmap en plein écran dans une fenêtre noire. Clic ou Échap pour fermer."""
+        dlg = QtWidgets.QDialog(self.widget)
+        dlg.setWindowFlags(
+            QtCore.Qt.WindowType.Window |
+            QtCore.Qt.WindowType.FramelessWindowHint
+        )
+        dlg.setStyleSheet("background-color: black;")
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        lbl = QtWidgets.QLabel()
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("background-color: black;")
+        screen_size = QtWidgets.QApplication.primaryScreen().size()
+        lbl.setPixmap(pixmap.scaled(
+            screen_size,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        ))
+        layout.addWidget(lbl)
+
+        hint = QtWidgets.QLabel("Clic ou Échap pour fermer", dlg)
+        hint.setStyleSheet(
+            "color: rgba(255,255,255,120); font-size: 11px;"
+            " background: transparent; padding: 6px;"
+        )
+        hint.adjustSize()
+        hint.move(12, 12)
+
+        dlg.keyPressEvent = lambda e: dlg.close() if e.key() == QtCore.Qt.Key.Key_Escape else None
+        dlg.mousePressEvent = lambda _e: dlg.close()
+        lbl.mousePressEvent = lambda _e: dlg.close()
+
+        dlg.showFullScreen()
+
     # --- Context menu / drag-drop ---
 
     def show_context_menu(self, position: QtCore.QPoint):

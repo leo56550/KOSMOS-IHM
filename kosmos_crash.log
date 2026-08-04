@@ -312,3 +312,23 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-04 18:12:01.534955
+TypeError: invalid argument to sipBadCatcherResult()
+
+============================================================
+2026-08-04 18:12:03.078881
+TypeError: invalid argument to sipBadCatcherResult()
+
+============================================================
+2026-08-04 18:12:05.868896
+TypeError: invalid argument to sipBadCatcherResult()
+
+============================================================
+2026-08-04 18:12:16.278278
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
