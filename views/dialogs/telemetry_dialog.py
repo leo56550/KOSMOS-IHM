@@ -66,6 +66,8 @@ class TelemetryDialog(QtWidgets.QDialog):
             pw.setBackground('#111820')
             pw.showGrid(x=True, y=True, alpha=0.3)
             pw.setMouseEnabled(x=True, y=True)
+            if key == "profondeur":
+                pw.invertY(True)
             curve = pw.plot(pen=pg.mkPen(color, width=1.5))
 
             v_line = pg.InfiniteLine(
