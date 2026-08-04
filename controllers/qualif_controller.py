@@ -8,7 +8,7 @@ import folium
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWebChannel import QWebChannel
 
-from services.video_service import get_all_mp4_files, check_stereo_status
+from services.video_service import get_all_mp4_files
 from services.campaign_service import (
     get_video_gps_coords, get_video_json_path, get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
@@ -17,14 +17,13 @@ from services.migration_service import migrate_json_file_if_needed, initialise_v
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
-from views.widgets.video_player_dialog import VideoPlayerWindow
 from views.dialogs.map_dialog import MapDialog, MapBridge
 
 
 class QualifController:
     """Contrôleur de la page Qualification : gestion de l'arbre vidéo, de la poubelle et de la carte."""
 
-    def __init__(self, widget: QtWidgets.QWidget, parent=None, on_before_delete=None):
+    def __init__(self, widget: QtWidgets.QWidget, parent=None, on_before_delete=None, on_qualification_changed=None):
         """
         Args:
             on_before_delete: Callback appelé avec le chemin vidéo avant exclusion
@@ -33,6 +32,7 @@ class QualifController:
         self.widget = widget
         self.parent = parent
         self._on_before_delete = on_before_delete
+        self._on_qualification_changed = on_qualification_changed
         self.current_language = 'en'
         self.system_data = None
         self.video_model = QtGui.QStandardItemModel()
@@ -41,8 +41,12 @@ class QualifController:
         self.all_coords = {}
         self.campaign_fields = {}
         self._working_dir = ""
-        self.detached_player = None
         self.current_campaign_folder = None
+        self.current_json_path = None
+        self._exploitable_frame = None
+        self._exploitable_btn_group = None
+        self._exploitable_choices: list[str] = []
+        self._rebuilding_buttons = False
 
         self.video_tree = self.widget.findChild(QtWidgets.QTreeView, "video_tree")
         self.trash_video_tree = self.widget.findChild(QtWidgets.QTreeView, "trash_video_tree")
@@ -79,6 +83,7 @@ class QualifController:
         self._init_video_list()
         self._init_trash_list()
         self._configure_left_splitter()
+        self._init_exploitable_panel()
         self._init_minimap()
         self._init_miniature_area()
         self.set_language(self.current_language)
@@ -101,6 +106,10 @@ class QualifController:
             self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
         if hasattr(self, 'lbl_trash_title'):
             self.lbl_trash_title.setText(self.translate("Vidéos supprimées", "Removed Videos"))
+        if hasattr(self, 'lbl_exploitable'):
+            self.lbl_exploitable.setText(self.translate("Exploitabilité vidéo", "Video Exploitability"))
+        if self.current_json_path and os.path.exists(self.current_json_path):
+            self.refresh_combobox_values()
         header_labels = [
             self.translate("Fichier", "File"),
             self.translate("Durée", "Duration"),
@@ -225,13 +234,12 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        # 11 champs × 28 px/champ + titre + marges ≈ 360 px nécessaires
-        # On alloue au moins 360 px ou 58 % de la hauteur, puis le reste aux arbres vidéo
-        campaign_h = max(360, int(total * 0.58))
-        remaining = max(0, total - campaign_h)
-        video_h = max(80, int(remaining * 0.65))
+        exploit_h = 140
+        campaign_h = max(320, int(total * 0.50))
+        remaining = max(0, total - campaign_h - exploit_h)
+        video_h = max(80, int(remaining * 0.68))
         trash_h = max(40, remaining - video_h)
-        splitter.setSizes([campaign_h, video_h, trash_h])
+        splitter.setSizes([campaign_h, video_h, trash_h, exploit_h])
 
     def _init_minimap(self):
         """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""
@@ -268,6 +276,237 @@ class QualifController:
         main_layout = QtWidgets.QVBoxLayout(self.frame_miniature)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll_area)
+
+    # --- Exploitabilité ---
+
+    def _init_exploitable_panel(self):
+        """Crée le QFrame d'exploitabilité et l'ajoute en bas du splitter gauche."""
+        if not self.frame_campaign:
+            return
+        splitter = self.frame_campaign.parentWidget()
+        if not isinstance(splitter, QtWidgets.QSplitter):
+            return
+        self._exploitable_frame = QtWidgets.QFrame()
+        self._exploitable_frame.setStyleSheet("background-color: #0d1b2a; border: none;")
+        self._exploitable_frame.setMinimumHeight(100)
+        splitter.addWidget(self._exploitable_frame)
+        splitter.setStretchFactor(splitter.count() - 1, 0)
+        self._exploitable_btn_group = QtWidgets.QButtonGroup()
+        self._exploitable_btn_group.setExclusive(True)
+        self._build_exploitable_panel()
+
+    def _build_exploitable_panel(self):
+        """Construit le contenu du panneau d'exploitabilité."""
+        if not self._exploitable_frame:
+            return
+        outer = self._exploitable_frame.layout()
+        if not outer:
+            outer = QtWidgets.QVBoxLayout(self._exploitable_frame)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        while outer.count():
+            item = outer.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)
+
+        self._panel_widget = QtWidgets.QWidget()
+        self._panel_widget.setStyleSheet("background: transparent;")
+        outer.addWidget(self._panel_widget)
+
+        layout = QtWidgets.QVBoxLayout(self._panel_widget)
+        layout.setContentsMargins(8, 8, 8, 6)
+        layout.setSpacing(6)
+
+        self.lbl_exploitable = QtWidgets.QLabel(
+            self.translate("Exploitabilité vidéo", "Video Exploitability")
+        )
+        self.lbl_exploitable.setStyleSheet(
+            "color: #F2BFB4; font-size: 12px; font-weight: bold;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+            " letter-spacing: 0.3px;"
+        )
+        layout.addWidget(self.lbl_exploitable)
+
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        layout.addWidget(sep)
+
+        self._choice_container = QtWidgets.QWidget()
+        self._choice_container.setStyleSheet("background: transparent;")
+        self._choice_layout = QtWidgets.QVBoxLayout(self._choice_container)
+        self._choice_layout.setContentsMargins(0, 4, 0, 4)
+        self._choice_layout.setSpacing(6)
+        layout.addWidget(self._choice_container)
+
+        self._status_badge = QtWidgets.QLabel(self.translate("Aucune sélection", "No selection"))
+        self._status_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._status_badge.setStyleSheet(
+            "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+        )
+        layout.addWidget(self._status_badge)
+        layout.addStretch()
+
+    # Couleurs des boutons selon la valeur d'exploitabilité
+    _EXPLOIT_COLORS = {
+        'oui':     ('#0d2b12', '#4CAF50'),   # fond, bordure/texte checked
+        'non':     ('#2b0d0d', '#D94F38'),
+        'habitat': ('#0a1f3a', '#2778A2'),
+        '?':       ('#2b1d00', '#E8A838'),
+    }
+
+    def _exploit_btn_style(self, choice: str) -> str:
+        bg, accent = self._EXPLOIT_COLORS.get(choice.lower(), ('#0d2b12', '#4CAF50'))
+        return (
+            "QPushButton {"
+            "  background-color: #162433; color: #7a9ab8;"
+            "  font-family: 'Segoe UI', sans-serif; font-size: 11px; font-weight: bold;"
+            "  border: 1px solid #1e3448; border-radius: 5px; padding: 5px 8px; text-align: center;"
+            "}"
+            "QPushButton:hover { background-color: #1e3448; color: #d4e8f5; border-color: #2778A2; }"
+            f"QPushButton:checked {{ background-color: {bg}; color: {accent}; border: 1px solid {accent}; }}"
+        )
+
+    def _rebuild_choice_buttons(self, choices: list[str], current: str):
+        """Reconstruit les boutons toggle d'exploitabilité en grille 2 colonnes."""
+        if not hasattr(self, '_choice_layout') or self._exploitable_btn_group is None:
+            return
+        for btn in self._exploitable_btn_group.buttons():
+            self._exploitable_btn_group.removeButton(btn)
+        while self._choice_layout.count():
+            item = self._choice_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        self._exploitable_choices = choices
+        self._rebuilding_buttons = True
+
+        grid = QtWidgets.QGridLayout()
+        grid.setSpacing(5)
+        grid.setContentsMargins(0, 0, 0, 0)
+        for i, choice in enumerate(choices):
+            btn = QtWidgets.QPushButton(choice)
+            btn.setCheckable(True)
+            btn.setChecked(choice == current)
+            btn.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
+            btn.setStyleSheet(self._exploit_btn_style(choice))
+            self._exploitable_btn_group.addButton(btn)
+            grid.addWidget(btn, i // 2, i % 2)
+            btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
+
+        grid_widget = QtWidgets.QWidget()
+        grid_widget.setStyleSheet("background: transparent;")
+        grid_widget.setLayout(grid)
+        self._choice_layout.addWidget(grid_widget)
+        self._rebuilding_buttons = False
+
+        n_rows = (len(choices) + 1) // 2
+        btn_h = 28
+        needed = 18 + 2 + n_rows * (btn_h + 5) + 24 + 16
+        if self._exploitable_frame:
+            self._exploitable_frame.setMinimumHeight(needed)
+            self._exploitable_frame.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Minimum,
+            )
+            self._exploitable_frame.updateGeometry()
+        self._update_status_badge(current)
+
+    def _on_choice_toggled(self, checked: bool, choice: str):
+        if checked and not self._rebuilding_buttons:
+            self.on_exploitable_changed(choice)
+
+    def _update_status_badge(self, current: str):
+        if not hasattr(self, '_status_badge'):
+            return
+        val = str(current or "").strip()
+        if val:
+            _, accent = self._EXPLOIT_COLORS.get(val.lower(), ('#0d2b12', '#4CAF50'))
+            self._status_badge.setText(f"✓  {val}")
+            self._status_badge.setStyleSheet(
+                f"color: {accent}; font-size: 11px; font-weight: bold;"
+                " font-family: 'Segoe UI', sans-serif;"
+                f" background: transparent; border: 1px solid {accent};"
+                " border-radius: 5px; padding: 4px 8px;"
+            )
+        else:
+            self._status_badge.setText(self.translate("Non renseigné", "Not set"))
+            self._status_badge.setStyleSheet(
+                "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
+                " background: transparent; border: none;"
+            )
+
+    def refresh_combobox_values(self):
+        """Recharge les valeurs autorisées et reconstruit les boutons toggle depuis le JSON."""
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+        if not hasattr(self, '_choice_container'):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            field = data.get("video_observation", {}).get("exploitable", {})
+            lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
+            choices = field.get(lang_key, [])
+            current = field.get("value", "") or ""
+            self._rebuild_choice_buttons(choices, current)
+        except Exception:
+            pass
+
+    def on_exploitable_changed(self, text: str):
+        """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
+        if not self.current_json_path or not text:
+            return
+        try:
+            if not os.path.isfile(self.current_json_path):
+                return
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            data.setdefault("video_observation", {}).setdefault("exploitable", {})["value"] = text
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            self._update_status_badge(text)
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
+            if self.video_tree:
+                selected = self.video_tree.selectionModel().selectedRows()
+                if selected:
+                    item = self.video_model.itemFromIndex(selected[0].siblingAtColumn(0))
+                    if item:
+                        path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                        if path:
+                            self.refresh_item_indicator(item, path)
+        except Exception as e:
+            print(f"[QualifCtrl] on_exploitable_changed: {e!r}")
+
+    def refresh_item_indicator(self, item, video_path):
+        """Colore l'item en vert si l'exploitabilité est renseignée, blanc sinon."""
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        is_processed = False
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                val = str(data.get("video_observation", {}).get("exploitable", {}).get("value", "") or "").strip()
+                if val and val != '?':
+                    is_processed = True
+            except Exception:
+                pass
+        color = "#4CAF50" if is_processed else "white"
+        item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
+
+    def initialize_tree_indicators(self):
+        """Initialise la couleur de tous les items de l'arbre au chargement d'une campagne."""
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item:
+                path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if path:
+                    self.refresh_item_indicator(item, path)
 
     # --- Campaign opening ---
 
@@ -604,7 +843,7 @@ class QualifController:
     # --- Video selection ---
 
     def on_video_selected(self, index: QtCore.QModelIndex):
-        """Ouvre le lecteur détaché et met à jour la minimap quand l'utilisateur clique sur une vidéo."""
+        """Met à jour la minimap et le panneau d'exploitabilité quand l'utilisateur clique sur une vidéo."""
         item = self.video_model.itemFromIndex(index.siblingAtColumn(0))
         if not item:
             return
@@ -612,24 +851,14 @@ class QualifController:
         video_name = item.text()
         self.selected_video_name = video_name
 
-        is_stereo, video_payload = check_stereo_status(video_path)
         video_dir = os.path.dirname(video_path)
         csv_system = os.path.join(video_dir, "systemEvent.csv")
-        engine_events = []
         if os.path.exists(csv_system):
             self.update_camera_views(video_path, csv_system)
-            engine_events = get_motor_stable_timestamps(csv_path=csv_system, delay=6.0)
 
-        self.update_minimap(selected_name=video_name, show_dialog=True)
-
-        if self.detached_player is not None:
-            try:
-                self.detached_player.close()
-                self.detached_player.deleteLater()
-            except Exception:
-                pass
-        self.detached_player = VideoPlayerWindow(video_payload, events_data=engine_events, parent=self.widget)
-        self.detached_player.show()
+        self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+        self.refresh_combobox_values()
+        self.update_minimap(selected_name=video_name, show_dialog=False)
 
     # --- Minimap ---
 
@@ -845,18 +1074,10 @@ class QualifController:
                 video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
                 video_dir = os.path.dirname(video_path)
                 csv_system = os.path.join(video_dir, "systemEvent.csv")
-                motor_events = []
                 if os.path.exists(csv_system):
                     self.update_camera_views(video_path, csv_system)
-                    motor_events = get_motor_stable_timestamps(csv_path=csv_system, delay=6.0)
-                if self.detached_player is not None:
-                    try:
-                        self.detached_player.close()
-                        self.detached_player.deleteLater()
-                    except Exception:
-                        pass
-                self.detached_player = VideoPlayerWindow(video_path, events_data=motor_events, parent=self.widget)
-                self.detached_player.show()
+                self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+                self.refresh_combobox_values()
                 self.update_minimap(video_name, show_dialog=False)
                 break
 
@@ -964,17 +1185,6 @@ class QualifController:
         if clicked_action == trash_action:
             self.delete_video_by_index(index.siblingAtColumn(0))
 
-    def _close_detached_player(self):
-        """Libère les handles fichiers du lecteur détaché avant tout déplacement sur disque."""
-        if self.detached_player is not None:
-            try:
-                self.detached_player.release_files()
-                self.detached_player.close()
-                self.detached_player.deleteLater()
-            except Exception:
-                pass
-            self.detached_player = None
-
     def delete_video_by_index(self, index: QtCore.QModelIndex):
         """Déplace la vidéo dans la liste 'supprimées' (en mémoire) et supprime son dossier de sortie."""
         row = index.row()
@@ -986,7 +1196,6 @@ class QualifController:
 
         if self._on_before_delete:
             self._on_before_delete(video_path)
-        self._close_detached_player()
 
         # Supprimer le sous-dossier de sortie de cette vidéo dans le working_dir
         if self._working_dir and video_path:

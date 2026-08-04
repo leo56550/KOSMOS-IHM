@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
@@ -34,7 +34,7 @@ QLabel#titre_campagne {
     <item>
      <widget class="QStackedWidget" name="stackedWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="page_qualification">
        <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -348,166 +348,6 @@ QPushButton[actif=&quot;true&quot;] {
             </spacer>
            </item>
           </layout>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="page_validation">
-       <layout class="QVBoxLayout" name="verticalLayout_5">
-        <item>
-         <widget class="QSplitter" name="splitter_3">
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-          <widget class="QFrame" name="frame_3">
-           <property name="minimumSize">
-            <size>
-             <width>250</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>250</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">background-color: rgb(32, 65, 93);</string>
-           </property>
-           <property name="frameShape">
-            <enum>QFrame::Shape::StyledPanel</enum>
-           </property>
-           <property name="frameShadow">
-            <enum>QFrame::Shadow::Raised</enum>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_4">
-            <item>
-             <widget class="QSplitter" name="splitter_4">
-              <property name="orientation">
-               <enum>Qt::Orientation::Vertical</enum>
-              </property>
-              <widget class="QTreeView" name="tree_video_validation">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>750</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">QTreeView::item {
-    font-size: 14px;
-    padding: 8px;
-    font-weight: bold;
-}
-
-/* Style pour l'en-tête (l'étage des titres des colonnes) */
-QHeaderView::section {
-    font-size: 14px;
-    padding: 6px;            /* Donne de la hauteur à l'en-tête */
-    font-weight: bold;
-background-color: rgb(39, 120, 162);
-    color: white;
-    border: 1px solid #152d42;
-	font-weight: bold;
-};
-background-color: rgb(39, 120, 162);
-</string>
-               </property>
-               <property name="iconSize">
-                <size>
-                 <width>24</width>
-                 <height>24</height>
-                </size>
-               </property>
-              </widget>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSplitter" name="splitter_14">
-              <property name="orientation">
-               <enum>Qt::Orientation::Vertical</enum>
-              </property>
-              <widget class="QFrame" name="exploitable_container">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>50</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">background-color: rgb(39, 120, 162);
-border: 1px solid #ababab;
-border-radius: 10px 
-;
-
-
-
-</string>
-               </property>
-               <property name="frameShape">
-                <enum>QFrame::Shape::StyledPanel</enum>
-               </property>
-               <property name="frameShadow">
-                <enum>QFrame::Shadow::Raised</enum>
-               </property>
-               <layout class="QVBoxLayout" name="verticalLayout_6">
-                <item>
-                 <widget class="QSplitter" name="splitter_12">
-                  <property name="orientation">
-                   <enum>Qt::Orientation::Vertical</enum>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
-              </widget>
-              <widget class="QPushButton" name="btn_finir_validation">
-               <property name="styleSheet">
-                <string notr="true">QPushButton {
-    background-color: #2778a2;
-    color: white;
-    font-weight: bold;
-    border-radius: 4px;
-    padding: 6px 15px;
-    font-size: 12px;
-    border: none; /* Ajouté pour éviter les bordures natives par défaut */
-}
-
-QPushButton:hover {
-    background-color: #3290C2;
-}
-
-/* Style du bouton actif : texte plus grand, arrière-plan distinct et padding élargi */
-QPushButton[actif=&quot;true&quot;] {
-    background-color: #3290C2;
-    font-size: 14px;
-    padding: 10px 22px;
-    border: 1px solid #ffffff;
-}</string>
-               </property>
-               <property name="text">
-                <string>Finir Validation</string>
-               </property>
-              </widget>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-          <widget class="QFrame" name="lecteur_timeline_container">
-           <property name="enabled">
-            <bool>true</bool>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">background-color: rgb(39, 120, 162);
-</string>
-           </property>
-           <property name="frameShape">
-            <enum>QFrame::Shape::StyledPanel</enum>
-           </property>
-           <property name="frameShadow">
-            <enum>QFrame::Shadow::Raised</enum>
-           </property>
-          </widget>
          </widget>
         </item>
        </layout>
@@ -979,7 +819,6 @@ background-color: rgb(39, 120, 162);
    </attribute>
    <addaction name="actionAcceuil"/>
    <addaction name="actionQualification"/>
-   <addaction name="actionValidation"/>
    <addaction name="actionEvenements"/>
    <addaction name="actionMetadonnees"/>
    <addaction name="actionExport"/>
@@ -1007,14 +846,6 @@ background-color: rgb(39, 120, 162);
   <action name="actionQualification">
    <property name="text">
     <string>Qualification</string>
-   </property>
-   <property name="menuRole">
-    <enum>QAction::MenuRole::NoRole</enum>
-   </property>
-  </action>
-  <action name="actionValidation">
-   <property name="text">
-    <string>Validation</string>
    </property>
    <property name="menuRole">
     <enum>QAction::MenuRole::NoRole</enum>

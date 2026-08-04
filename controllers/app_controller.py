@@ -11,7 +11,6 @@ from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
 from services.report_service import generate_pdf_report
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController
-from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
 from controllers.metadonnees_controller import MetadonneesController
 from controllers.extraction_controller import ExtractionController
@@ -40,11 +39,7 @@ class AppController:
         )
         self.qualif_ctrl = QualifController(
             window.page_qualification, parent=window,
-            on_before_delete=self._release_file_in_all_players
-        )
-        self.validation_ctrl = ValidationController(
-            window.page_validation, self.qualif_ctrl.video_model,
-            on_video_focused=self._focus_map,
+            on_before_delete=self._release_file_in_all_players,
             on_qualification_changed=self._on_qualification_changed,
         )
         self._overview_dialog: 'CampaignOverviewDialog | None' = None
@@ -72,7 +67,7 @@ class AppController:
         )
 
         self.page_controllers = [
-            self.accueil_ctrl, self.qualif_ctrl, self.validation_ctrl,
+            self.accueil_ctrl, self.qualif_ctrl,
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
 
@@ -84,7 +79,6 @@ class AppController:
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
-        bridge.videoSelected.connect(self.validation_ctrl.select_video_by_name)
         bridge.videoSelected.connect(self.evenements_ctrl.select_video_by_name)
         bridge.videoSelected.connect(self.metadonnees_ctrl.select_video_by_name)
         bridge.videoSelected.connect(self.extraction_ctrl.select_video_by_name)
@@ -92,7 +86,6 @@ class AppController:
         # Wire navigation actions
         window.actionAcceuil.triggered.connect(lambda: self.switch_page(window.page_accueil))
         window.actionQualification.triggered.connect(lambda: self.switch_page(window.page_qualification))
-        window.actionValidation.triggered.connect(lambda: self.switch_page(window.page_validation))
         window.actionEvenements.triggered.connect(lambda: self.switch_page(window.page_evenements))
         window.actionMetadonnees.triggered.connect(lambda: self.switch_page(window.page_metadonnees))
         window.actionA_propos.triggered.connect(lambda: self.switch_page(window.page_apropos))
@@ -123,20 +116,13 @@ class AppController:
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
-        # Finish buttons
-        self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.clicked.connect(self.complete_qualification)
-
-        self.btn_finir_validation = window.findChild(QtWidgets.QPushButton, "btn_finir_validation")
-        if self.btn_finir_validation:
-            self.btn_finir_validation.clicked.connect(self.complete_validation)
+        self.btn_finir_qualif = None
+        self.btn_finir_validation = None
 
         # Button mapping for navigation highlight
         window.button_mapping = {
             window.page_accueil: window.actionAcceuil,
             window.page_qualification: window.actionQualification,
-            window.page_validation: window.actionValidation,
             window.page_evenements: window.actionEvenements,
             window.page_metadonnees: window.actionMetadonnees,
             window.page_extraction: window.actionExtraction,
@@ -186,8 +172,8 @@ class AppController:
             return
         self.working_dir = path
         # Propager aux controllers
-        for ctrl in [self.qualif_ctrl, self.validation_ctrl,
-                     self.evenements_ctrl, self.metadonnees_ctrl, self.extraction_ctrl]:
+        for ctrl in [self.qualif_ctrl, self.evenements_ctrl,
+                     self.metadonnees_ctrl, self.extraction_ctrl]:
             if hasattr(ctrl, 'set_working_dir'):
                 ctrl.set_working_dir(path)
         # Arrêter le clignotement, passer le bouton en vert
@@ -367,8 +353,8 @@ class AppController:
         if not item:
             return
         video_name = item.text()
-        self.switch_page(self.window.page_validation)
-        self.validation_ctrl.select_video_by_name(video_name)
+        self.switch_page(self.window.page_qualification)
+        self.qualif_ctrl.select_video_by_name(video_name)
 
     # --- Language ---
 
@@ -380,10 +366,6 @@ class AppController:
         w.current_language = language
         w.update_language_buttons(language)
         trans = w.translations[language]
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.setText(trans.get('Finir qualification', self.btn_finir_qualif.text()))
-        if self.btn_finir_validation:
-            self.btn_finir_validation.setText(trans.get('Finir validation', self.btn_finir_validation.text()))
         self._update_info_labels(trans)
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
@@ -430,15 +412,6 @@ class AppController:
         self.qualification_completed = False
         self.validation_completed = False
         self._current_campaign_mode = ""
-
-        trans = w.translations.get(w.current_language, w.translations['fr'])
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.setEnabled(True)
-            self.btn_finir_qualif.setText(trans.get('Finir qualification', 'Finir qualification'))
-        if self.btn_finir_validation:
-            self.btn_finir_validation.setEnabled(True)
-            self.btn_finir_validation.setText(trans.get('Finir validation', 'Finir validation'))
-
         self._current_derusher_name = nom_derusher
 
         # Charger la campagne — directement si le dossier est fourni par le dialog
@@ -480,8 +453,8 @@ class AppController:
         # Répertoire de travail fourni par le dialog → propager immédiatement
         if working_dir:
             self.working_dir = working_dir
-            for ctrl in [self.qualif_ctrl, self.validation_ctrl,
-                         self.evenements_ctrl, self.metadonnees_ctrl, self.extraction_ctrl]:
+            for ctrl in [self.qualif_ctrl, self.evenements_ctrl,
+                         self.metadonnees_ctrl, self.extraction_ctrl]:
                 if hasattr(ctrl, 'set_working_dir'):
                     ctrl.set_working_dir(working_dir)
 
@@ -545,38 +518,23 @@ class AppController:
         """Recharge le VideoModel dans tous les controllers de page après ouverture de campagne."""
         updated_model = self.qualif_ctrl.video_model
         for ctrl, method in [
-            (self.validation_ctrl, 'load_campaign_videos'),
             (self.evenements_ctrl, 'load_campaign_videos'),
             (self.metadonnees_ctrl, 'load_campaign_videos'),
             (self.extraction_ctrl, 'load_campaign_videos'),
         ]:
             if hasattr(ctrl, method):
                 getattr(ctrl, method)(updated_model)
+        QtCore.QTimer.singleShot(200, self.qualif_ctrl.initialize_tree_indicators)
 
     # --- Qualification / Validation completion ---
 
     def complete_qualification(self):
-        """Marque la qualification terminée, déverrouille Validation/Événements et bascule vers Validation."""
         self.qualification_completed = True
-        w = self.window
-        w.actionValidation.setEnabled(True)
-        w.actionEvenements.setEnabled(True)
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.setEnabled(False)
-            trans = w.translations[w.current_language]
-            self.btn_finir_qualif.setText(trans.get('Qualification Terminée ✓', 'Qualification Terminée ✓'))
-        self.switch_page(w.page_validation)
+        self.switch_page(self.window.page_evenements)
 
     def complete_validation(self):
-        """Marque la validation terminée, déverrouille Événements et bascule vers Métadonnées."""
         self.validation_completed = True
-        w = self.window
-        w.actionEvenements.setEnabled(True)
-        if self.btn_finir_validation:
-            self.btn_finir_validation.setEnabled(False)
-            trans = w.translations[w.current_language]
-            self.btn_finir_validation.setText(trans.get('Validation Terminée ✓', 'Validation Terminée ✓'))
-        self.switch_page(w.page_metadonnees)
+        self.switch_page(self.window.page_metadonnees)
 
     # --- Navigation ---
 
@@ -585,18 +543,12 @@ class AppController:
         w = self.window
         w.actionQualification.setEnabled(not locked)
         w.actionMetadonnees.setEnabled(not locked)
+        w.actionEvenements.setEnabled(not locked)
         w.actionExtraction.setEnabled(True)
-        if locked:
-            w.actionValidation.setEnabled(False)
-            w.actionEvenements.setEnabled(False)
-        else:
-            w.actionValidation.setEnabled(self.qualification_completed)
-            w.actionEvenements.setEnabled(self.qualification_completed and self.validation_completed)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
         for player in [
-            getattr(self.validation_ctrl, 'player', None),
             getattr(self.evenements_ctrl, 'event_player', None),
             getattr(self.extraction_ctrl, 'video_player', None),
         ]:
@@ -609,9 +561,6 @@ class AppController:
         current = w.stackedWidget.currentWidget()
         if current == target_page:
             return
-        # Lecteur détaché de qualification : fermé quand on quitte la page qualif
-        if current == w.page_qualification:
-            self.qualif_ctrl._close_detached_player()
 
     def switch_page(self, page):
         """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
@@ -630,10 +579,6 @@ class AppController:
 
         if not w.actionQualification.isEnabled():
             return
-        if page == w.page_validation and not self.qualification_completed:
-            return
-        if page == w.page_evenements and not self.validation_completed:
-            return
         if page == w.page_extraction:
             self.extraction_ctrl.refresh_video_list()
 
@@ -645,7 +590,6 @@ class AppController:
         """Donne le focus clavier au player embarqué de la page, si présent."""
         w = self.window
         player_map = {
-            w.page_validation: (self.validation_ctrl, 'player'),
             w.page_evenements: (self.evenements_ctrl, 'event_player'),
             w.page_extraction: (self.extraction_ctrl, 'video_player'),
         }
