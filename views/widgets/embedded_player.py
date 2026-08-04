@@ -375,6 +375,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         buttons_layout.addStretch()
 
+        self.btn_ardoise = QtWidgets.QPushButton("SAISIR ARDOISE")
+        self.btn_ardoise.setStyleSheet(_BTN_STYLE)
+        self.btn_ardoise.setEnabled(False)
+        self.btn_ardoise.setToolTip("Saisir l'ardoise à la position courante")
+        buttons_layout.addWidget(self.btn_ardoise)
+
         self.btn_telemetry = QtWidgets.QPushButton("Télémétrie")
         self.btn_telemetry.setCheckable(True)
         self.btn_telemetry.setStyleSheet(_TOGGLE_STYLE)

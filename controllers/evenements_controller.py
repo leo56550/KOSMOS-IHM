@@ -161,6 +161,8 @@ class EvenementsController:
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
             layout.addWidget(self.event_player)
 
+            self.event_player.btn_ardoise.clicked.connect(self._saisir_ardoise)
+
             self.event_player.timeline.eventResized.connect(self.refresh_event_list)
             if hasattr(self.event_player.timeline, 'eventMoved'):
                 self.event_player.timeline.eventMoved.connect(self.refresh_event_list)
@@ -413,6 +415,8 @@ class EvenementsController:
             first_object = value[0]
             if not isinstance(first_object, dict):
                 continue
+            _RENAME = {"tableau blanc": "ardoise", "whiteboard": "slate"}
+            _ARDOISE_VALS = {"ardoise", "slate"}
             if self.current_language == 'en':
                 authorized_values = (first_object.get("authorized_values_en")
                                      or first_object.get("authorized_values_fr") or [])
@@ -424,7 +428,14 @@ class EvenementsController:
             label = self._get_label_from_json_key(json_key)
             self.event_category_labels[json_key] = label
             self.event_key_by_label[label] = json_key
-            self.event_dictionary[label] = [str(v) for v in authorized_values if v is not None]
+            renamed = []
+            for v in authorized_values:
+                if v is None:
+                    continue
+                final = _RENAME.get(str(v).lower(), str(v))
+                if final.lower() not in _ARDOISE_VALS:
+                    renamed.append(final)
+            self.event_dictionary[label] = renamed
 
     def _get_video_fps(self) -> float:
         """Retourne le FPS du lecteur actif, ou 25.0 par défaut."""
@@ -1029,6 +1040,37 @@ class EvenementsController:
         self.btn_finir.setEnabled(False)
         self.btn_finir.setText(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
 
+    def _saisir_ardoise(self):
+        """Capture un événement ardoise ponctuel à la position courante du lecteur."""
+        if not hasattr(self, 'event_player') or self.event_player is None:
+            return
+        value = "ardoise" if self.current_language == 'fr' else "slate"
+        deploy_label = self._get_label_from_json_key("events_deployment")
+        pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
+        time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
+        new_evt = {
+            "start": pos_ms, "end": pos_ms,
+            "title": f"Pic: {value}",
+            "type": "custom_event",
+            "zone": 0,
+            "single_frame": True,
+            "comment": "",
+            "_json_key": "events_deployment",
+            "_event_uid": self._generate_event_uid()
+        }
+        self.event_player.timeline.events.append(new_evt)
+        self.event_player.timeline.update()
+        if hasattr(self, 'tree_captures') and self.tree_captures:
+            clean_cat = deploy_label.split(' ')[0]
+            tree_item = QtWidgets.QTreeWidgetItem(
+                [time_str, "-", clean_cat, value, "", ""]
+            )
+            tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+            tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#e68c14")))
+            self.tree_captures.addTopLevelItem(tree_item)
+            self.add_tree_thumbnail(tree_item, pos_ms)
+        self.save_event_to_json(new_evt, deploy_label)
+
     # --- Video selection ---
 
     def on_video_selected(self, index: QtCore.QModelIndex):
@@ -1053,6 +1095,8 @@ class EvenementsController:
         self.capture_start_time = None
         if hasattr(self, 'btn_capturer'):
             self.btn_capturer.setEnabled(True)
+        if hasattr(self, 'event_player') and self.event_player:
+            self.event_player.btn_ardoise.setEnabled(True)
 
         self.charger_evenements_du_json()
         self._nettoyer_json_misplaced_events()
