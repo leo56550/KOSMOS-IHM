@@ -113,8 +113,6 @@ class QualifController:
         header_labels = [
             self.translate("Fichier", "File"),
             self.translate("Durée", "Duration"),
-            "FPS",
-            self.translate("Résolution", "Resolution"),
             self.translate("Taille", "Size"),
         ]
         self.video_model.setHorizontalHeaderLabels(header_labels)
@@ -124,7 +122,7 @@ class QualifController:
 
     def _init_video_list(self):
         """Configure le QTreeView vidéo avec ses en-têtes, drag-drop et menu contextuel."""
-        self.video_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size", "Date"])
+        self.video_model.setHorizontalHeaderLabels(["File", "Duration", "Size", "Date"])
         self.video_tree.setModel(self.video_model)
 
         splitter = self.video_tree.parentWidget()
@@ -168,7 +166,7 @@ class QualifController:
         """Configure le QTreeView poubelle avec drag-drop bidirectionnel."""
         if not self.trash_video_tree:
             return
-        self.trash_model.setHorizontalHeaderLabels(["File", "Duration", "FPS", "Resolution", "Size"])
+        self.trash_model.setHorizontalHeaderLabels(["File", "Duration", "Size"])
         self.trash_video_tree.setModel(self.trash_model)
 
         splitter_trash = self.trash_video_tree.parentWidget()
@@ -537,8 +535,6 @@ class QualifController:
         for video in videos:
             col_name = QtGui.QStandardItem(video["name"])
             col_dur = QtGui.QStandardItem(video["duration"])
-            col_fps = QtGui.QStandardItem(video["fps"])
-            col_res = QtGui.QStandardItem(video["res"])
             size_str = video.get("size") or (
                 f"{os.path.getsize(video['path']) / (1024 * 1024):.2f} MB"
                 if os.path.exists(video["path"]) else "--"
@@ -546,7 +542,7 @@ class QualifController:
             col_size = QtGui.QStandardItem(size_str)
             col_date = QtGui.QStandardItem(video["date"])
             col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
-            self.video_model.appendRow([col_name, col_dur, col_fps, col_res, col_size, col_date])
+            self.video_model.appendRow([col_name, col_dur, col_size, col_date])
 
             coords = get_video_gps_coords(video["path"])
             if coords:
@@ -739,8 +735,6 @@ class QualifController:
                 self.video_model.appendRow([
                     col_name,
                     QtGui.QStandardItem(video["duration"]),
-                    QtGui.QStandardItem(video["fps"]),
-                    QtGui.QStandardItem(video["res"]),
                     QtGui.QStandardItem(video.get("size", "--")),
                     QtGui.QStandardItem(video.get("date", "")),
                 ])
