@@ -344,7 +344,44 @@ class QualifController:
             "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
         )
         layout.addWidget(self._status_badge)
-        layout.addStretch()
+
+        # ── Commentaire ──────────────────────────────────────────────────────
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep2.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        layout.addWidget(sep2)
+
+        lbl_comment = QtWidgets.QLabel(self.translate("Commentaire", "Comment"))
+        lbl_comment.setStyleSheet(
+            "color: #7ec8e3; font-size: 11px; font-weight: bold;"
+            " font-family: 'Segoe UI', sans-serif;"
+        )
+        layout.addWidget(lbl_comment)
+
+        self._comment_edit = QtWidgets.QPlainTextEdit()
+        self._comment_edit.setPlaceholderText(
+            self.translate("Commentaire sur cette vidéo…", "Comment on this video…")
+        )
+        self._comment_edit.setStyleSheet(
+            "QPlainTextEdit {"
+            "  background-color: #0d1b2a; color: #F2BFB4;"
+            "  border: 1px solid #1e3448; border-radius: 4px;"
+            "  font-family: 'Segoe UI', sans-serif; font-size: 11px;"
+            "  padding: 4px;"
+            "}"
+            "QPlainTextEdit:focus { border-color: #2778A2; }"
+        )
+        self._comment_edit.setMinimumHeight(60)
+        self._comment_edit.setMaximumHeight(100)
+        self._comment_edit.setEnabled(False)
+        layout.addWidget(self._comment_edit)
+
+        # Timer de debounce pour ne pas écrire à chaque frappe
+        self._comment_timer = QtCore.QTimer()
+        self._comment_timer.setSingleShot(True)
+        self._comment_timer.setInterval(600)
+        self._comment_timer.timeout.connect(self._save_comment)
+        self._comment_edit.textChanged.connect(self._comment_timer.start)
 
     # Couleurs des boutons selon la valeur d'exploitabilité
     _EXPLOIT_COLORS = {
@@ -454,6 +491,44 @@ class QualifController:
             self._rebuild_choice_buttons(choices, current)
         except Exception:
             pass
+        self._load_comment()
+
+    def _load_comment(self):
+        """Charge le commentaire de qualification depuis le JSON vers le champ texte."""
+        if not hasattr(self, '_comment_edit'):
+            return
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            self._comment_edit.setEnabled(False)
+            self._comment_edit.blockSignals(True)
+            self._comment_edit.setPlainText("")
+            self._comment_edit.blockSignals(False)
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            comment = data.get("video_observation", {}).get("commentaire_qualification", "") or ""
+        except Exception:
+            comment = ""
+        self._comment_edit.blockSignals(True)
+        self._comment_edit.setPlainText(comment)
+        self._comment_edit.blockSignals(False)
+        self._comment_edit.setEnabled(True)
+
+    def _save_comment(self):
+        """Persiste le commentaire de qualification dans le JSON."""
+        if not hasattr(self, '_comment_edit') or not self.current_json_path:
+            return
+        if not os.path.isfile(self.current_json_path):
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            data.setdefault("video_observation", {})["commentaire_qualification"] = \
+                self._comment_edit.toPlainText()
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[QualifCtrl] _save_comment: {e!r}")
 
     def on_exploitable_changed(self, text: str):
         """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
