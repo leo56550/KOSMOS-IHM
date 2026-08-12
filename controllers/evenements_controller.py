@@ -162,6 +162,10 @@ class EvenementsController:
             layout.addWidget(self.event_player)
 
             self.event_player.btn_ardoise.clicked.connect(self._saisir_ardoise)
+            self.event_player.btn_debut_annotation.clicked.connect(self._saisir_debut_annotation)
+            self.event_player.btn_fin_annotation.clicked.connect(self._saisir_fin_annotation)
+            self.event_player.btn_debut_annotation.setVisible(True)
+            self.event_player.btn_fin_annotation.setVisible(True)
 
             self.event_player.timeline.eventResized.connect(self.refresh_event_list)
             if hasattr(self.event_player.timeline, 'eventMoved'):
@@ -894,6 +898,8 @@ class EvenementsController:
         if any(kw in value_lower for kw in [
             "atterrissage", "atterissage", "décollage", "decollage", "landing", "takeoff", "take_off",
             "ardoise", "slate", "tableau blanc", "whiteboard",
+            "début annotation", "debut annotation", "annotation start", "début_annotation",
+            "fin annotation", "annotation end", "fin_annotation",
         ]):
             return True
         return False
@@ -907,6 +913,14 @@ class EvenementsController:
         """Retourne True si value correspond à un événement de décollage."""
         v = (value or "").strip().lower()
         return any(kw in v for kw in ["décollage", "decollage", "takeoff", "take_off"])
+
+    def _is_annotation_start_event(self, value: str) -> bool:
+        v = (value or "").strip().lower()
+        return any(kw in v for kw in ["début annotation", "debut annotation", "annotation start", "début_annotation", "annotation_start"])
+
+    def _is_annotation_end_event(self, value: str) -> bool:
+        v = (value or "").strip().lower()
+        return any(kw in v for kw in ["fin annotation", "annotation end", "fin_annotation", "annotation_end"])
 
     def _single_frame_event_conflict(self, selected_type: str, value: str):
         """Détecte si un atterrissage ou décollage existe déjà dans la timeline (conflit unicité)."""
@@ -1071,6 +1085,53 @@ class EvenementsController:
             self.add_tree_thumbnail(tree_item, pos_ms)
         self.save_event_to_json(new_evt, deploy_label)
 
+    def _saisir_debut_annotation(self):
+        """Capture un événement début annotation à la position courante."""
+        self._saisir_annotation_event(
+            "début annotation", "annotation start",
+            self.event_player.btn_debut_annotation
+        )
+
+    def _saisir_fin_annotation(self):
+        """Capture un événement fin annotation à la position courante."""
+        self._saisir_annotation_event(
+            "fin annotation", "annotation end",
+            self.event_player.btn_fin_annotation
+        )
+
+    def _saisir_annotation_event(self, value_fr: str, value_en: str, button=None):
+        """Capture un événement annotation ponctuel et le sauvegarde dans le JSON."""
+        if not hasattr(self, 'event_player') or self.event_player is None:
+            return
+        value = value_fr if self.current_language == 'fr' else value_en
+        deploy_label = self._get_label_from_json_key("events_deployment")
+        pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
+        time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
+        new_evt = {
+            "start": pos_ms, "end": pos_ms,
+            "title": f"Pic: {value}",
+            "type": "custom_event",
+            "zone": 0,
+            "single_frame": True,
+            "comment": "",
+            "_json_key": "events_deployment",
+            "_event_uid": self._generate_event_uid()
+        }
+        self.event_player.timeline.events.append(new_evt)
+        self.event_player.timeline.update()
+        if hasattr(self, 'tree_captures') and self.tree_captures:
+            clean_cat = deploy_label.split(' ')[0]
+            tree_item = QtWidgets.QTreeWidgetItem([time_str, "-", clean_cat, value, "", ""])
+            tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+            tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+            self.tree_captures.addTopLevelItem(tree_item)
+            self.add_tree_thumbnail(tree_item, pos_ms)
+        self.save_event_to_json(new_evt, deploy_label)
+        if button is not None:
+            orig_text = button.text()
+            button.setText(f"✓ {time_str}")
+            QtCore.QTimer.singleShot(2000, lambda: button.setText(orig_text))
+
     # --- Video selection ---
 
     def on_video_selected(self, index: QtCore.QModelIndex):
@@ -1097,6 +1158,8 @@ class EvenementsController:
             self.btn_capturer.setEnabled(True)
         if hasattr(self, 'event_player') and self.event_player:
             self.event_player.btn_ardoise.setEnabled(True)
+            self.event_player.btn_debut_annotation.setEnabled(True)
+            self.event_player.btn_fin_annotation.setEnabled(True)
 
         self.charger_evenements_du_json()
         self._nettoyer_json_misplaced_events()
@@ -1594,6 +1657,44 @@ class EvenementsController:
             print(f"[EXPORT] Exception: {e}")
             return None
 
+    def _get_annotation_segment_bounds(self):
+        """Lit les frames début/fin annotation du JSON et retourne (start_ms, end_ms), ou None."""
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            return None
+        json_path = self.current_json_path or get_video_json_path(self.current_video_path)
+        if not json_path or not os.path.exists(json_path):
+            return None
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            events_deployment = json_data.get('video_observation', {}).get('events_deployment', [])
+            if not isinstance(events_deployment, list) or not events_deployment:
+                return None
+            start_frame = end_frame = None
+            for group in events_deployment:
+                for item in group.get('values', []):
+                    val = str(item.get('value', '')).strip()
+                    fn = item.get('frame_number_start')
+                    if fn is None:
+                        continue
+                    if self._is_annotation_start_event(val) and start_frame is None:
+                        start_frame = fn
+                    elif self._is_annotation_end_event(val) and end_frame is None:
+                        end_frame = fn
+                if start_frame is not None and end_frame is not None:
+                    break
+            if start_frame is None or end_frame is None:
+                return None
+            cap = cv2.VideoCapture(self.current_video_path)
+            video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            cap.release()
+            start_ms = ((float(int(start_frame)) - 1.0) / float(video_fps)) * 1000.0
+            end_ms = ((float(int(end_frame)) - 1.0) / float(video_fps)) * 1000.0
+            return start_ms, end_ms
+        except Exception as e:
+            print(f"[EXPORT] Annotation bounds exception: {e}")
+            return None
+
     def on_export_segment_clicked(self):
         """Lance le dialogue d'options puis démarre ExportWorker sur le segment atterrissage→décollage."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -1605,13 +1706,6 @@ class EvenementsController:
             QtWidgets.QMessageBox.warning(self.page,
                 self.translate("Export Impossible", "Export Impossible"),
                 self.translate("Composants de tracking indisponibles.", "Tracking components unavailable."))
-            return
-
-        bounds = self._get_export_segment_bounds()
-        if bounds is None:
-            QtWidgets.QMessageBox.warning(self.page,
-                self.translate("Export Impossible", "Export Impossible"),
-                self.translate("Bornes temporelles manquantes.", "Missing time bounds."))
             return
 
         parent_video_directory = os.path.dirname(self.current_video_path)
@@ -1626,6 +1720,23 @@ class EvenementsController:
             return
 
         options = dialog.get_processing_options()
+        export_range = options.get("export_range", "landing_takeoff")
+        if export_range == "annotation":
+            bounds = self._get_annotation_segment_bounds()
+            missing_msg = self.translate(
+                "Événements 'début annotation' et 'fin annotation' introuvables dans le JSON.",
+                "'annotation start' and 'annotation end' events not found in the JSON."
+            )
+        else:
+            bounds = self._get_export_segment_bounds()
+            missing_msg = self.translate("Bornes temporelles manquantes.", "Missing time bounds.")
+
+        if bounds is None:
+            QtWidgets.QMessageBox.warning(self.page,
+                self.translate("Export Impossible", "Export Impossible"),
+                missing_msg)
+            return
+
         target_fps = options.get("target_fps", 5)
         apply_he = options.get("apply_he", False)
         apply_dh = options.get("apply_dh", False)

@@ -100,6 +100,15 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         event_types_layout.addWidget(self.check_images_type)
         layout.addWidget(self.event_types_group)
 
+        self.range_group = QtWidgets.QGroupBox("", self)
+        range_layout = QtWidgets.QVBoxLayout(self.range_group)
+        self.radio_landing = QtWidgets.QRadioButton("", self.range_group)
+        self.radio_landing.setChecked(True)
+        self.radio_annotation = QtWidgets.QRadioButton("", self.range_group)
+        range_layout.addWidget(self.radio_landing)
+        range_layout.addWidget(self.radio_annotation)
+        layout.addWidget(self.range_group)
+
         layout.addSpacing(10)
 
         self.buttons_box = QtWidgets.QDialogButtonBox(
@@ -142,6 +151,9 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.check_deployment.setText(self.translate("Déploiement", "Deployment"))
         self.check_animal.setText(self.translate("Faune / Animal", "Fauna / Animal"))
         self.check_images_type.setText(self.translate("Images intéressantes", "Interesting Images"))
+        self.range_group.setTitle(self.translate("Plage d'export", "Export range"))
+        self.radio_landing.setText(self.translate("Atterrissage → Décollage", "Landing → Takeoff"))
+        self.radio_annotation.setText(self.translate("Début annotation → Fin annotation", "Annotation start → Annotation end"))
         if self.export_button:
             self.export_button.setText(self.translate("Exporter", "Export"))
         if self.cancel_button:
@@ -165,4 +177,5 @@ class ExportOptionsDialog(QtWidgets.QDialog):
             "apply_rectify": self.chk_rectify.isEnabled() and self.chk_rectify.isChecked(),
             "include_images": self.chk_include_images.isChecked(),
             "event_categories": selected_categories,
+            "export_range": "annotation" if self.radio_annotation.isChecked() else "landing_takeoff",
         }

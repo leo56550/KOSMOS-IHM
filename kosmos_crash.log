@@ -356,3 +356,63 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-12 09:15:47.215184
+TypeError: invalid argument to sipBadCatcherResult()
+
+============================================================
+2026-08-12 09:16:29.585035
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:29.737435
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:29.885158
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:30.084987
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:30.284209
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:30.435682
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:16:30.584776
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\embedded_player.py", line 902, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt

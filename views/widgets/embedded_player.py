@@ -375,6 +375,20 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         buttons_layout.addStretch()
 
+        self.btn_debut_annotation = QtWidgets.QPushButton("DÉBUT ANNOTATION")
+        self.btn_debut_annotation.setStyleSheet(_BTN_STYLE)
+        self.btn_debut_annotation.setEnabled(False)
+        self.btn_debut_annotation.setToolTip("Marquer le début de l'annotation à la position courante")
+        self.btn_debut_annotation.setVisible(False)
+        buttons_layout.addWidget(self.btn_debut_annotation)
+
+        self.btn_fin_annotation = QtWidgets.QPushButton("FIN ANNOTATION")
+        self.btn_fin_annotation.setStyleSheet(_BTN_STYLE)
+        self.btn_fin_annotation.setEnabled(False)
+        self.btn_fin_annotation.setToolTip("Marquer la fin de l'annotation à la position courante")
+        self.btn_fin_annotation.setVisible(False)
+        buttons_layout.addWidget(self.btn_fin_annotation)
+
         self.btn_ardoise = QtWidgets.QPushButton("SAISIR ARDOISE")
         self.btn_ardoise.setStyleSheet(_BTN_STYLE)
         self.btn_ardoise.setEnabled(False)

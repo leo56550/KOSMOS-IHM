@@ -43,10 +43,6 @@ class QualifController:
         self._working_dir = ""
         self.current_campaign_folder = None
         self.current_json_path = None
-        self._exploitable_frame = None
-        self._exploitable_btn_group = None
-        self._exploitable_choices: list[str] = []
-        self._rebuilding_buttons = False
 
         self.video_tree = self.widget.findChild(QtWidgets.QTreeView, "video_tree")
         self.trash_video_tree = self.widget.findChild(QtWidgets.QTreeView, "trash_video_tree")
@@ -83,7 +79,6 @@ class QualifController:
         self._init_video_list()
         self._init_trash_list()
         self._configure_left_splitter()
-        self._init_exploitable_panel()
         self._init_minimap()
         self._init_miniature_area()
         self.set_language(self.current_language)
@@ -106,10 +101,6 @@ class QualifController:
             self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
         if hasattr(self, 'lbl_trash_title'):
             self.lbl_trash_title.setText(self.translate("Vidéos supprimées", "Removed Videos"))
-        if hasattr(self, 'lbl_exploitable'):
-            self.lbl_exploitable.setText(self.translate("Exploitabilité vidéo", "Video Exploitability"))
-        if self.current_json_path and os.path.exists(self.current_json_path):
-            self.refresh_combobox_values()
         header_labels = [
             self.translate("Fichier", "File"),
             self.translate("Durée", "Duration"),
@@ -232,12 +223,11 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        exploit_h = 140
         campaign_h = max(320, int(total * 0.50))
-        remaining = max(0, total - campaign_h - exploit_h)
+        remaining = max(0, total - campaign_h)
         video_h = max(80, int(remaining * 0.68))
         trash_h = max(40, remaining - video_h)
-        splitter.setSizes([campaign_h, video_h, trash_h, exploit_h])
+        splitter.setSizes([campaign_h, video_h, trash_h])
 
     def _init_minimap(self):
         """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""
@@ -274,287 +264,6 @@ class QualifController:
         main_layout = QtWidgets.QVBoxLayout(self.frame_miniature)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll_area)
-
-    # --- Exploitabilité ---
-
-    def _init_exploitable_panel(self):
-        """Crée le QFrame d'exploitabilité et l'ajoute en bas du splitter gauche."""
-        if not self.frame_campaign:
-            return
-        splitter = self.frame_campaign.parentWidget()
-        if not isinstance(splitter, QtWidgets.QSplitter):
-            return
-        self._exploitable_frame = QtWidgets.QFrame()
-        self._exploitable_frame.setStyleSheet("background-color: #0d1b2a; border: none;")
-        self._exploitable_frame.setMinimumHeight(100)
-        splitter.addWidget(self._exploitable_frame)
-        splitter.setStretchFactor(splitter.count() - 1, 0)
-        self._exploitable_btn_group = QtWidgets.QButtonGroup()
-        self._exploitable_btn_group.setExclusive(True)
-        self._build_exploitable_panel()
-
-    def _build_exploitable_panel(self):
-        """Construit le contenu du panneau d'exploitabilité."""
-        if not self._exploitable_frame:
-            return
-        outer = self._exploitable_frame.layout()
-        if not outer:
-            outer = QtWidgets.QVBoxLayout(self._exploitable_frame)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-        while outer.count():
-            item = outer.takeAt(0)
-            w = item.widget()
-            if w:
-                w.setParent(None)
-
-        self._panel_widget = QtWidgets.QWidget()
-        self._panel_widget.setStyleSheet("background: transparent;")
-        outer.addWidget(self._panel_widget)
-
-        layout = QtWidgets.QVBoxLayout(self._panel_widget)
-        layout.setContentsMargins(8, 8, 8, 6)
-        layout.setSpacing(6)
-
-        self.lbl_exploitable = QtWidgets.QLabel(
-            self.translate("Exploitabilité vidéo", "Video Exploitability")
-        )
-        self.lbl_exploitable.setStyleSheet(
-            "color: #F2BFB4; font-size: 12px; font-weight: bold;"
-            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
-            " letter-spacing: 0.3px;"
-        )
-        layout.addWidget(self.lbl_exploitable)
-
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
-        layout.addWidget(sep)
-
-        self._choice_container = QtWidgets.QWidget()
-        self._choice_container.setStyleSheet("background: transparent;")
-        self._choice_layout = QtWidgets.QVBoxLayout(self._choice_container)
-        self._choice_layout.setContentsMargins(0, 4, 0, 4)
-        self._choice_layout.setSpacing(6)
-        layout.addWidget(self._choice_container)
-
-        self._status_badge = QtWidgets.QLabel(self.translate("Aucune sélection", "No selection"))
-        self._status_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._status_badge.setStyleSheet(
-            "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
-        )
-        layout.addWidget(self._status_badge)
-
-        # ── Commentaire ──────────────────────────────────────────────────────
-        sep2 = QtWidgets.QFrame()
-        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep2.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
-        layout.addWidget(sep2)
-
-        lbl_comment = QtWidgets.QLabel(self.translate("Commentaire", "Comment"))
-        lbl_comment.setStyleSheet(
-            "color: #7ec8e3; font-size: 11px; font-weight: bold;"
-            " font-family: 'Segoe UI', sans-serif;"
-        )
-        layout.addWidget(lbl_comment)
-
-        self._comment_edit = QtWidgets.QPlainTextEdit()
-        self._comment_edit.setPlaceholderText(
-            self.translate("Commentaire sur cette vidéo…", "Comment on this video…")
-        )
-        self._comment_edit.setStyleSheet(
-            "QPlainTextEdit {"
-            "  background-color: #0d1b2a; color: #F2BFB4;"
-            "  border: 1px solid #1e3448; border-radius: 4px;"
-            "  font-family: 'Segoe UI', sans-serif; font-size: 11px;"
-            "  padding: 4px;"
-            "}"
-            "QPlainTextEdit:focus { border-color: #2778A2; }"
-        )
-        self._comment_edit.setMinimumHeight(60)
-        self._comment_edit.setMaximumHeight(100)
-        self._comment_edit.setEnabled(False)
-        layout.addWidget(self._comment_edit)
-
-        # Timer de debounce pour ne pas écrire à chaque frappe
-        self._comment_timer = QtCore.QTimer()
-        self._comment_timer.setSingleShot(True)
-        self._comment_timer.setInterval(600)
-        self._comment_timer.timeout.connect(self._save_comment)
-        self._comment_edit.textChanged.connect(self._comment_timer.start)
-
-    # Couleurs des boutons selon la valeur d'exploitabilité
-    _EXPLOIT_COLORS = {
-        'oui':     ('#0d2b12', '#4CAF50'),   # fond, bordure/texte checked
-        'non':     ('#2b0d0d', '#D94F38'),
-        'habitat': ('#0a1f3a', '#2778A2'),
-        '?':       ('#2b1d00', '#E8A838'),
-    }
-
-    def _exploit_btn_style(self, choice: str) -> str:
-        bg, accent = self._EXPLOIT_COLORS.get(choice.lower(), ('#0d2b12', '#4CAF50'))
-        return (
-            "QPushButton {"
-            "  background-color: #162433; color: #7a9ab8;"
-            "  font-family: 'Segoe UI', sans-serif; font-size: 11px; font-weight: bold;"
-            "  border: 1px solid #1e3448; border-radius: 5px; padding: 5px 8px; text-align: center;"
-            "}"
-            "QPushButton:hover { background-color: #1e3448; color: #d4e8f5; border-color: #2778A2; }"
-            f"QPushButton:checked {{ background-color: {bg}; color: {accent}; border: 1px solid {accent}; }}"
-        )
-
-    def _rebuild_choice_buttons(self, choices: list[str], current: str):
-        """Reconstruit les boutons toggle d'exploitabilité en grille 2 colonnes."""
-        if not hasattr(self, '_choice_layout') or self._exploitable_btn_group is None:
-            return
-        for btn in self._exploitable_btn_group.buttons():
-            self._exploitable_btn_group.removeButton(btn)
-        while self._choice_layout.count():
-            item = self._choice_layout.takeAt(0)
-            if item.widget():
-                item.widget().setParent(None)
-
-        self._exploitable_choices = choices
-        self._rebuilding_buttons = True
-
-        grid = QtWidgets.QGridLayout()
-        grid.setSpacing(5)
-        grid.setContentsMargins(0, 0, 0, 0)
-        for i, choice in enumerate(choices):
-            btn = QtWidgets.QPushButton(choice)
-            btn.setCheckable(True)
-            btn.setChecked(choice == current)
-            btn.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
-            btn.setStyleSheet(self._exploit_btn_style(choice))
-            self._exploitable_btn_group.addButton(btn)
-            grid.addWidget(btn, i // 2, i % 2)
-            btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
-
-        grid_widget = QtWidgets.QWidget()
-        grid_widget.setStyleSheet("background: transparent;")
-        grid_widget.setLayout(grid)
-        self._choice_layout.addWidget(grid_widget)
-        self._rebuilding_buttons = False
-
-        n_rows = (len(choices) + 1) // 2
-        btn_h = 28
-        needed = 18 + 2 + n_rows * (btn_h + 5) + 24 + 16
-        if self._exploitable_frame:
-            self._exploitable_frame.setMinimumHeight(needed)
-            self._exploitable_frame.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Preferred,
-                QtWidgets.QSizePolicy.Policy.Minimum,
-            )
-            self._exploitable_frame.updateGeometry()
-        self._update_status_badge(current)
-
-    def _on_choice_toggled(self, checked: bool, choice: str):
-        if checked and not self._rebuilding_buttons:
-            self.on_exploitable_changed(choice)
-
-    def _update_status_badge(self, current: str):
-        if not hasattr(self, '_status_badge'):
-            return
-        val = str(current or "").strip()
-        if val:
-            _, accent = self._EXPLOIT_COLORS.get(val.lower(), ('#0d2b12', '#4CAF50'))
-            self._status_badge.setText(f"✓  {val}")
-            self._status_badge.setStyleSheet(
-                f"color: {accent}; font-size: 11px; font-weight: bold;"
-                " font-family: 'Segoe UI', sans-serif;"
-                f" background: transparent; border: 1px solid {accent};"
-                " border-radius: 5px; padding: 4px 8px;"
-            )
-        else:
-            self._status_badge.setText(self.translate("Non renseigné", "Not set"))
-            self._status_badge.setStyleSheet(
-                "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
-                " background: transparent; border: none;"
-            )
-
-    def refresh_combobox_values(self):
-        """Recharge les valeurs autorisées et reconstruit les boutons toggle depuis le JSON."""
-        if not self.current_json_path or not os.path.exists(self.current_json_path):
-            return
-        if not hasattr(self, '_choice_container'):
-            return
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            field = data.get("video_observation", {}).get("exploitable", {})
-            lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
-            choices = field.get(lang_key, [])
-            current = field.get("value", "") or ""
-            self._rebuild_choice_buttons(choices, current)
-        except Exception:
-            pass
-        self._load_comment()
-
-    def _load_comment(self):
-        """Charge le commentaire de qualification depuis le JSON vers le champ texte."""
-        if not hasattr(self, '_comment_edit'):
-            return
-        if not self.current_json_path or not os.path.exists(self.current_json_path):
-            self._comment_edit.setEnabled(False)
-            self._comment_edit.blockSignals(True)
-            self._comment_edit.setPlainText("")
-            self._comment_edit.blockSignals(False)
-            return
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            comment = data.get("video_observation", {}).get("commentaire_qualification", "") or ""
-        except Exception:
-            comment = ""
-        self._comment_edit.blockSignals(True)
-        self._comment_edit.setPlainText(comment)
-        self._comment_edit.blockSignals(False)
-        self._comment_edit.setEnabled(True)
-
-    def _save_comment(self):
-        """Persiste le commentaire de qualification dans le JSON."""
-        if not hasattr(self, '_comment_edit') or not self.current_json_path:
-            return
-        if not os.path.isfile(self.current_json_path):
-            return
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            data.setdefault("video_observation", {})["commentaire_qualification"] = \
-                self._comment_edit.toPlainText()
-            with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[QualifCtrl] _save_comment: {e!r}")
-
-    def on_exploitable_changed(self, text: str):
-        """Persiste la valeur d'exploitabilité dans le JSON et met à jour les indicateurs."""
-        if not self.current_json_path or not text:
-            return
-        try:
-            if not os.path.isfile(self.current_json_path):
-                return
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            data.setdefault("video_observation", {}).setdefault("exploitable", {})["value"] = text
-            with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            self._update_status_badge(text)
-            if self._on_qualification_changed:
-                self._on_qualification_changed()
-            if self.video_tree:
-                selected = self.video_tree.selectionModel().selectedRows()
-                if selected:
-                    item = self.video_model.itemFromIndex(selected[0].siblingAtColumn(0))
-                    if item:
-                        path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-                        if path:
-                            self.refresh_item_indicator(item, path)
-        except Exception as e:
-            print(f"[QualifCtrl] on_exploitable_changed: {e!r}")
 
     def refresh_item_indicator(self, item, video_path):
         """Colore l'item en vert si l'exploitabilité est renseignée, blanc sinon."""
@@ -926,7 +635,6 @@ class QualifController:
             self.update_camera_views(video_path, csv_system)
 
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
-        self.refresh_combobox_values()
         self.update_minimap(selected_name=video_name, show_dialog=False)
 
     # --- Minimap ---
@@ -1146,7 +854,6 @@ class QualifController:
                 if os.path.exists(csv_system):
                     self.update_camera_views(video_path, csv_system)
                 self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
-                self.refresh_combobox_values()
                 self.update_minimap(video_name, show_dialog=False)
                 break
 
