@@ -477,7 +477,7 @@ QPushButton[actif=&quot;true&quot;] {
 }</string>
                </property>
                <property name="text">
-                <string>Finir Validation</string>
+                <string>VALIDER</string>
                </property>
               </widget>
              </widget>

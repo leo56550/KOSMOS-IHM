@@ -292,6 +292,16 @@ class MetadonneesController:
         )
         btn_gpx.clicked.connect(self._import_gpx)
         tb_row.addWidget(btn_gpx)
+
+        btn_terrain = QtWidgets.QPushButton("FEUILLE TERRAIN")
+        btn_terrain.setStyleSheet(
+            "QPushButton{background:#2a1a3a;color:#c8a0e3;border:1px solid #7a3ab0;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#7a3ab0;color:white;}"
+        )
+        btn_terrain.clicked.connect(self._open_feuille_terrain)
+        tb_row.addWidget(btn_terrain)
         outer.addWidget(title_bar)
 
         # ── En-tête campagne ─────────────────────────────────────────────
@@ -1044,10 +1054,11 @@ class MetadonneesController:
         """Extrait (codestation, heure_hhmm) depuis un stem de fichier vidéo.
 
         Formats reconnus :
-          20190819140122_ATL_CC190001  → ('CC190001', '14:01')
+          202207181314_ATL_CC220006    → ('CC220006', '13:14')  [nouveau : HHmm]
+          20190819140122_ATL_CC190001  → ('CC190001', '14:01')  [ancien  : HHmmss]
           CC190001                     → ('CC190001', '')
         """
-        m = re.match(r'^(\d{8})(\d{6})_[^_]+_(.+)$', stem)
+        m = re.match(r'^(\d{8})(\d{4,6})_[^_]+_(.+)$', stem)
         if m:
             time_raw = m.group(2)
             heure = f"{time_raw[0:2]}:{time_raw[2:4]}"
@@ -1310,13 +1321,22 @@ class MetadonneesController:
 
     @staticmethod
     def _video_datetime_from_stem(stem: str) -> datetime | None:
-        """Extrait le datetime UTC depuis un stem de fichier vidéo (format YYYYMMDDHHMMSS_...)."""
-        m = re.match(r'^(\d{8})(\d{6})', stem)
+        """Extrait le datetime UTC depuis un stem de fichier vidéo.
+
+        Formats reconnus :
+          202207181314_ATL_…   → datetime(2022, 7, 18, 13, 14)  [HHmm]
+          20190819140122_ATL_… → datetime(2019, 8, 19, 14,  1)  [HHmmss]
+        """
+        m = re.match(r'^(\d{8})(\d{4,6})', stem)
         if not m:
             return None
         try:
-            dt_str = m.group(1) + m.group(2)
-            return datetime.strptime(dt_str, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            date_str, time_str = m.group(1), m.group(2)
+            if len(time_str) == 6:
+                fmt = "%Y%m%d%H%M%S"
+            else:
+                fmt = "%Y%m%d%H%M"
+            return datetime.strptime(date_str + time_str, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             return None
 
@@ -1418,6 +1438,95 @@ class MetadonneesController:
             self.translate("Import GPX terminé", "GPX import done"),
             msg
         )
+
+    def _open_feuille_terrain(self):
+        """Ouvre un explorateur pour choisir une image (JPG/PNG) et l'affiche dans un QDialog."""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.widget,
+            self.translate("Ouvrir feuille terrain", "Open field sheet"),
+            "",
+            "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff);;All files (*)"
+        )
+        if not path:
+            return
+
+        pixmap = QtGui.QPixmap(path)
+        if pixmap.isNull():
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Image invalide", "Invalid image"),
+                self.translate(
+                    f"Impossible de charger l'image :\n{path}",
+                    f"Cannot load image:\n{path}"
+                )
+            )
+            return
+
+        dlg = QtWidgets.QDialog(self.widget)
+        dlg.setWindowTitle(
+            self.translate("Feuille terrain", "Field sheet")
+            + f" — {os.path.basename(path)}"
+        )
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setStyleSheet("background-color: #0d1b2a;")
+
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        max_w = int(screen.width() * 0.90)
+        max_h = int(screen.height() * 0.90)
+
+        scaled = pixmap.scaled(
+            max_w, max_h,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background-color: #0d1b2a; border: none;")
+
+        lbl = QtWidgets.QLabel()
+        lbl.setPixmap(scaled)
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("background-color: #0d1b2a;")
+        scroll.setWidget(lbl)
+        layout.addWidget(scroll)
+
+        # Barre basse : bouton fermer + indicateur de zoom
+        bar = QtWidgets.QWidget()
+        bar.setFixedHeight(36)
+        bar.setStyleSheet("background-color: #111f2e; border-top: 1px solid #1e3448;")
+        bar_layout = QtWidgets.QHBoxLayout(bar)
+        bar_layout.setContentsMargins(10, 0, 10, 0)
+
+        lbl_hint = QtWidgets.QLabel(
+            self.translate("Clic droit → Enregistrer l'image sous…", "Right-click → Save image as…")
+        )
+        lbl_hint.setStyleSheet("color: #506070; font-size: 10px;")
+
+        btn_close = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
+        btn_close.setFixedSize(80, 24)
+        btn_close.setStyleSheet(
+            "QPushButton{background:#1e3448;color:#a0c4d8;border:1px solid #2778a2;"
+            "border-radius:4px;font-size:10px;}"
+            "QPushButton:hover{background:#2778a2;color:white;}"
+        )
+        btn_close.clicked.connect(dlg.close)
+
+        bar_layout.addWidget(lbl_hint)
+        bar_layout.addStretch()
+        bar_layout.addWidget(btn_close)
+        layout.addWidget(bar)
+
+        dlg.resize(
+            min(scaled.width() + 20, max_w),
+            min(scaled.height() + 36, max_h),
+        )
+        self._terrain_dialog = dlg  # évite le garbage collect
+        dlg.show()
 
     def _apply_survey_to_all(self):
         """Propage les valeurs de l'en-tête campagne à toutes les vidéos du dossier de travail."""

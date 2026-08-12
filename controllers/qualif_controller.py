@@ -38,6 +38,9 @@ class QualifController:
         self.video_model = QtGui.QStandardItemModel()
         self.trash_model = QtGui.QStandardItemModel()
         self.selected_video_name = None
+        self._selected_video_path: str | None = None
+        self._video_row_icon_labels: dict = {}
+        self._video_row_widgets: dict = {}
         self.all_coords = {}
         self.campaign_fields = {}
         self._working_dir = ""
@@ -112,84 +115,63 @@ class QualifController:
     # --- Init helpers ---
 
     def _init_video_list(self):
-        """Configure le QTreeView vidéo avec ses en-têtes, drag-drop et menu contextuel."""
+        """Configure le backend vidéo et crée le widget de liste personnalisé GARDER/JETER."""
         self.video_model.setHorizontalHeaderLabels(["File", "Duration", "Size", "Date"])
         self.video_tree.setModel(self.video_model)
+        self.video_tree.setVisible(False)
 
         splitter = self.video_tree.parentWidget()
         self.widget_video_container = QtWidgets.QWidget()
         layout_block = QtWidgets.QVBoxLayout(self.widget_video_container)
         layout_block.setContentsMargins(0, 0, 0, 0)
-        layout_block.setSpacing(5)
+        layout_block.setSpacing(3)
+
         self.lbl_videos_title = QtWidgets.QLabel("Campaign Videos")
         self.lbl_videos_title.setStyleSheet(
             "font-size: 13px; font-weight: bold; color: #F2BFB4;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
         )
         self.lbl_videos_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        layout_block.addWidget(self.lbl_videos_title)
+
+        self._videos_scroll = QtWidgets.QScrollArea()
+        self._videos_scroll.setWidgetResizable(True)
+        self._videos_scroll.setStyleSheet("background-color: #0d1b2a; border: none;")
+        self._videos_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._videos_scroll_content = QtWidgets.QWidget()
+        self._videos_scroll_layout = QtWidgets.QVBoxLayout(self._videos_scroll_content)
+        self._videos_scroll_layout.setContentsMargins(4, 4, 4, 4)
+        self._videos_scroll_layout.setSpacing(2)
+        self._videos_scroll_layout.addStretch()
+        self._videos_scroll.setWidget(self._videos_scroll_content)
+        layout_block.addWidget(self._videos_scroll)
+
         if hasattr(splitter, "indexOf"):
             index = splitter.indexOf(self.video_tree)
-            layout_block.addWidget(self.lbl_videos_title)
-            layout_block.addWidget(self.video_tree)
             splitter.insertWidget(index, self.widget_video_container)
 
-        self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
-        header = self.video_tree.header()
-        header.setStretchLastSection(False)
-        # Colonne 0 (fichier) : s'étire pour occuper tout l'espace disponible
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        # Autres colonnes : taille calculée sur le contenu
-        for i in range(1, self.video_model.columnCount()):
-            header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.video_tree.clicked.connect(self.on_video_selected)
-        self.video_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self.video_tree.customContextMenuRequested.connect(self.show_context_menu)
-        self.video_tree.setDragEnabled(True)
-        self.video_tree.setAcceptDrops(True)
-        self.video_tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DragDrop)
-        self.video_tree.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
-        self.video_tree.dragEnterEvent = self.video_drag_enter_event
-        self.video_tree.dropEvent = self.video_drop_event
-
     def _init_trash_list(self):
-        """Configure le QTreeView poubelle avec drag-drop bidirectionnel."""
+        """Configure le backend poubelle (modèle uniquement — arbre masqué dans la liste unifiée)."""
         if not self.trash_video_tree:
             return
         self.trash_model.setHorizontalHeaderLabels(["File", "Duration", "Size"])
         self.trash_video_tree.setModel(self.trash_model)
+        self.trash_video_tree.setVisible(False)
 
         splitter_trash = self.trash_video_tree.parentWidget()
         self.widget_trash_container = QtWidgets.QWidget()
         layout_block_trash = QtWidgets.QVBoxLayout(self.widget_trash_container)
         layout_block_trash.setContentsMargins(0, 0, 0, 0)
-        layout_block_trash.setSpacing(5)
-        self.lbl_trash_title = QtWidgets.QLabel("Removed Videos")
-        self.lbl_trash_title.setStyleSheet(
-            "font-size: 13px; font-weight: bold; color: #D94F38;"
-            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif; padding-bottom: 2px;"
-        )
-        self.lbl_trash_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_trash_title = QtWidgets.QLabel("Removed Videos")  # conservé pour set_language
+
         if hasattr(splitter_trash, "indexOf"):
             index_trash = splitter_trash.indexOf(self.trash_video_tree)
-            layout_block_trash.addWidget(self.lbl_trash_title)
             layout_block_trash.addWidget(self.trash_video_tree)
             splitter_trash.insertWidget(index_trash, self.widget_trash_container)
 
-        self.trash_video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
-        trash_header = self.trash_video_tree.header()
-        trash_header.setStretchLastSection(False)
-        trash_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        for i in range(1, self.trash_model.columnCount()):
-            trash_header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.trash_video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.trash_video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.trash_video_tree.setAcceptDrops(True)
-        self.trash_video_tree.setDragEnabled(True)
-        self.trash_video_tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DragDrop)
-        self.trash_video_tree.dragEnterEvent = self.trash_drag_enter_event
-        self.trash_video_tree.dropEvent = self.trash_drop_event
+        self.widget_trash_container.setVisible(False)
 
     def _configure_left_splitter(self):
         """Abaisse les minimums du splitter vertical gauche et fixe les facteurs d'étirement."""
@@ -199,19 +181,14 @@ class QualifController:
         if not isinstance(splitter, QtWidgets.QSplitter):
             return
 
-        # Le .ui impose minimumHeight=430 sur frame_campagne et 200 sur chaque arbre,
-        # soit 830 px minimum — infaisable sur la plupart des écrans.
-        # On abaisse ces minimums : le contenu reste accessible via les scrollbars.
         self.frame_campaign.setMinimumHeight(120)
-        if self.video_tree:
-            self.video_tree.setMinimumHeight(80)
-        if self.trash_video_tree:
-            self.trash_video_tree.setMinimumHeight(60)
+        if hasattr(self, 'widget_video_container'):
+            self.widget_video_container.setMinimumHeight(80)
 
-        # Facteurs : frame_campagne fixe (stretch 0), arbres se partagent le reste
+        # Section campagne fixe (stretch 0), liste vidéo prend le reste (stretch 2)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 2)
-        splitter.setStretchFactor(2, 1)
+        splitter.setStretchFactor(2, 0)  # container poubelle masqué
 
     def _reset_left_splitter_sizes(self):
         """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible)."""
@@ -223,11 +200,259 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        campaign_h = max(320, int(total * 0.50))
-        remaining = max(0, total - campaign_h)
-        video_h = max(80, int(remaining * 0.68))
-        trash_h = max(40, remaining - video_h)
-        splitter.setSizes([campaign_h, video_h, trash_h])
+        campaign_h = max(320, int(total * 0.45))
+        video_h = max(80, total - campaign_h)
+        splitter.setSizes([campaign_h, video_h, 0])
+
+    # --- Liste GARDER / JETER ---
+
+    def _rebuild_video_rows(self):
+        """Reconstruit la liste unifiée des vidéos avec les boutons GARDER et JETER."""
+        if not hasattr(self, '_videos_scroll_layout'):
+            return
+
+        self._video_row_icon_labels.clear()
+        self._video_row_widgets.clear()
+
+        # Vider le layout (garder le stretch en dernier)
+        while self._videos_scroll_layout.count() > 1:
+            item = self._videos_scroll_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
+
+        # Vidéos gardées
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            dur_item = self.video_model.item(row, 1)
+            size_item = self.video_model.item(row, 2)
+            row_widget = self._build_video_row_widget(
+                video_path=str(video_path),
+                video_name=item.text(),
+                duration=dur_item.text() if dur_item else "",
+                size=size_item.text() if size_item else "",
+                icon=item.icon(),
+                is_trash=False,
+            )
+            self._videos_scroll_layout.insertWidget(
+                self._videos_scroll_layout.count() - 1, row_widget
+            )
+
+        # Vidéos jetées
+        for row in range(self.trash_model.rowCount()):
+            item = self.trash_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            dur_item = self.trash_model.item(row, 1)
+            size_item = self.trash_model.item(row, 2)
+            row_widget = self._build_video_row_widget(
+                video_path=str(video_path),
+                video_name=item.text(),
+                duration=dur_item.text() if dur_item else "",
+                size=size_item.text() if size_item else "",
+                icon=item.icon(),
+                is_trash=True,
+            )
+            self._videos_scroll_layout.insertWidget(
+                self._videos_scroll_layout.count() - 1, row_widget
+            )
+
+    def _build_video_row_widget(self, video_path: str, video_name: str,
+                                duration: str, size: str,
+                                icon: "QtGui.QIcon", is_trash: bool) -> QtWidgets.QFrame:
+        """Construit un widget de ligne vidéo avec indicateur couleur, vignette et boutons."""
+        is_selected = video_path == (self._selected_video_path or "")
+        bg = "#1e3a50" if is_selected else ("#111820" if is_trash else "#1a2a3a")
+        border = "#2778a2" if is_selected else ("#111820" if is_trash else "#1a2a3a")
+
+        frame = QtWidgets.QFrame()
+        frame.setFixedHeight(56)
+        frame.setStyleSheet(
+            f"QFrame#vrow {{ background-color: {bg}; border-radius: 4px;"
+            f" border: 1px solid {border}; }}"
+        )
+        frame.setObjectName("vrow")
+
+        hlayout = QtWidgets.QHBoxLayout(frame)
+        hlayout.setContentsMargins(4, 4, 4, 4)
+        hlayout.setSpacing(5)
+
+        # Barre de couleur (indicateur de complétion)
+        color = self._get_completion_color(video_path)
+        if is_trash:
+            color = QtGui.QColor("#555555")
+        color_bar = QtWidgets.QFrame()
+        color_bar.setFixedWidth(4)
+        color_bar.setStyleSheet(
+            f"background-color: {color.name()}; border-radius: 2px; border: none;"
+        )
+        hlayout.addWidget(color_bar)
+
+        # Vignette
+        icon_lbl = QtWidgets.QLabel()
+        icon_lbl.setFixedSize(THUMB_W, THUMB_H)
+        icon_lbl.setScaledContents(True)
+        icon_lbl.setStyleSheet("background-color: #0a1520; border-radius: 3px; border: none;")
+        if not icon.isNull():
+            icon_lbl.setPixmap(icon.pixmap(THUMB_W, THUMB_H))
+        hlayout.addWidget(icon_lbl)
+        self._video_row_icon_labels[video_path] = icon_lbl
+
+        # Nom + infos
+        info_col = QtWidgets.QWidget()
+        info_col.setStyleSheet("background: transparent;")
+        info_col.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        info_layout = QtWidgets.QVBoxLayout(info_col)
+        info_layout.setContentsMargins(2, 0, 2, 0)
+        info_layout.setSpacing(2)
+
+        lbl_name = QtWidgets.QLabel(video_name)
+        lbl_name.setStyleSheet(
+            f"color: {'#777777' if is_trash else '#d4e8f5'};"
+            " font-size: 11px; font-weight: bold; background: transparent;"
+        )
+        lbl_name.setToolTip(video_name)
+        lbl_name.setWordWrap(False)
+
+        lbl_info = QtWidgets.QLabel(f"{duration}  {size}")
+        lbl_info.setStyleSheet("color: #506070; font-size: 10px; background: transparent;")
+
+        info_layout.addWidget(lbl_name)
+        info_layout.addWidget(lbl_info)
+        hlayout.addWidget(info_col)
+
+        # Bouton GARDER
+        btn_garder = QtWidgets.QPushButton("GARDER")
+        btn_garder.setFixedSize(68, 28)
+        if not is_trash:
+            btn_garder.setStyleSheet(
+                "QPushButton { background-color: #1e5c30; color: #7dffaa;"
+                " border: 1px solid #4CAF50; border-radius: 4px;"
+                " font-size: 10px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #2e7a42; }"
+            )
+        else:
+            btn_garder.setStyleSheet(
+                "QPushButton { background-color: #111e14; color: #3a5a42;"
+                " border: 1px solid #223322; border-radius: 4px;"
+                " font-size: 10px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #1e4028; color: #7dffaa; }"
+            )
+
+        # Bouton JETER
+        btn_jeter = QtWidgets.QPushButton("JETER")
+        btn_jeter.setFixedSize(68, 28)
+        if is_trash:
+            btn_jeter.setStyleSheet(
+                "QPushButton { background-color: #5c1e1e; color: #ff8080;"
+                " border: 1px solid #D94F38; border-radius: 4px;"
+                " font-size: 10px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #7a2e2e; }"
+            )
+        else:
+            btn_jeter.setStyleSheet(
+                "QPushButton { background-color: #1e1111; color: #5a3a3a;"
+                " border: 1px solid #331111; border-radius: 4px;"
+                " font-size: 10px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #402020; color: #ff8080; }"
+            )
+
+        hlayout.addWidget(btn_garder)
+        hlayout.addWidget(btn_jeter)
+
+        self._video_row_widgets[video_path] = frame
+
+        # Connexions
+        if not is_trash:
+            btn_garder.clicked.connect(
+                lambda _, p=video_path: self._on_video_row_clicked(p)
+            )
+            btn_jeter.clicked.connect(
+                lambda _, p=video_path: self._move_to_trash_by_path(p)
+            )
+        else:
+            btn_garder.clicked.connect(
+                lambda _, p=video_path: self._restore_from_trash_by_path(p)
+            )
+            btn_jeter.clicked.connect(
+                lambda _, p=video_path: self._on_video_row_clicked(p)
+            )
+        frame.mousePressEvent = lambda _e, p=video_path: self._on_video_row_clicked(p)
+
+        return frame
+
+    def _on_video_row_clicked(self, video_path: str):
+        """Sélectionne une vidéo depuis la liste personnalisée."""
+        prev_path = self._selected_video_path
+        self._selected_video_path = video_path
+
+        # Mettre à jour le style des lignes affectées sans reconstruire la liste
+        for path, frame in self._video_row_widgets.items():
+            if path not in (prev_path, video_path):
+                continue
+            is_sel = path == video_path
+            is_t = not any(
+                self.video_model.item(r, 0) is not None
+                and str(self.video_model.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole)) == path
+                for r in range(self.video_model.rowCount())
+            )
+            bg = "#1e3a50" if is_sel else ("#111820" if is_t else "#1a2a3a")
+            bd = "#2778a2" if is_sel else ("#111820" if is_t else "#1a2a3a")
+            frame.setStyleSheet(
+                f"QFrame#vrow {{ background-color: {bg}; border-radius: 4px;"
+                f" border: 1px solid {bd}; }}"
+            )
+
+        # Résoudre le nom
+        video_name = None
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
+                video_name = item.text()
+                break
+        if video_name is None:
+            for row in range(self.trash_model.rowCount()):
+                item = self.trash_model.item(row, 0)
+                if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
+                    video_name = item.text()
+                    break
+
+        if video_name:
+            self.selected_video_name = video_name
+
+        video_dir = os.path.dirname(video_path)
+        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        if os.path.exists(csv_system):
+            self.update_camera_views(video_path, csv_system)
+
+        self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+        self.update_minimap(selected_name=video_name, show_dialog=False)
+
+    def _move_to_trash_by_path(self, video_path: str):
+        """Déplace une vidéo vers la corbeille depuis son chemin."""
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
+                self.delete_video_by_index(self.video_model.index(row, 0))
+                return
+
+    def _restore_from_trash_by_path(self, video_path: str):
+        """Restaure une vidéo depuis la corbeille."""
+        for row in range(self.trash_model.rowCount()):
+            item = self.trash_model.item(row, 0)
+            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
+                self.restore_video_by_index(self.trash_model.index(row, 0))
+                return
 
     def _init_minimap(self):
         """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""
@@ -372,6 +597,7 @@ class QualifController:
 
         self._reset_left_splitter_sizes()
         self.refresh_completion_colors()
+        self._rebuild_video_rows()
 
     # ── Indicateur de complétion ─────────────────────────────────────────
 
@@ -429,6 +655,7 @@ class QualifController:
             item = self.video_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == str(video_path):
                 self._apply_completion_color(row)
+                self._rebuild_video_rows()
                 return
 
     def _start_thumbnail_generation(self):
@@ -455,11 +682,16 @@ class QualifController:
         self._thumb_worker.start()
 
     def _on_thumbnail_ready(self, model_key: str, row: int, icon: QtGui.QIcon):
-        """Applique la vignette sur l'item du modèle correspondant."""
+        """Applique la vignette sur l'item du modèle et sur la liste personnalisée."""
         model = self.video_model if model_key == 'main' else self.trash_model
         item = model.item(row, 0)
         if item:
             item.setIcon(icon)
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if video_path:
+                lbl = self._video_row_icon_labels.get(str(video_path))
+                if lbl:
+                    lbl.setPixmap(icon.pixmap(THUMB_W, THUMB_H))
 
     def _start_watching_campaign(self, directory: str):
         """Surveille la racine campagne et ses sous-dossiers vidéo directs."""
@@ -527,6 +759,7 @@ class QualifController:
                     self.all_coords[video["name"]] = coords
 
         self._start_watching_campaign(self.current_campaign_folder)
+        self._rebuild_video_rows()
 
     def load_and_display_campaign_json(self, json_path: str):
         if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:
@@ -839,23 +1072,9 @@ class QualifController:
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item and item.text() == video_name:
-                index = self.video_model.indexFromItem(item)
-                self.video_tree.blockSignals(True)
-                self.video_tree.selectionModel().setCurrentIndex(
-                    index,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect | QtCore.QItemSelectionModel.SelectionFlag.Rows
-                )
-                self.video_tree.scrollTo(index)
-                self.video_tree.blockSignals(False)
-                self.selected_video_name = video_name
                 video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-                video_dir = os.path.dirname(video_path)
-                csv_system = os.path.join(video_dir, "systemEvent.csv")
-                if os.path.exists(csv_system):
-                    self.update_camera_views(video_path, csv_system)
-                self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
-                self.load_exploitable_value()
-                self.update_minimap(video_name, show_dialog=False)
+                if video_path:
+                    self._on_video_row_clicked(str(video_path))
                 break
 
     # --- Camera views / thumbnails ---
@@ -1034,7 +1253,10 @@ class QualifController:
         self.video_model.removeRow(row)
         if self.selected_video_name == video_name:
             self.selected_video_name = None
-
+            self._selected_video_path = None
+        self._rebuild_video_rows()
+        if self._on_qualification_changed:
+            self._on_qualification_changed()
 
     def restore_video_by_index(self, index: QtCore.QModelIndex):
         """Remet la vidéo dans la liste principale et recrée son dossier de sortie."""
@@ -1070,6 +1292,7 @@ class QualifController:
             self._thumb_worker = ThumbnailWorkerMulti([('main', new_row, video_path)])
             self._thumb_worker.thumbnail_ready.connect(self._on_thumbnail_ready)
             self._thumb_worker.start()
+        self._rebuild_video_rows()
 
     def trash_drag_enter_event(self, event: QtGui.QDragEnterEvent):
         """Accepte le glisser-déposer depuis video_tree vers la poubelle."""

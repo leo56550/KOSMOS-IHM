@@ -80,7 +80,7 @@ def get_campaign_json_data(campaign_folder: str, extract_system: bool = False) -
     if not campaign_folder or not os.path.exists(campaign_folder):
         return None
 
-    for root, dirs, files in os.walk(campaign_folder):
+    for root, _, __ in os.walk(campaign_folder):
         if "trash" in root.split(os.sep):
             continue
 
@@ -111,15 +111,21 @@ def get_campaign_json_data(campaign_folder: str, extract_system: bool = False) -
 def build_video_output_name(video_path: str) -> str:
     """Construit le nom de sortie d'une vidéo depuis ses métadonnées JSON.
 
-    Format cible : YYYYMMDD_REGION_CODESTATION  (ex: 20260618_LLL_IF260042)
-    - YYYYMMDD   = survey.date.value
-    - REGION     = survey.region.value
-    - CODESTATION = survey.zone.value + année 2 chiffres + index station 4 chiffres
-      (l'index station = nom numérique du dossier parent de la vidéo)
+    Format cible : YYYYMMDDhhmm_ZONE_CODESTATION  (ex: 202207181314_ATL_CC220006)
+    - YYYYMMDDhhmm = survey.date + heure extraite du stem (ou video_observation.time)
+    - ZONE         = survey.zone.value
+    - CODESTATION  = survey.zone.value + année 2 chiffres + index station 4 chiffres
 
     Fallback sur le stem du fichier vidéo si le JSON est absent ou incomplet.
     """
     stem = os.path.splitext(os.path.basename(video_path))[0]
+
+    # Extraire HHmm depuis le stem (formats : YYYYMMDDhhmm_... ou YYYYMMDDHHmmss_...)
+    hhmm = ""
+    m_stem = re.match(r'^\d{8}(\d{4,6})', stem)
+    if m_stem:
+        hhmm = m_stem.group(1)[:4]
+
     json_path = get_video_json_path(video_path)
     if not os.path.isfile(json_path):
         return stem
@@ -137,11 +143,17 @@ def build_video_output_name(video_path: str) -> str:
     if not (date and region and zone):
         return stem
 
+    # Si pas de temps dans le stem, essayer video_observation.time
+    if not hhmm:
+        obs_time = (data.get("video_observation", {}).get("time", {}).get("value") or "").strip()
+        if obs_time:
+            hhmm = obs_time.replace(":", "").replace("h", "")[:4]
+
     year_2d = date[2:4] if len(date) >= 4 else "00"
 
     # Index station = nom du dossier parent de la vidéo.
     # Cas 1 – nom purement numérique (ex: "0042") → index direct
-    # Cas 2 – nom déjà formaté (ex: "20260618_LLL_IF260042") → 4 derniers chiffres
+    # Cas 2 – nom déjà formaté (ex: "202207181314_ATL_CC220006") → 4 derniers chiffres
     parent_name = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
     try:
         station_idx = f"{int(parent_name):04d}"
@@ -150,7 +162,8 @@ def build_video_output_name(video_path: str) -> str:
         station_idx = m.group(1) if m else "0000"
 
     codestation = f"{zone}{year_2d}{station_idx}"
-    return f"{date}_{region}_{codestation}"
+    date_hhmm = f"{date}{hhmm}" if hhmm else date
+    return f"{date_hhmm}_{region}_{codestation}"
 
 
 def migrate_json_to_template(json_path: str) -> bool:
@@ -246,9 +259,21 @@ def resolve_video_json_path(working_dir: str, video_path: str) -> str:
 def get_working_video_dir(working_dir: str, video_path: str) -> str:
     """Retourne le sous-dossier vidéo dans le répertoire de travail.
 
-    Le nom du sous-dossier est construit depuis les métadonnées JSON :
-    YYYYMMDD_REGION_CODESTATION  (ex: 20260618_LLL_IF260042)
+    Cherche d'abord un dossier existant contenant le JSON de cette vidéo
+    (compatibilité avec les campagnes créées avant le nouveau format de nommage),
+    puis calcule le chemin au nouveau format si aucun dossier n'est trouvé.
     """
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    json_fname = f"{stem}.json"
+
+    # Compat : scanner les sous-dossiers existants pour retrouver le JSON
+    if os.path.isdir(working_dir):
+        for folder in os.listdir(working_dir):
+            folder_path = os.path.join(working_dir, folder)
+            if os.path.isdir(folder_path) and os.path.isfile(os.path.join(folder_path, json_fname)):
+                return folder_path
+
+    # Aucun dossier existant → calculer avec le nouveau format
     name = build_video_output_name(video_path)
     return os.path.join(working_dir, name)
 

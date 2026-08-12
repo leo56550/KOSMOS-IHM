@@ -136,22 +136,26 @@ class ValidationController:
         layout.addWidget(self._status_badge)
         layout.addStretch()
 
-    def _rebuild_choice_buttons(self, choices: list[str], current: str):
-        """Reconstruit les boutons toggle en grille 2 colonnes selon les valeurs autorisées."""
-        # Nettoie les anciens boutons
-        for btn in self._exploitable_btn_group.buttons():
-            self._exploitable_btn_group.removeButton(btn)
-        while self._choice_layout.count():
-            item = self._choice_layout.takeAt(0)
-            if item.widget():
-                item.widget().setParent(None)
+    # Couleurs par valeur d'exploitabilité (bg_checked, color_checked, border_checked, hint_bg)
+    _EXPLOITABLE_COLORS = {
+        "oui":       ("#1a4a2e", "#4CAF50", "#4CAF50", "#0f2a1a"),
+        "yes":       ("#1a4a2e", "#4CAF50", "#4CAF50", "#0f2a1a"),
+        "non":       ("#4a1a1a", "#ff6060", "#D94F38", "#2a0f0f"),
+        "no":        ("#4a1a1a", "#ff6060", "#D94F38", "#2a0f0f"),
+        "partielle": ("#4a3a0e", "#E8C838", "#E8A838", "#2a200a"),
+        "partial":   ("#4a3a0e", "#E8C838", "#E8A838", "#2a200a"),
+        "?":         ("#2a2a2a", "#aaaaaa", "#777777", "#1a1a1a"),
+    }
 
-        self._exploitable_choices = choices
-        self._rebuilding_buttons = True  # bloque on_exploitable_changed pendant setChecked
-
-        _BTN_BASE = (
+    def _exploitable_btn_style(self, choice: str) -> str:
+        """Retourne le stylesheet d'un bouton toggle avec couleur spécifique à sa valeur."""
+        key = choice.lower().strip()
+        bg_c, col_c, brd_c, hint_bg = self._EXPLOITABLE_COLORS.get(
+            key, ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
+        )
+        return (
             "QPushButton {"
-            "  background-color: #162433;"
+            f"  background-color: {hint_bg};"
             "  color: #7a9ab8;"
             "  font-family: 'Segoe UI', sans-serif;"
             "  font-size: 11px;"
@@ -166,14 +170,25 @@ class ValidationController:
             "  color: #d4e8f5;"
             "  border-color: #2778A2;"
             "}"
-            "QPushButton:checked {"
-            "  background-color: #1a4a2e;"
-            "  color: #4CAF50;"
-            "  border: 1px solid #4CAF50;"
+            f"QPushButton:checked {{"
+            f"  background-color: {bg_c};"
+            f"  color: {col_c};"
+            f"  border: 2px solid {brd_c};"
             "}"
         )
 
-        # Grille 2 colonnes pour tenir dans la hauteur disponible
+    def _rebuild_choice_buttons(self, choices: list[str], current: str):
+        """Reconstruit les boutons toggle en grille 2 colonnes selon les valeurs autorisées."""
+        for btn in self._exploitable_btn_group.buttons():
+            self._exploitable_btn_group.removeButton(btn)
+        while self._choice_layout.count():
+            item = self._choice_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        self._exploitable_choices = choices
+        self._rebuilding_buttons = True
+
         grid = QtWidgets.QGridLayout()
         grid.setSpacing(5)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -186,7 +201,7 @@ class ValidationController:
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Fixed
             )
-            btn.setStyleSheet(_BTN_BASE)
+            btn.setStyleSheet(self._exploitable_btn_style(choice))
             self._exploitable_btn_group.addButton(btn)
             grid.addWidget(btn, i // 2, i % 2)
             btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
@@ -217,15 +232,21 @@ class ValidationController:
             self.on_exploitable_changed(choice)
 
     def _update_status_badge(self, current: str):
-        """Met à jour le badge de statut sous les boutons."""
+        """Met à jour le badge de statut sous les boutons avec la couleur de la valeur."""
         if not hasattr(self, '_status_badge'):
             return
         if current and str(current).strip():
+            key = current.lower().strip()
+            _bg_c, col_c, brd_c, _hint = self._EXPLOITABLE_COLORS.get(
+                key, ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
+            )
+            # Badge : bg légèrement teinté de la couleur de la valeur
+            bg_badge = _hint if _hint else "#0d1b0f"
             self._status_badge.setText(f"✓  {current}")
             self._status_badge.setStyleSheet(
-                "color: #4CAF50; font-size: 11px; font-weight: bold;"
+                f"color: {col_c}; font-size: 11px; font-weight: bold;"
                 " font-family: 'Segoe UI', sans-serif;"
-                " background: #0d1b0f; border: 1px solid #2a6a2a;"
+                f" background: {bg_badge}; border: 1px solid {brd_c};"
                 " border-radius: 5px; padding: 4px 8px;"
             )
         else:
