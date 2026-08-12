@@ -76,9 +76,13 @@ class QualifController:
             self.scroll_campaign.setWidget(self.dynamic_form_container)
             layout.addWidget(self.scroll_campaign)
 
+        self._exploitable_frame = None
+        self._current_exploitable_value = ""
+
         self._init_video_list()
         self._init_trash_list()
         self._configure_left_splitter()
+        self._init_exploitable_panel()
         self._init_minimap()
         self._init_miniature_area()
         self.set_language(self.current_language)
@@ -101,6 +105,8 @@ class QualifController:
             self.lbl_videos_title.setText(self.translate("Vidéos de campagne", "Campaign Videos"))
         if hasattr(self, 'lbl_trash_title'):
             self.lbl_trash_title.setText(self.translate("Vidéos supprimées", "Removed Videos"))
+        if hasattr(self, 'lbl_exploitable'):
+            self.lbl_exploitable.setText(self.translate("Exploitabilité", "Exploitability"))
         header_labels = [
             self.translate("Fichier", "File"),
             self.translate("Durée", "Duration"),
@@ -223,11 +229,12 @@ class QualifController:
         total = splitter.height()
         if total <= 0:
             return
-        campaign_h = max(320, int(total * 0.50))
-        remaining = max(0, total - campaign_h)
+        exploit_h = 130
+        campaign_h = max(280, int(total * 0.45))
+        remaining = max(0, total - campaign_h - exploit_h)
         video_h = max(80, int(remaining * 0.68))
         trash_h = max(40, remaining - video_h)
-        splitter.setSizes([campaign_h, video_h, trash_h])
+        splitter.setSizes([campaign_h, video_h, trash_h, exploit_h])
 
     def _init_minimap(self):
         """Crée le MapBridge, le WebChannel et le QDialog carte de campagne."""
@@ -264,6 +271,170 @@ class QualifController:
         main_layout = QtWidgets.QVBoxLayout(self.frame_miniature)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll_area)
+
+    # --- Exploitabilité ---
+
+    _EXPLOIT_COLORS = {
+        'oui':          ('#0d2b12', '#4CAF50', '#1a4a1a', '#6ee06e'),
+        'yes':          ('#0d2b12', '#4CAF50', '#1a4a1a', '#6ee06e'),
+        'non':          ('#2b0d0d', '#D94F38', '#4a1a1a', '#e87060'),
+        'no':           ('#2b0d0d', '#D94F38', '#4a1a1a', '#e87060'),
+        'habitat':      ('#0a1f3a', '#2778A2', '#1a3a5a', '#5ab0e0'),
+        '?':            ('#2b1d00', '#E8A838', '#4a3200', '#f0c060'),
+        'communication':('#1a1a3a', '#9a7ae0', '#28286a', '#b8a0f0'),
+    }
+
+    def _init_exploitable_panel(self):
+        """Crée le panneau d'exploitabilité avec boutons colorés en bas du splitter gauche."""
+        if not self.frame_campaign:
+            return
+        splitter = self.frame_campaign.parentWidget()
+        if not isinstance(splitter, QtWidgets.QSplitter):
+            return
+
+        self._exploitable_frame = QtWidgets.QFrame()
+        self._exploitable_frame.setStyleSheet("background-color: #0d1b2a; border: none;")
+        self._exploitable_frame.setMinimumHeight(100)
+        splitter.addWidget(self._exploitable_frame)
+        splitter.setStretchFactor(splitter.count() - 1, 0)
+
+        layout = QtWidgets.QVBoxLayout(self._exploitable_frame)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        self.lbl_exploitable = QtWidgets.QLabel(self.translate("Exploitabilité", "Exploitability"))
+        self.lbl_exploitable.setStyleSheet(
+            "color: #F2BFB4; font-size: 12px; font-weight: bold;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+        )
+        layout.addWidget(self.lbl_exploitable)
+
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        layout.addWidget(sep)
+
+        self._exploit_btn_container = QtWidgets.QWidget()
+        self._exploit_btn_container.setStyleSheet("background: transparent;")
+        self._exploit_grid = QtWidgets.QGridLayout(self._exploit_btn_container)
+        self._exploit_grid.setSpacing(5)
+        self._exploit_grid.setContentsMargins(0, 2, 0, 2)
+        layout.addWidget(self._exploit_btn_container)
+
+        self._exploit_btn_group = QtWidgets.QButtonGroup()
+        self._exploit_btn_group.setExclusive(True)
+        self._exploit_buttons: dict[str, QtWidgets.QPushButton] = {}
+
+        self._exploit_default_values = ['oui', 'non', 'habitat', '?']
+        self._build_exploit_buttons(self._exploit_default_values, "")
+
+    def _exploit_btn_style(self, key: str, checked: bool) -> str:
+        bg_dim, accent, bg_bright, accent_bright = self._EXPLOIT_COLORS.get(
+            key.lower(), ('#1a1a2a', '#7a9ab8', '#2a2a4a', '#a0c0d8')
+        )
+        if checked:
+            return (
+                f"QPushButton {{ background-color: {bg_bright}; color: {accent_bright};"
+                f" border: 2px solid {accent_bright}; border-radius: 5px;"
+                " font-weight: bold; font-family: 'Segoe UI', sans-serif;"
+                " font-size: 11px; padding: 5px 4px; }}"
+            )
+        return (
+            f"QPushButton {{ background-color: {bg_dim}; color: {accent};"
+            f" border: 1px solid {accent}; border-radius: 5px;"
+            " font-weight: bold; font-family: 'Segoe UI', sans-serif;"
+            " font-size: 11px; padding: 5px 4px; }}"
+            f"QPushButton:hover {{ background-color: {bg_bright}; color: {accent_bright};"
+            f" border: 2px solid {accent_bright}; }}"
+        )
+
+    def _build_exploit_buttons(self, choices: list, current: str):
+        """Reconstruit la grille de boutons d'exploitabilité."""
+        for btn in list(self._exploit_buttons.values()):
+            self._exploit_btn_group.removeButton(btn)
+            btn.setParent(None)
+        self._exploit_buttons.clear()
+
+        while self._exploit_grid.count():
+            item = self._exploit_grid.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+
+        for i, choice in enumerate(choices):
+            btn = QtWidgets.QPushButton(choice)
+            btn.setCheckable(True)
+            is_checked = (choice.lower() == (current or "").lower())
+            btn.setChecked(is_checked)
+            btn.setStyleSheet(self._exploit_btn_style(choice, is_checked))
+            btn.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            self._exploit_btn_group.addButton(btn)
+            self._exploit_buttons[choice] = btn
+            self._exploit_grid.addWidget(btn, i // 2, i % 2)
+            btn.clicked.connect(lambda checked, c=choice, b=btn: self._on_exploit_btn_clicked(c, b))
+
+    def _on_exploit_btn_clicked(self, choice: str, btn: QtWidgets.QPushButton):
+        for key, b in self._exploit_buttons.items():
+            b.setStyleSheet(self._exploit_btn_style(key, b.isChecked()))
+        self.on_exploitable_changed(choice)
+
+    def on_exploitable_changed(self, text: str):
+        """Persiste la valeur d'exploitabilité dans le JSON."""
+        if not self.current_json_path or not text:
+            return
+        try:
+            if not os.path.isfile(self.current_json_path):
+                return
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            data.setdefault("video_observation", {}).setdefault("exploitable", {})["value"] = text
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            self._current_exploitable_value = text
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
+            if self.video_tree:
+                selected = self.video_tree.selectionModel().selectedRows()
+                if selected:
+                    item = self.video_model.itemFromIndex(selected[0].siblingAtColumn(0))
+                    if item:
+                        path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                        if path:
+                            self.refresh_item_indicator(item, path)
+        except Exception as e:
+            print(f"[QualifCtrl] on_exploitable_changed: {e!r}")
+
+    def load_exploitable_value(self):
+        """Charge la valeur d'exploitabilité depuis le JSON et met à jour les boutons."""
+        if not hasattr(self, '_exploit_buttons') or not self._exploit_buttons:
+            return
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            for key, btn in self._exploit_buttons.items():
+                btn.blockSignals(True)
+                btn.setChecked(False)
+                btn.setStyleSheet(self._exploit_btn_style(key, False))
+                btn.blockSignals(False)
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            field = data.get("video_observation", {}).get("exploitable", {})
+            lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
+            choices = field.get(lang_key, self._exploit_default_values)
+            current = (field.get("value") or "").strip()
+        except Exception:
+            choices = self._exploit_default_values
+            current = ""
+
+        if set(choices) != set(self._exploit_buttons.keys()):
+            self._build_exploit_buttons(choices, current)
+        else:
+            for key, btn in self._exploit_buttons.items():
+                btn.blockSignals(True)
+                is_checked = (key.lower() == current.lower())
+                btn.setChecked(is_checked)
+                btn.setStyleSheet(self._exploit_btn_style(key, is_checked))
+                btn.blockSignals(False)
+        self._current_exploitable_value = current
 
     def refresh_item_indicator(self, item, video_path):
         """Colore l'item en vert si l'exploitabilité est renseignée, blanc sinon."""
@@ -635,6 +806,7 @@ class QualifController:
             self.update_camera_views(video_path, csv_system)
 
         self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+        self.load_exploitable_value()
         self.update_minimap(selected_name=video_name, show_dialog=False)
 
     # --- Minimap ---
@@ -854,6 +1026,7 @@ class QualifController:
                 if os.path.exists(csv_system):
                     self.update_camera_views(video_path, csv_system)
                 self.current_json_path = resolve_video_json_path(self._working_dir, video_path)
+                self.load_exploitable_value()
                 self.update_minimap(video_name, show_dialog=False)
                 break
 
