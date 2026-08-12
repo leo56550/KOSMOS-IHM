@@ -416,3 +416,19 @@ Traceback (most recent call last):
     def on_player_position_changed(self, position_ms: int):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-12 09:28:59.407486
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:29:12.887855
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
