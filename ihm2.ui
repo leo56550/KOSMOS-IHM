@@ -191,7 +191,7 @@ QPushButton[actif=&quot;true&quot;] {
 </string>
               </property>
               <property name="text">
-               <string>Finir qualification</string>
+               <string>QUALIFIER</string>
               </property>
              </widget>
             </item>

@@ -432,3 +432,43 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-12 09:42:05.199532
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:42:07.508306
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:42:09.028638
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:43:03.987724
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 148, in paintEvent
+    def paintEvent(self, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-12 09:43:20.019004
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

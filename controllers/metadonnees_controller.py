@@ -66,6 +66,7 @@ _INFOSTATION_COLUMNS: list[str] = [
     "Bateau", "Pilote", "Equipage",
     "Dérusher", "Analyseur poisson", "Analyseur habitat",
     "Distance analysable min (m)", "Distance analysable max (m)",
+    "Commentaire qualification", "Chemin vidéo",
 ]
 
 _FIELD_STYLE = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
@@ -1091,6 +1092,8 @@ class MetadonneesController:
             "Analyseur habitat":                 self._v(obs, "habitat_annotator"),
             "Distance analysable min (m)":       self._v(obs, "distance_min"),
             "Distance analysable max (m)":       self._v(obs, "distance_max"),
+            "Commentaire qualification":          self._v(obs, "commentaire_qualification"),
+            "Chemin vidéo":                      video_path,
         }
 
     # ── Feature : vérification cohérence ────────────────────────────────
@@ -1296,6 +1299,37 @@ class MetadonneesController:
             self.translate(f"CSV Infostation généré :\n{csv_path}",
                            f"Infostation CSV generated:\n{csv_path}")
         )
+
+    def generate_qualification_infostation(self, video_paths: list, working_dir: str) -> str | None:
+        """Génère le CSV Infostation pour les vidéos retenues à la qualification.
+
+        Retourne le chemin du CSV créé, ou None en cas d'échec.
+        """
+        if not working_dir or not video_paths:
+            return None
+        csv_path = get_infostation_path(working_dir)
+        os.makedirs(working_dir, exist_ok=True)
+        old_working_dir = self._working_dir
+        self._working_dir = working_dir
+        try:
+            with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
+                writer = csv.DictWriter(f, fieldnames=_INFOSTATION_COLUMNS, delimiter=';',
+                                        extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
+                writer.writeheader()
+                for vp in sorted(video_paths):
+                    try:
+                        row_data = self._build_infostation_row(vp)
+                        row_data = {k: str(v).replace('\n', ' | ').replace('\r', '')
+                                    for k, v in row_data.items()}
+                        writer.writerow(row_data)
+                    except Exception as e:
+                        print(f"[INFOSTATION QUALIF] {os.path.basename(vp)}: {e}")
+            return csv_path
+        except Exception as e:
+            print(f"[INFOSTATION QUALIF] Impossible d'écrire {csv_path}: {e}")
+            return None
+        finally:
+            self._working_dir = old_working_dir
 
     def generate_infostation_csv(self):
         """Génère silencieusement le CSV Infostation (appelé aussi par l'auto-sync)."""

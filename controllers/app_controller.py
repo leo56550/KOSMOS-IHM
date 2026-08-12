@@ -124,7 +124,10 @@ class AppController:
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
-        self.btn_finir_qualif = None
+        self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
+        if self.btn_finir_qualif:
+            self.btn_finir_qualif.clicked.connect(self.complete_qualification)
+
         self.btn_finir_validation = window.findChild(QtWidgets.QPushButton, "btn_finir_validation")
         if self.btn_finir_validation:
             self.btn_finir_validation.clicked.connect(self.complete_validation)
@@ -545,6 +548,28 @@ class AppController:
         w = self.window
         w.actionValidation.setEnabled(True)
         w.actionEvenements.setEnabled(True)
+
+        # Récupère les vidéos retenues (video_model, pas trash)
+        video_paths = []
+        model = self.qualif_ctrl.video_model
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if item:
+                vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if vp:
+                    video_paths.append(str(vp))
+
+        if video_paths and self.working_dir:
+            csv_path = self.metadonnees_ctrl.generate_qualification_infostation(
+                video_paths, self.working_dir
+            )
+            if csv_path:
+                QtWidgets.QMessageBox.information(
+                    w,
+                    "Infostation générée",
+                    f"CSV Infostation créé avec {len(video_paths)} vidéo(s) :\n{csv_path}"
+                )
+
         self.switch_page(w.page_validation)
 
     def complete_validation(self):

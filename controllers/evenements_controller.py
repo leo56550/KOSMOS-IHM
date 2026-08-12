@@ -161,7 +161,7 @@ class EvenementsController:
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
             layout.addWidget(self.event_player)
 
-            self.event_player.btn_ardoise.clicked.connect(self._saisir_ardoise)
+            self.event_player.btn_ardoise.setVisible(False)
             self.event_player.btn_debut_annotation.clicked.connect(self._saisir_debut_annotation)
             self.event_player.btn_fin_annotation.clicked.connect(self._saisir_fin_annotation)
             self.event_player.btn_debut_annotation.setVisible(True)
@@ -1157,7 +1157,6 @@ class EvenementsController:
         if hasattr(self, 'btn_capturer'):
             self.btn_capturer.setEnabled(True)
         if hasattr(self, 'event_player') and self.event_player:
-            self.event_player.btn_ardoise.setEnabled(True)
             self.event_player.btn_debut_annotation.setEnabled(True)
             self.event_player.btn_fin_annotation.setEnabled(True)
 
