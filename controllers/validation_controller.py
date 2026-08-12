@@ -406,7 +406,7 @@ class ValidationController:
                     self.refresh_item_indicator(item, path)
 
     def _saisir_ardoise(self):
-        """Capture un événement ardoise ponctuel à la position courante et le persiste dans le JSON."""
+        """Capture un événement ardoise et ouvre un champ pour saisir le code station."""
         if not hasattr(self, 'player') or self.player is None:
             return
         if not self.current_json_path or not os.path.exists(self.current_json_path):
@@ -418,7 +418,27 @@ class ValidationController:
         value = "ardoise" if self.current_language == 'fr' else "slate"
         event_uid = str(uuid.uuid4())
 
-        # Ajoute visuellement dans la timeline du player
+        # Lecture du JSON pour pré-remplir le code station
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[VALIDATION] Lecture JSON échouée : {e}")
+            return
+
+        existing_code = (data.get("video_observation", {})
+                             .get("codeObs", {})
+                             .get("value") or "")
+
+        # Dialog code station
+        code, ok = QtWidgets.QInputDialog.getText(
+            self.page,
+            self.translate("Code station", "Station code"),
+            self.translate("Code station (ex : CC190001) :", "Station code (e.g. CC190001):"),
+            text=existing_code,
+        )
+
+        # Ajoute visuellement dans la timeline (indépendamment du dialog)
         if hasattr(self.player, 'timeline'):
             new_evt = {
                 "start": pos_ms, "end": pos_ms,
@@ -433,16 +453,15 @@ class ValidationController:
             self.player.timeline.events.append(new_evt)
             self.player.timeline.update()
 
-        # Persiste dans le JSON
+        # Écriture JSON unique : ardoise + codeObs si saisi
         try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
             obs = data.setdefault("video_observation", {})
+
+            # Événement ardoise
             deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
             if not deploy:
                 deploy.append({"authorized_values_fr": [], "values": []})
-            values_list = deploy[0].setdefault("values", [])
-            values_list.append({
+            deploy[0].setdefault("values", []).append({
                 "event_id": event_uid,
                 "time_code_start": time_str,
                 "time_code_end": time_str,
@@ -453,11 +472,24 @@ class ValidationController:
                 "value": value,
                 "comment": "",
             })
+
+            # Code station
+            if ok and code.strip():
+                code = code.strip()
+                obs.setdefault("codeObs", {})["value"] = code
+                # point_name = 4 derniers caractères par convention, si vide
+                if not obs.get("point_name", {}).get("value"):
+                    obs.setdefault("point_name", {})["value"] = code[-4:] if len(code) >= 4 else code
+
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
-            # Feedback visuel bref sur le bouton
-            self.player.btn_ardoise.setText("✓ Ardoise")
-            QtCore.QTimer.singleShot(1500, lambda: self.player.btn_ardoise.setText("SAISIR ARDOISE"))
+            # Feedback visuel bref
+            label = f"✓ {code}" if (ok and code.strip()) else "✓ Ardoise"
+            self.player.btn_ardoise.setText(label)
+            QtCore.QTimer.singleShot(2000, lambda: self.player.btn_ardoise.setText("SAISIR ARDOISE"))
+
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
         except Exception as e:
-            print(f"[VALIDATION] Erreur saisie ardoise : {e}")
+            print(f"[VALIDATION] Erreur sauvegarde ardoise/codeObs : {e}")
