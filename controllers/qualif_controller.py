@@ -4,6 +4,7 @@ import json
 import math
 import shutil
 import folium
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWebChannel import QWebChannel
@@ -18,6 +19,33 @@ from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from views.dialogs.map_dialog import MapDialog, MapBridge
+
+
+class _CameraFrameWorker(QtCore.QThread):
+    """Extrait les frames de rotation moteur en parallèle via un pool de threads."""
+    frame_ready = QtCore.pyqtSignal(int, object)   # (slot_id, ndarray or None)
+
+    def __init__(self, tasks: list, parent=None):
+        super().__init__(parent)
+        self._tasks = tasks   # list of (slot_id, video_path, timestamp_s)
+
+    def run(self):
+        def _extract(task):
+            slot_id, video_path, ts = task
+            return slot_id, extract_frame_at_time(video_path, ts)
+
+        n_workers = min(4, len(self._tasks) or 1)
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futures = {pool.submit(_extract, t): t for t in self._tasks}
+            for fut in as_completed(futures):
+                if self.isInterruptionRequested():
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    break
+                try:
+                    slot_id, frame = fut.result()
+                    self.frame_ready.emit(slot_id, frame)
+                except Exception:
+                    pass
 
 
 class QualifController:
@@ -41,6 +69,8 @@ class QualifController:
         self._selected_video_path: str | None = None
         self._video_row_icon_labels: dict = {}
         self._video_row_widgets: dict = {}
+        self._miniature_pixmaps: list = []   # pixmaps de la vue courante (None = en cours de chargement)
+        self._camera_slot_labels: dict = {}  # slot_id → (QFrame, QLabel_img, angle, ts)
         self.all_coords = {}
         self.campaign_fields = {}
         self._working_dir = ""
@@ -1080,11 +1110,19 @@ class QualifController:
     # --- Camera views / thumbnails ---
 
     def update_camera_views(self, video_path: str, csv_path: str):
-        """Remplit la zone miniatures avec des captures aux timestamps de rotation moteur détectés dans csv_path."""
+        """Affiche immédiatement des placeholders puis charge les frames en parallèle en arrière-plan."""
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+        self._miniature_pixmaps.clear()
+        self._camera_slot_labels.clear()
+
+        # Arrêter le worker précédent si actif
+        if hasattr(self, '_cam_worker') and self._cam_worker and self._cam_worker.isRunning():
+            self._cam_worker.requestInterruption()
+            self._cam_worker.wait(400)
 
         try:
             motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
@@ -1095,7 +1133,10 @@ class QualifController:
                 self.scroll_layout.addStretch()
                 return
 
+            tasks = []
+            slot_id = 0
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
+
             for index_rot, rotation_events in enumerate(rotation_groups):
                 frame_rotation = QtWidgets.QFrame()
                 frame_rotation.setFixedHeight(230)
@@ -1114,20 +1155,30 @@ class QualifController:
 
                 for evt in rotation_events:
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
+                    is_360 = evt_type == "rotation_360"
+                    fw, fh = (248, 188) if is_360 else (240, 180)
+                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
+
                     w_photo = QtWidgets.QFrame()
-                    if evt_type == "rotation_360":
-                        w_photo.setFixedSize(248, 188)
-                        w_photo.setStyleSheet(
-                            "background-color: #1a1a1a; border-radius: 6px; border: 3px solid #ff3333;"
-                        )
-                    else:
-                        w_photo.setFixedSize(240, 180)
-                        w_photo.setStyleSheet(
-                            "background-color: #1a1a1a; border-radius: 6px; border: 1px solid #555555;"
-                        )
-                    frame_data = extract_frame_at_time(video_path, ts)
-                    if frame_data is not None:
-                        self._display_in_frame(w_photo, frame_data, angle, ts)
+                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setStyleSheet(
+                        f"background-color: #111a24; border-radius: 6px; border: {border};"
+                    )
+
+                    # Placeholder spinner
+                    ph_layout = QtWidgets.QVBoxLayout(w_photo)
+                    ph_layout.setContentsMargins(0, 0, 0, 0)
+                    ph_lbl = QtWidgets.QLabel("⏳")
+                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                    ph_lbl.setStyleSheet(
+                        "color: #405060; font-size: 22px; background: transparent;"
+                    )
+                    ph_layout.addWidget(ph_lbl)
+
+                    self._miniature_pixmaps.append(None)
+                    self._camera_slot_labels[slot_id] = (w_photo, angle, ts)
+                    tasks.append((slot_id, video_path, ts))
+                    slot_id += 1
                     hbox.addWidget(w_photo)
 
                 if len(rotation_events) < 6:
@@ -1135,79 +1186,194 @@ class QualifController:
                         hbox.addSpacing(240)
                 hbox.addStretch()
                 self.scroll_layout.addWidget(frame_rotation)
+
+            self.scroll_layout.addStretch()
+
+            if tasks:
+                self._cam_worker = _CameraFrameWorker(tasks)
+                self._cam_worker.frame_ready.connect(self._on_camera_frame_ready)
+                self._cam_worker.start()
+
         except Exception as e:
             print(f"Error updating camera views: {e}")
 
-    def _display_in_frame(self, widget: QtWidgets.QFrame, cv_img, angle_degrees: int, ts_seconds: float):
-        """Affiche cv_img dans widget avec des overlays angle et timestamp."""
-        h, w, ch = cv_img.shape
-        q_img = QtGui.QImage(cv_img.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+    def _on_camera_frame_ready(self, slot_id: int, frame_data):
+        """Appelé dans le thread principal quand une frame est prête : remplace le placeholder."""
+        if frame_data is None or slot_id not in self._camera_slot_labels:
+            return
+
+        w_photo, angle, ts = self._camera_slot_labels[slot_id]
+
+        # Construire le pixmap
+        h_f, w_f, ch = frame_data.shape
+        q_img = QtGui.QImage(
+            frame_data.tobytes(), w_f, h_f, ch * w_f,
+            QtGui.QImage.Format.Format_RGB888
+        )
         pixmap = QtGui.QPixmap.fromImage(q_img)
-        layout = QtWidgets.QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        lbl = QtWidgets.QLabel(widget)
+        self._miniature_pixmaps[slot_id] = pixmap
+
+        # Vider le layout placeholder
+        old = w_photo.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            QtWidgets.QWidget().setLayout(old)
+
+        new_layout = QtWidgets.QVBoxLayout(w_photo)
+        new_layout.setContentsMargins(0, 0, 0, 0)
+
+        lbl = QtWidgets.QLabel(w_photo)
         lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         lbl.setPixmap(pixmap.scaled(
-            widget.size(),
+            w_photo.size(),
             QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            QtCore.Qt.TransformationMode.SmoothTransformation
+            QtCore.Qt.TransformationMode.SmoothTransformation,
         ))
-        layout.addWidget(lbl)
-        angle_lbl = QtWidgets.QLabel(f" {angle_degrees}° ", lbl)
+        new_layout.addWidget(lbl)
+
+        # Overlay angle
+        minutes = int(ts // 60)
+        seconds_i = int(ts % 60)
+        ms = int((ts - int(ts)) * 1000)
+
+        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
         angle_lbl.setStyleSheet(
-            "background-color: rgba(0,0,0,160); color: #55ff55; font-weight: bold; border-radius: 3px; font-size: 10px;"
+            "background-color: rgba(0,0,0,160); color: #55ff55;"
+            " font-weight: bold; border-radius: 3px; font-size: 10px;"
         )
+        angle_lbl.adjustSize()
         angle_lbl.move(5, 5)
-        minutes = int(ts_seconds // 60)
-        seconds = int(ts_seconds % 60)
-        ms = int((ts_seconds - int(ts_seconds)) * 1000)
-        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds:02d}.{ms:03d} ", lbl)
+        angle_lbl.show()
+
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms:03d} ", lbl)
         time_lbl.setStyleSheet(
-            "background-color: rgba(0,0,0,160); color: #ffffff; font-weight: bold; border-radius: 3px; font-size: 10px;"
+            "background-color: rgba(0,0,0,160); color: #ffffff;"
+            " font-weight: bold; border-radius: 3px; font-size: 10px;"
         )
         time_lbl.adjustSize()
-        time_lbl.move(widget.width() - time_lbl.width() - 5, 5)
+        time_lbl.move(w_photo.width() - time_lbl.width() - 5, 5)
+        time_lbl.show()
 
-        # Double-clic → plein écran
-        for target in (widget, lbl):
-            target.mouseDoubleClickEvent = lambda _e, px=pixmap: self._show_fullscreen_image(px)
+        # Clic simple → plein écran
+        for target in (w_photo, lbl):
+            target.mousePressEvent = lambda _e, i=slot_id: self._show_fullscreen_image(i)
             target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
-    def _show_fullscreen_image(self, pixmap: QtGui.QPixmap):
-        """Affiche le pixmap en plein écran dans une fenêtre noire. Clic ou Échap pour fermer."""
+    def _show_fullscreen_image(self, idx: int = 0):
+        """Affiche une miniature en plein écran avec navigation ← → (flèches clavier + boutons)."""
+        # Filtre les slots qui ont un pixmap réel (les autres sont encore en chargement)
+        valid = [(i, p) for i, p in enumerate(self._miniature_pixmaps) if p is not None]
+        if not valid:
+            return
+
+        # Trouve la position dans la liste filtrée la plus proche de idx demandé
+        cur = 0
+        for j, (orig_i, _) in enumerate(valid):
+            if orig_i >= idx:
+                cur = j
+                break
+
+        screen = QtWidgets.QApplication.primaryScreen().size()
+
         dlg = QtWidgets.QDialog(self.widget)
         dlg.setWindowFlags(
             QtCore.Qt.WindowType.Window |
             QtCore.Qt.WindowType.FramelessWindowHint
         )
         dlg.setStyleSheet("background-color: black;")
-        layout = QtWidgets.QVBoxLayout(dlg)
-        layout.setContentsMargins(0, 0, 0, 0)
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
 
-        lbl = QtWidgets.QLabel()
-        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("background-color: black;")
-        screen_size = QtWidgets.QApplication.primaryScreen().size()
-        lbl.setPixmap(pixmap.scaled(
-            screen_size,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        ))
-        layout.addWidget(lbl)
+        outer = QtWidgets.QVBoxLayout(dlg)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        hint = QtWidgets.QLabel("Clic ou Échap pour fermer", dlg)
-        hint.setStyleSheet(
-            "color: rgba(255,255,255,120); font-size: 11px;"
-            " background: transparent; padding: 6px;"
+        lbl_img = QtWidgets.QLabel()
+        lbl_img.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl_img.setStyleSheet("background-color: black;")
+        outer.addWidget(lbl_img, 1)
+
+        bar = QtWidgets.QWidget()
+        bar.setFixedHeight(44)
+        bar.setStyleSheet("background-color: rgba(0,0,0,180);")
+        bar_layout = QtWidgets.QHBoxLayout(bar)
+        bar_layout.setContentsMargins(16, 0, 16, 0)
+        bar_layout.setSpacing(12)
+
+        _btn_style = (
+            "QPushButton{background:rgba(255,255,255,15);color:white;"
+            "border:1px solid rgba(255,255,255,40);border-radius:5px;"
+            "font-size:16px;font-weight:bold;padding:4px 14px;}"
+            "QPushButton:hover{background:rgba(255,255,255,35);}"
+            "QPushButton:disabled{color:rgba(255,255,255,30);border-color:rgba(255,255,255,15);}"
         )
-        hint.adjustSize()
-        hint.move(12, 12)
 
-        dlg.keyPressEvent = lambda e: dlg.close() if e.key() == QtCore.Qt.Key.Key_Escape else None
-        dlg.mousePressEvent = lambda _e: dlg.close()
-        lbl.mousePressEvent = lambda _e: dlg.close()
+        btn_prev = QtWidgets.QPushButton("←")
+        btn_prev.setFixedSize(48, 32)
+        btn_prev.setStyleSheet(_btn_style)
 
+        lbl_counter = QtWidgets.QLabel()
+        lbl_counter.setStyleSheet(
+            "color:rgba(255,255,255,160);font-size:12px;background:transparent;"
+        )
+        lbl_counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        btn_next = QtWidgets.QPushButton("→")
+        btn_next.setFixedSize(48, 32)
+        btn_next.setStyleSheet(_btn_style)
+
+        hint = QtWidgets.QLabel("Échap pour fermer  |  ← →  pour naviguer")
+        hint.setStyleSheet("color:rgba(255,255,255,60);font-size:10px;background:transparent;")
+
+        btn_close = QtWidgets.QPushButton("✕")
+        btn_close.setFixedSize(32, 32)
+        btn_close.setStyleSheet(_btn_style)
+        btn_close.clicked.connect(dlg.close)
+
+        bar_layout.addWidget(btn_prev)
+        bar_layout.addWidget(lbl_counter)
+        bar_layout.addWidget(btn_next)
+        bar_layout.addStretch()
+        bar_layout.addWidget(hint)
+        bar_layout.addWidget(btn_close)
+        outer.addWidget(bar)
+
+        state = {"cur": cur}
+
+        def _show(j):
+            j = max(0, min(j, len(valid) - 1))
+            state["cur"] = j
+            _, pix = valid[j]
+            scaled = pix.scaled(
+                screen,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            lbl_img.setPixmap(scaled)
+            lbl_counter.setText(f"{j + 1} / {len(valid)}")
+            btn_prev.setEnabled(j > 0)
+            btn_next.setEnabled(j < len(valid) - 1)
+
+        btn_prev.clicked.connect(lambda: _show(state["cur"] - 1))
+        btn_next.clicked.connect(lambda: _show(state["cur"] + 1))
+
+        def _key(event):
+            k = event.key()
+            if k == QtCore.Qt.Key.Key_Escape:
+                dlg.close()
+            elif k == QtCore.Qt.Key.Key_Left:
+                _show(state["cur"] - 1)
+            elif k == QtCore.Qt.Key.Key_Right:
+                _show(state["cur"] + 1)
+
+        dlg.keyPressEvent = _key
+        # Pas de mousePressEvent sur lbl_img : évite de fermer par erreur au lieu de naviguer
+
+        _show(state["cur"])
         dlg.showFullScreen()
+        dlg.setFocus()  # indispensable avec FramelessWindowHint pour recevoir les touches
 
     # --- Context menu / drag-drop ---
 
