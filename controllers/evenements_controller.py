@@ -663,8 +663,10 @@ class EvenementsController:
         ag.addWidget(_ainput("fish_annotator", "ex : Jean Dupont"), 0, 1)
         ag.addWidget(_albl(self.translate("Analyseur habitat", "Habitat annotator")), 1, 0)
         ag.addWidget(_ainput("habitat_annotator", "ex : Marie Martin"), 1, 1)
-        ag.addWidget(_albl(self.translate("Visibilité (m)", "Visibility (m)")), 2, 0)
-        ag.addWidget(_ainput("estimated_visibility", "ex : 5"), 2, 1)
+        ag.addWidget(_albl(self.translate("Substrat", "Substrate")), 2, 0)
+        ag.addWidget(_ainput("substrat", "ex : Sable, Roche, Herbier…"), 2, 1)
+        ag.addWidget(_albl(self.translate("Visibilité (m)", "Visibility (m)")), 3, 0)
+        ag.addWidget(_ainput("estimated_visibility", "ex : 5"), 3, 1)
 
         dist_w = QtWidgets.QWidget()
         dist_w.setStyleSheet("background: transparent;")
@@ -679,8 +681,8 @@ class EvenementsController:
         dist_row.addWidget(_ainput("distance_min", "0"))
         dist_row.addWidget(lbl_max)
         dist_row.addWidget(_ainput("distance_max", "5"))
-        ag.addWidget(_albl(self.translate("Distance anal. (m)", "Analysis dist. (m)")), 3, 0)
-        ag.addWidget(dist_w, 3, 1)
+        ag.addWidget(_albl(self.translate("Distance anal. (m)", "Analysis dist. (m)")), 4, 0)
+        ag.addWidget(dist_w, 4, 1)
 
         layout.addWidget(analyse_grid)
 

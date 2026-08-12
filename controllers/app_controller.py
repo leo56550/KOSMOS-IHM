@@ -146,7 +146,7 @@ class AppController:
         self.lock_navigation(True)
         self.switch_page(window.page_accueil)
 
-    def _on_meta_video_selected(self, video_name: str, _video_path: str):
+    def _on_meta_video_selected(self, video_name: str, _video_path: str):  # noqa: ARG002
         """Ouvre le player détaché et focus la carte depuis la page Métadonnées."""
         # Focus carte — update_minimap gère le raise_() du dialog et le pan JS
         self.qualif_ctrl.update_minimap(video_name)
@@ -162,6 +162,7 @@ class AppController:
         """Copie les fichiers compagnon de toutes les vidéos et génère l'Infostation CSV."""
         if not self.working_dir or not self._campaign_ready:
             return
+
         model = self.qualif_ctrl.video_model
         for row in range(model.rowCount()):
             item = model.item(row, 0)

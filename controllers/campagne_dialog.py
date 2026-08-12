@@ -204,8 +204,7 @@ class CampagneDialog(QtWidgets.QDialog):
             self.edit_campaign.setText(folder)
             # Proposer automatiquement un dossier de travail si pas encore défini
             if not self.edit_wd.text():
-                default_wd = os.path.join(os.path.dirname(folder),
-                                          os.path.basename(folder) + "_sortie_ihm")
+                default_wd = os.path.join(os.path.dirname(folder), "BenthOS_sorties")
                 self.edit_wd.setText(default_wd)
             self._refresh_ok()
 

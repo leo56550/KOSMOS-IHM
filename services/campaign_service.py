@@ -206,9 +206,18 @@ def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
     Lors de la première copie, video_file_name est mis à jour avec le nom standardisé.
     """
     import json as _json
+    import subprocess as _sp
     src_dir = os.path.dirname(os.path.normpath(video_path))
     dst_dir = get_working_video_dir(working_dir, video_path)
     os.makedirs(dst_dir, exist_ok=True)
+
+    # Rendre .kosmos_work invisible dans l'explorateur Windows
+    work_root = os.path.join(working_dir, _WORK_SUBDIR)
+    if os.path.isdir(work_root):
+        try:
+            _sp.run(["attrib", "+h", work_root], shell=True, capture_output=True)
+        except Exception:
+            pass
     stem = os.path.splitext(os.path.basename(video_path))[0]
     json_fname = f"{stem}.json"
     src_file = os.path.join(src_dir, json_fname)
@@ -256,26 +265,38 @@ def resolve_video_json_path(working_dir: str, video_path: str) -> str:
     return get_video_json_path(video_path)
 
 
-def get_working_video_dir(working_dir: str, video_path: str) -> str:
-    """Retourne le sous-dossier vidéo dans le répertoire de travail.
+_WORK_SUBDIR = ".kosmos_work"
 
-    Cherche d'abord un dossier existant contenant le JSON de cette vidéo
-    (compatibilité avec les campagnes créées avant le nouveau format de nommage),
-    puis calcule le chemin au nouveau format si aucun dossier n'est trouvé.
+
+def get_working_video_dir(working_dir: str, video_path: str) -> str:
+    """Retourne le sous-dossier vidéo dans le répertoire de travail interne.
+
+    Les JSONs de travail sont stockés dans <working_dir>/.kosmos_work/<stem>/
+    pour ne pas polluer BenthOS_sorties avec les anciens noms.
+    Compatibilité : cherche d'abord dans .kosmos_work/, puis à la racine (anciens projets).
     """
     stem = os.path.splitext(os.path.basename(video_path))[0]
     json_fname = f"{stem}.json"
+    work_root = os.path.join(working_dir, _WORK_SUBDIR)
 
-    # Compat : scanner les sous-dossiers existants pour retrouver le JSON
+    # Priorité 1 : dossier dans .kosmos_work/ (nouveau format)
+    if os.path.isdir(work_root):
+        for folder in os.listdir(work_root):
+            folder_path = os.path.join(work_root, folder)
+            if os.path.isdir(folder_path) and os.path.isfile(os.path.join(folder_path, json_fname)):
+                return folder_path
+
+    # Priorité 2 : compat anciens projets — dossier à la racine du working_dir
     if os.path.isdir(working_dir):
         for folder in os.listdir(working_dir):
+            if folder == _WORK_SUBDIR:
+                continue
             folder_path = os.path.join(working_dir, folder)
             if os.path.isdir(folder_path) and os.path.isfile(os.path.join(folder_path, json_fname)):
                 return folder_path
 
-    # Aucun dossier existant → calculer avec le nouveau format
-    name = build_video_output_name(video_path)
-    return os.path.join(working_dir, name)
+    # Nouveau dossier → dans .kosmos_work/
+    return os.path.join(work_root, stem)
 
 
 def get_infostation_path(working_dir: str) -> str:
@@ -288,14 +309,8 @@ def get_infostation_path(working_dir: str) -> str:
 
 
 def get_campaign_output_dir(campaign_folder: str) -> str:
-    """Retourne le dossier de sortie IHM pour une campagne.
-
-    Structure : <campaign_folder>/<campaign_name>_sortie_ihm/
-    Ce dossier contiendra tous les fichiers générés par l'IHM :
-    images exportées, CSV VIAME, CSV infostation, captures.
-    """
-    name = os.path.basename(os.path.normpath(campaign_folder))
-    return os.path.join(campaign_folder, f"{name}_sortie_ihm")
+    """Retourne le dossier de sortie IHM pour une campagne (BenthOS_sorties)."""
+    return os.path.join(os.path.dirname(os.path.normpath(campaign_folder)), "BenthOS_sorties")
 
 
 def get_video_output_dir(campaign_folder: str, video_path: str) -> str:

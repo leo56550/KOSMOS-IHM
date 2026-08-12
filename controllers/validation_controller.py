@@ -134,6 +134,32 @@ class ValidationController:
             "color: #3a5568; font-size: 10px; font-family: 'Segoe UI', sans-serif;"
         )
         layout.addWidget(self._status_badge)
+
+        # ── Commentaires vidéo ──────────────────────────────────────────
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep2.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
+        layout.addWidget(sep2)
+
+        lbl_comment = QtWidgets.QLabel(self.translate("Commentaires vidéo", "Video comments"))
+        lbl_comment.setStyleSheet(
+            "color: #F2BFB4; font-size: 11px; font-weight: bold;"
+            " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
+        )
+        layout.addWidget(lbl_comment)
+
+        self._comment_edit = QtWidgets.QPlainTextEdit()
+        self._comment_edit.setPlaceholderText(
+            self.translate("Observations sur la vidéo…", "Video observations…")
+        )
+        self._comment_edit.setMaximumHeight(80)
+        self._comment_edit.setStyleSheet(
+            "QPlainTextEdit { background-color: #162433; color: #F2BFB4;"
+            " border: 1px solid #2a4057; border-radius: 4px;"
+            " padding: 4px 6px; font-family: 'Segoe UI', sans-serif; font-size: 11px; }"
+        )
+        self._comment_edit.textChanged.connect(self._on_comment_changed)
+        layout.addWidget(self._comment_edit)
         layout.addStretch()
 
     # Couleurs par valeur d'exploitabilité (bg_checked, color_checked, border_checked, hint_bg)
@@ -256,6 +282,35 @@ class ValidationController:
                 " background: transparent; border: none;"
             )
 
+    def _on_comment_changed(self):
+        """Persiste le commentaire vidéo dans le JSON dès que le texte change (avec debounce léger)."""
+        if not hasattr(self, '_comment_edit') or not self.current_json_path:
+            return
+        if not hasattr(self, '_comment_timer'):
+            self._comment_timer = QtCore.QTimer()
+            self._comment_timer.setSingleShot(True)
+            self._comment_timer.setInterval(800)
+            self._comment_timer.timeout.connect(self._flush_comment)
+        self._comment_timer.start()
+
+    def _flush_comment(self):
+        """Écrit derush_comment dans le JSON."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        text = self._comment_edit.toPlainText().strip() if hasattr(self, '_comment_edit') else ""
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vob = data.setdefault("video_observation", {})
+            if "derush_comment" in vob and isinstance(vob["derush_comment"], dict):
+                vob["derush_comment"]["value"] = text or None
+            else:
+                vob["derush_comment"] = {"value": text or None}
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ValidationCtrl] erreur sauvegarde commentaire : {e}")
+
     def set_working_dir(self, path: str):
         self._working_dir = path
 
@@ -352,11 +407,21 @@ class ValidationController:
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            field = data.get("video_observation", {}).get("exploitable", {})
+            vob = data.get("video_observation", {})
+            field = vob.get("exploitable", {})
             lang_key = "authorized_values_fr" if self.current_language == 'fr' else "authorized_values_en"
             choices = field.get(lang_key, [])
             current = field.get("value", "") or ""
             self._rebuild_choice_buttons(choices, current)
+
+            # Charge le commentaire vidéo
+            if hasattr(self, '_comment_edit'):
+                comment_entry = vob.get("derush_comment", {})
+                comment = (comment_entry.get("value", "") if isinstance(comment_entry, dict)
+                           else comment_entry) or ""
+                self._comment_edit.blockSignals(True)
+                self._comment_edit.setPlainText(str(comment))
+                self._comment_edit.blockSignals(False)
         except Exception:
             pass
 
