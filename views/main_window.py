@@ -357,6 +357,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for attr, key in [
             ('actionAcceuil', 'Accueil'),
             ('actionQualification', 'Qualification'),
+            ('actionValidation', 'Validation'),
             ('actionEvenements', 'Événements'),
             ('actionMetadonnees', 'Métadonnées'),
             ('actionA_propos', 'À propos'),

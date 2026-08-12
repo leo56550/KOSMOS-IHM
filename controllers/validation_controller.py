@@ -57,6 +57,7 @@ class ValidationController:
             self.player.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
             )
+            self.player.btn_ardoise.clicked.connect(self._saisir_ardoise)
 
         main_splitter = self.page.findChild(QtWidgets.QSplitter, "splitter_3")
         if main_splitter:
@@ -318,6 +319,7 @@ class ValidationController:
             self.player.btn_telemetry.setEnabled(False)
             self.player.btn_telemetry.setChecked(False)
 
+        self.player.btn_ardoise.setEnabled(True)
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
 
     def refresh_combobox_values(self):
@@ -402,3 +404,60 @@ class ValidationController:
                 path = item.data(QtCore.Qt.ItemDataRole.UserRole)
                 if path:
                     self.refresh_item_indicator(item, path)
+
+    def _saisir_ardoise(self):
+        """Capture un événement ardoise ponctuel à la position courante et le persiste dans le JSON."""
+        if not hasattr(self, 'player') or self.player is None:
+            return
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+
+        import uuid
+        pos_ms = self.player.timeline.get_current_position() if hasattr(self.player, 'timeline') else 0
+        time_str = self.player.timeline._format_ms(pos_ms) if hasattr(self.player, 'timeline') else "00:00:00"
+        value = "ardoise" if self.current_language == 'fr' else "slate"
+        event_uid = str(uuid.uuid4())
+
+        # Ajoute visuellement dans la timeline du player
+        if hasattr(self.player, 'timeline'):
+            new_evt = {
+                "start": pos_ms, "end": pos_ms,
+                "title": f"Pic: {value}",
+                "type": "custom_event",
+                "zone": 0,
+                "single_frame": True,
+                "comment": "",
+                "_json_key": "events_deployment",
+                "_event_uid": event_uid,
+            }
+            self.player.timeline.events.append(new_evt)
+            self.player.timeline.update()
+
+        # Persiste dans le JSON
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
+            if not deploy:
+                deploy.append({"authorized_values_fr": [], "values": []})
+            values_list = deploy[0].setdefault("values", [])
+            values_list.append({
+                "event_id": event_uid,
+                "time_code_start": time_str,
+                "time_code_end": time_str,
+                "frame_number_start": None,
+                "frame_number_end": None,
+                "description_fr": None,
+                "description_en": None,
+                "value": value,
+                "comment": "",
+            })
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+
+            # Feedback visuel bref sur le bouton
+            self.player.btn_ardoise.setText("✓ Ardoise")
+            QtCore.QTimer.singleShot(1500, lambda: self.player.btn_ardoise.setText("SAISIR ARDOISE"))
+        except Exception as e:
+            print(f"[VALIDATION] Erreur saisie ardoise : {e}")
