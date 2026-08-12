@@ -3,6 +3,8 @@ import os
 import json
 import re
 import cv2
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone, timedelta
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
@@ -16,28 +18,67 @@ from services.campaign_service import (
 )
 from views.dialogs.weather_dialog import WeatherWebDialog
 
-# En-tête feuille terrain : form_widget_id → (block_name, json_key)
+# En-tête campagne (champs identiques pour toutes les vidéos) : widget_id → (block, json_key)
 _INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
-    "ft_date":            ("survey", "date"),
-    "ft_equipage":        ("survey", "crew_names"),
-    "ft_site":            ("survey", "site"),
-    "ft_bateau":          ("survey", "boat_name"),
-    "ft_pilote":          ("survey", "pilot_name"),
-    "ft_gps_device":      ("survey", "gps_device"),
-    "ft_comment_general": ("survey", "campaign_comment"),
+    "ft_nom_campagne": ("survey", "survey_name"),
+    "ft_zone":         ("survey", "zone"),
+    "ft_type":         ("survey", "type"),
+    "ft_region":       ("survey", "region"),
+    "ft_site":         ("survey", "site"),
+    "ft_codestatut":   ("survey", "protectionStatus1"),
+    "ft_codestatut2":  ("survey", "protectionStatus2"),
+    "ft_date":         ("survey", "date"),
+    "ft_bateau":       ("survey", "boat_name"),
+    "ft_pilote":       ("survey", "pilot_name"),
+    "ft_equipage":     ("survey", "crew_names"),
 }
 
-# Colonnes du tableau (une ligne = une vidéo) : (label, block, json_key)
+# Colonnes du tableau infostation (une ligne = une vidéo).
+# Tuple : (label CSV, block, json_key, read_only)
+# read_only=True → dérivé automatiquement, non éditable.
 _FT_TABLE_COLS: list[tuple] = [
-    ("N°Point",              "video_observation", "point_name"),
-    ("Heure",                "video_observation", "time"),
-    ("Système",              "video_observation", "codeObs"),
-    ("GPS",                  "video_observation", "gps_waypoint"),
-    ("Latitude (xx,xxxxx)",  "video_observation", "latitude"),
-    ("Longitude (xx,xxxxx)", "video_observation", "longitude"),
-    ("Profondeur",           "video_observation", "depth"),
-    ("Météo",                "video_observation", "weather"),
-    ("Commentaire",          "video_observation", "deployment_comment"),
+    ("Codestation",                    "video_observation", "codeObs",                   False),
+    ("Latitude",                       "video_observation", "latitude",                   False),
+    ("Longitude",                      "video_observation", "longitude",                  False),
+    ("Heure",                          "video_observation", "time",                       False),
+    ("Exploitable",                    "video_observation", "exploitable",                False),
+    ("Nom du point",                   "video_observation", "point_name",                 False),
+    ("Nom du point GPS",               "video_observation", "gps_waypoint",               False),
+    ("Pt de Suivi",                    "video_observation", "monitoring_program",          False),
+    ("Profondeur",                     "video_observation", "depth",                       False),
+    ("Commentaires terrain pose",      "video_observation", "deployment_comment",          False),
+    ("Commentaires terrain localisation", "video_observation", "location_comment",          False),
+    ("Nom du fichier",                 None,                None,                          True),
+    ("Timecode ardoise",               "video_observation", "timecode_ardoise",            False),
+    ("Timecode début",                 "video_observation", "timecode_debut",              False),
+    ("Commentaires video",             "video_observation", "derush_comment",              False),
+    ("Images interessantes",           "video_observation", "interesting_images",          False),
+    ("Capture écran",                  "video_observation", "screenshot",                  False),
+    ("Milieu/Habitat",                 "video_observation", "habitat",                     False),
+    ("Visibilite",                     "video_observation", "estimated_visibility",        False),
+    ("Camera",                         "system",            "camera",                      False),
+    ("Modèle MCU",                     "system",            "model_mcu",                   False),
+    ("Version système",                "system",            "system_version",               False),
+    ("Moteur",                         "video_observation", "moteur",                      False),
+    ("Systeme",                        "system",            "type_system",                  False),
+    ("Maree",                          "video_observation", "tide",                        False),
+    ("Coefficient marée",              "video_observation", "coefficient",                 False),
+    ("Lune",                           "video_observation", "moon",                        False),
+    ("Meteo",                          "video_observation", "weather",                     False),
+    ("Vent (beaufort)",                "video_observation", "wind",                        False),
+    ("Direction vent",                 "video_observation", "wind_direction",              False),
+    ("Mer (beaufort)",                 "video_observation", "seaState",                    False),
+    ("Houle",                          "video_observation", "swell_height",                False),
+    ("Direction houle",                "video_observation", "swell_direction",             False),
+    ("Température air",                "video_observation", "airTemp",                     False),
+    ("Température eau",                "video_observation", "water_temperature",           False),
+    ("Dérusher",                       "video_observation", "derusher",                    False),
+    ("Analyseur poisson",              "video_observation", "fish_annotator",              False),
+    ("Analyseur habitat",              "video_observation", "habitat_annotator",           False),
+    ("Distance analysable min (m)",     "video_observation", "distance_min",                False),
+    ("Distance analysable max (m)",     "video_observation", "distance_max",                False),
+    ("Commentaire qualification",      "video_observation", "commentaire_qualification",   False),
+    ("Chemin vidéo",                   None,                None,                          True),
 ]
 # Champs du template non présents dans les anciens JSONs → à initialiser à null si absents
 _CUSTOM_VOB_FIELDS: list[str] = [
@@ -134,7 +175,6 @@ class MetadonneesController:
         self.graph_trash_container = self.widget.findChild(QtWidgets.QFrame, "graph_trash_container")
         self.container_weather_data = self.widget.findChild(QtWidgets.QFrame, "container_meteo_data")
         self.data_system_container = self.widget.findChild(QtWidgets.QFrame, "data_system_container")
-        self.data_survey_container = self.widget.findChild(QtWidgets.QFrame, "data_survey_container")
         self.specific_container_data = self.widget.findChild(QtWidgets.QFrame, "specific_container_data")
 
         # Remove the 1200px minimum that was causing the toolbar to go off-screen
@@ -197,7 +237,6 @@ class MetadonneesController:
 
     def _init_scroll_areas(self):
         """Crée un QScrollArea dans chaque container de données."""
-        self._scroll_survey = self._make_scroll_area(self.data_survey_container)
         self._scroll_system = self._make_scroll_area(self.data_system_container)
         self._scroll_weather = self._make_scroll_area(self.container_weather_data)
         self._scroll_video = self._make_scroll_area(self.specific_container_data)
@@ -230,7 +269,7 @@ class MetadonneesController:
         tb_row.setContentsMargins(10, 0, 10, 0)
         tb_row.setSpacing(10)
 
-        lbl_title = QtWidgets.QLabel("Feuille terrain")
+        lbl_title = QtWidgets.QLabel("Infostation")
         lbl_title.setStyleSheet(_SECTION_TITLE_STYLE)
         tb_row.addWidget(lbl_title)
 
@@ -244,14 +283,15 @@ class MetadonneesController:
         tb_row.addWidget(self.lbl_trash_count)
         tb_row.addStretch()
 
-        btn_export = QtWidgets.QPushButton(self.translate("Générer CSV Infostation", "Generate Infostation CSV"))
-        btn_export.setStyleSheet(
-            "QPushButton{background:#1a4a1a;color:#90EE90;border:1px solid #5DBB63;"
-            "border-radius:4px;padding:2px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
-            "QPushButton:hover{background:#2a6a2a;}"
+        btn_gpx = QtWidgets.QPushButton("IMPORT GPX")
+        btn_gpx.setStyleSheet(
+            "QPushButton{background:#1a3a4a;color:#7ec8e3;border:1px solid #2778a2;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2778a2;color:white;}"
         )
-        btn_export.clicked.connect(self._export_infostation_action)
-        tb_row.addWidget(btn_export)
+        btn_gpx.clicked.connect(self._import_gpx)
+        tb_row.addWidget(btn_gpx)
         outer.addWidget(title_bar)
 
         # ── En-tête campagne ─────────────────────────────────────────────
@@ -283,42 +323,74 @@ class MetadonneesController:
         cp.setContentsMargins(10, 5, 10, 5)
         cp.setSpacing(4)
 
-        # Ligne 1 : Date et heure | Équipage | SITE
+        # Ligne 1 : Nom campagne | Zone | Type | Région
         row1 = QtWidgets.QHBoxLayout()
         row1.setSpacing(6)
-        row1.addWidget(_hl("Date et heure"))
-        row1.addWidget(_hi("ft_date", "09/07/2026", 80))
-        row1.addSpacing(10)
-        row1.addWidget(_hl("Équipage"))
-        row1.addWidget(_hi("ft_equipage", "O.F – OA – CH", 110))
-        row1.addSpacing(10)
-        row1.addWidget(_hl("SITE"))
-        row1.addWidget(_hi("ft_site", "Gléhan, Guériden", 130))
+        row1.addWidget(_hl("Nom campagne"))
+        row1.addWidget(_hi("ft_nom_campagne", "ATL_2026", 100))
+        row1.addSpacing(8)
+        row1.addWidget(_hl("Zone"))
+        row1.addWidget(_hi("ft_zone", "ATL", 50))
+        row1.addSpacing(8)
+        row1.addWidget(_hl("Type"))
+        row1.addWidget(_hi("ft_type", "KOSMOS", 60))
+        row1.addSpacing(8)
+        row1.addWidget(_hl("Région"))
+        row1.addWidget(_hi("ft_region", "Bretagne", 80))
         row1.addStretch()
         cp.addLayout(row1)
 
-        # Ligne 2 : Bateau | Pilote | GPS utilisé
+        # Ligne 2 : Site | Codestatut | Codestatut2 | Date
         row2 = QtWidgets.QHBoxLayout()
         row2.setSpacing(6)
-        row2.addWidget(_hl("Bateau"))
-        row2.addWidget(_hi("ft_bateau", "Siliou", 90))
-        row2.addSpacing(10)
-        row2.addWidget(_hl("Pilote"))
-        row2.addWidget(_hi("ft_pilote", "O.A", 80))
-        row2.addSpacing(10)
-        row2.addWidget(_hl("GPS utilisé"))
-        row2.addWidget(_hi("ft_gps_device", "Garmin", 80))
+        row2.addWidget(_hl("Site"))
+        row2.addWidget(_hi("ft_site", "Gléhan", 100))
+        row2.addSpacing(8)
+        row2.addWidget(_hl("Codestatut"))
+        row2.addWidget(_hi("ft_codestatut", "", 60))
+        row2.addSpacing(8)
+        row2.addWidget(_hl("Codestatut2"))
+        row2.addWidget(_hi("ft_codestatut2", "", 60))
+        row2.addSpacing(8)
+        row2.addWidget(_hl("Date"))
+        row2.addWidget(_hi("ft_date", "09/07/2026", 80))
         row2.addStretch()
         cp.addLayout(row2)
 
+        # Ligne 3 : Bateau | Pilote | Équipage
+        row3 = QtWidgets.QHBoxLayout()
+        row3.setSpacing(6)
+        row3.addWidget(_hl("Bateau"))
+        row3.addWidget(_hi("ft_bateau", "Siliou", 80))
+        row3.addSpacing(8)
+        row3.addWidget(_hl("Pilote"))
+        row3.addWidget(_hi("ft_pilote", "O.A", 70))
+        row3.addSpacing(8)
+        row3.addWidget(_hl("Équipage"))
+        row3.addWidget(_hi("ft_equipage", "O.F – OA – CH", 130))
+        row3.addStretch()
+
+        btn_apply_all = QtWidgets.QPushButton(
+            self.translate("Appliquer à toutes les vidéos", "Apply to all videos"))
+        btn_apply_all.setStyleSheet(
+            "QPushButton{background:#20415d;color:#F2BFB4;border:1px solid #2778a2;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2778a2;}"
+        )
+        btn_apply_all.clicked.connect(self._apply_survey_to_all)
+        row3.addWidget(btn_apply_all)
+        cp.addLayout(row3)
+
         outer.addWidget(campaign_panel)
 
-        # ── Tableau des points (une ligne = une vidéo) ────────────────────
+        # ── Tableau infostation (une ligne = une vidéo) ───────────────────
         self._ft_table = QtWidgets.QTableWidget()
         self._ft_table.setColumnCount(len(_FT_TABLE_COLS))
         self._ft_table.setHorizontalHeaderLabels([c[0] for c in _FT_TABLE_COLS])
-        self._ft_table.horizontalHeader().setStretchLastSection(True)
-        self._ft_table.horizontalHeader().setMinimumSectionSize(50)
+        self._ft_table.horizontalHeader().setStretchLastSection(False)
+        self._ft_table.horizontalHeader().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self._ft_table.horizontalHeader().setMinimumSectionSize(40)
         self._ft_table.verticalHeader().setDefaultSectionSize(22)
         self._ft_table.verticalHeader().hide()
         self._ft_table.setAlternatingRowColors(True)
@@ -338,47 +410,48 @@ class MetadonneesController:
             QTableWidget::item { padding: 1px 4px; }
             QTableWidget::item:selected { background-color: #20415d; color: white; }
             QTableWidget::item:alternate { background-color: #0d1620; }
-            QLineEdit { background:#1a2e3d; color:#F2BFB4; border:none;
-                        font-size:10px; font-family:'Segoe UI',sans-serif; }
         """)
-        # Largeurs de colonnes initiales
-        for col_i, width in enumerate([62, 52, 68, 55, 95, 95, 65, 100]):
-            self._ft_table.setColumnWidth(col_i, width)
+        # Largeurs par défaut selon le type de colonne
+        _default_widths = {
+            "Codestation": 80, "Latitude": 90, "Longitude": 90, "Heure": 52,
+            "Exploitable": 70, "Nom du point": 70, "Nom du point GPS": 70,
+            "Pt de Suivi": 70, "Profondeur": 65,
+            "Commentaires terrain pose": 150, "Commentaires terrain localisation": 150,
+            "Nom du fichier": 140, "Timecode ardoise": 85, "Timecode début": 85,
+            "Commentaires video": 150, "Images interessantes": 130, "Capture écran": 80,
+            "Milieu/Habitat": 90, "Visibilite": 65,
+            "Camera": 80, "Modèle MCU": 75, "Version système": 90,
+            "Moteur": 55, "Systeme": 70,
+            "Maree": 55, "Coefficient marée": 90, "Lune": 50,
+            "Meteo": 80, "Vent (beaufort)": 85, "Direction vent": 90,
+            "Mer (beaufort)": 85, "Houle": 55, "Direction houle": 90,
+            "Température air": 95, "Température eau": 95,
+            "Dérusher": 70, "Analyseur poisson": 100, "Analyseur habitat": 100,
+            "Distance analysable min (m)": 110, "Distance analysable max (m)": 110,
+            "Commentaire qualification": 140, "Chemin vidéo": 200,
+        }
+        for col_i, (col_label, *_) in enumerate(_FT_TABLE_COLS):
+            self._ft_table.setColumnWidth(col_i, _default_widths.get(col_label, 80))
 
         self._ft_table.cellChanged.connect(self._on_ft_table_cell_changed)
         self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
         outer.addWidget(self._ft_table, stretch=1)
-
-        # ── Pied : commentaire général ────────────────────────────────────
-        footer = QtWidgets.QWidget()
-        footer.setStyleSheet("background-color: #0d1620; border-top: 1px solid #1e3448;")
-        footer.setFixedHeight(30)
-        flay = QtWidgets.QHBoxLayout(footer)
-        flay.setContentsMargins(10, 4, 10, 4)
-        flay.setSpacing(6)
-        lbl_comm = QtWidgets.QLabel("Commentaire :")
-        lbl_comm.setStyleSheet(_lbl_h)
-        flay.addWidget(lbl_comm)
-        w_comm = QtWidgets.QLineEdit()
-        w_comm.setStyleSheet(_inp_h)
-        w_comm.setFixedHeight(20)
-        w_comm.textChanged.connect(
-            lambda t: self._on_infostation_changed("ft_comment_general", t, w_comm))
-        self._infostation_widgets["ft_comment_general"] = w_comm
-        flay.addWidget(w_comm, stretch=1)
-        outer.addWidget(footer)
 
         self.refresh_statistics()
 
     # ── Tableau feuille terrain ───────────────────────────────────────────
 
     def _rebuild_ft_table(self):
-        """Reconstruit le tableau des points depuis les JSONs de toutes les vidéos."""
+        """Reconstruit le tableau infostation depuis les JSONs de toutes les vidéos."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
         self._ft_table.setRowCount(0)
+
+        _ro_flags = (QtCore.Qt.ItemFlag.ItemIsSelectable |
+                     QtCore.Qt.ItemFlag.ItemIsEnabled)
+        _rw_flags = _ro_flags | QtCore.Qt.ItemFlag.ItemIsEditable
 
         for model_row in range(self.video_model.rowCount()):
             item = self.video_model.item(model_row, 0)
@@ -389,32 +462,22 @@ class MetadonneesController:
                 continue
             video_path = str(video_path)
 
-            json_path = resolve_video_json_path(self._working_dir, video_path)
-            jdata = {}
-            if os.path.isfile(json_path):
-                try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        jdata = json.load(f)
-                except Exception:
-                    pass
-
-            obs = jdata.get("video_observation", {})
-            stem = os.path.splitext(os.path.basename(video_path))[0]
-            _, heure_stem = self._extract_stem_parts(stem)
+            # Utilise _build_infostation_row pour récupérer toutes les valeurs
+            # (gère les champs dérivés : timecodes, GPS fallback, etc.)
+            row_data = self._build_infostation_row(video_path)
 
             trow = self._ft_table.rowCount()
             self._ft_table.insertRow(trow)
 
-            for col_i, (col_label, block_name, json_key) in enumerate(_FT_TABLE_COLS):
-                entry = obs.get(json_key, {})
-                val = entry.get("value", "") if isinstance(entry, dict) else (entry or "")
-                val = str(val) if val is not None else ""
-                if json_key == "time" and not val:
-                    val = heure_stem
-
+            for col_i, (col_label, block_name, json_key, read_only) in enumerate(_FT_TABLE_COLS):
+                val = str(row_data.get(col_label, "") or "")
                 cell = QtWidgets.QTableWidgetItem(val)
                 cell.setTextAlignment(
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
+                cell.setFlags(_ro_flags if read_only else _rw_flags)
+                if read_only:
+                    cell.setForeground(QtGui.QBrush(QtGui.QColor("#5a7a8a")))
+                # Stocke le video_path dans la colonne 0
                 if col_i == 0:
                     cell.setData(QtCore.Qt.ItemDataRole.UserRole, video_path)
                 self._ft_table.setItem(trow, col_i, cell)
@@ -431,7 +494,10 @@ class MetadonneesController:
         if not video_path:
             return
 
-        _col_label, block_name, json_key = _FT_TABLE_COLS[col]
+        _col_label, block_name, json_key, read_only = _FT_TABLE_COLS[col]
+        if read_only or block_name is None or json_key is None:
+            return
+
         cell = self._ft_table.item(row, col)
         new_value = cell.text().strip() if cell else ""
 
@@ -441,38 +507,32 @@ class MetadonneesController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 jdata = json.load(f)
-            obs = jdata.setdefault("video_observation", {})
-            if json_key in obs and isinstance(obs[json_key], dict):
-                obs[json_key]["value"] = new_value or None
+            block = jdata.setdefault(block_name, {})
+            if json_key in block and isinstance(block[json_key], dict):
+                block[json_key]["value"] = new_value or None
             else:
-                obs[json_key] = {"value": new_value or None}
+                block[json_key] = {"value": new_value or None}
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             self._schedule_infostation_upsert(video_path)
             if self._on_metadata_saved:
                 self._on_metadata_saved()
         except Exception as e:
-            print(f"[FT TABLE] Error saving {json_key}: {e}")
+            print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
 
     def _on_ft_table_row_clicked(self, row: int, _col: int):
-        """Sélectionne dans l'arbre la vidéo de la ligne cliquée."""
+        """Charge les données de la vidéo cliquée dans les panneaux de droite."""
         first_item = self._ft_table.item(row, 0)
-        if first_item is None or not self.tree_videos:
+        if first_item is None:
             return
         video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
         if not video_path:
             return
-        for r in range(self.video_model.rowCount()):
-            item = self.video_model.item(r, 0)
-            if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
-                index = self.video_model.indexFromItem(item)
-                self.tree_videos.selectionModel().setCurrentIndex(
-                    index,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
-                    QtCore.QItemSelectionModel.SelectionFlag.Rows
-                )
-                self.tree_videos.scrollTo(index)
-                break
+        json_path = resolve_video_json_path(self._working_dir, str(video_path))
+        if os.path.isfile(json_path):
+            self.current_video_path = str(video_path)
+            self.load_all_data(json_path)
+            self._load_infostation_fields(str(video_path))
 
     # ── Public interface ─────────────────────────────────────────────────
 
@@ -570,8 +630,6 @@ class MetadonneesController:
 
         if "system" in data:
             self._display_block_in_scroll("system", data["system"], self._scroll_system, self.translate("Système", "System"))
-        if "survey" in data:
-            self._display_block_in_scroll("survey", data["survey"], self._scroll_survey, self.translate("Campagne", "Campaign"))
 
     def load_all_data(self, json_path: str):
         """Lit json_path et peuple tous les panneaux (système, campagne, vidéo, météo)."""
@@ -588,13 +646,6 @@ class MetadonneesController:
         if "system" in self._json_data:
             self._display_block_in_scroll("system", self._json_data["system"],
                                           self._scroll_system, self.translate("Système", "System"))
-        if "survey" in self._json_data:
-            self._display_block_in_scroll(
-                "survey", self._json_data["survey"],
-                self._scroll_survey, self.translate("Campagne", "Campaign"),
-                extra_btn=(self.translate("Appliquer à toutes les vidéos", "Apply to all videos"),
-                           self._apply_survey_to_all)
-            )
         if "video_observation" in self._json_data:
             self._ensure_custom_fields()
             obs = self._json_data["video_observation"]
@@ -810,8 +861,8 @@ class MetadonneesController:
 
     def _on_infostation_changed(self, field_id: str, value: str,
                                  widget: QtWidgets.QWidget | None = None):
-        """Persiste la valeur dans le bon bloc de _json_data et déclenche la sauvegarde."""
-        if not self.current_video_path:
+        """Propage la valeur de l'en-tête campagne à tous les JSON vidéo du dossier de travail."""
+        if not self._working_dir:
             return
         mapping = _INFOSTATION_FIELD_BLOCKS.get(field_id)
         if not mapping:
@@ -819,7 +870,31 @@ class MetadonneesController:
         block_name, json_key = mapping
         if widget and isinstance(widget, QtWidgets.QLineEdit):
             widget.setStyleSheet(_FIELD_STYLE if value else _EMPTY_STYLE)
-        self._update_value(block_name, json_key, value)
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            json_path = get_working_video_json_path(self._working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                block = data.setdefault(block_name, {})
+                if json_key in block and isinstance(block[json_key], dict):
+                    block[json_key]["value"] = value or None
+                else:
+                    block[json_key] = {"value": value or None}
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+            except Exception as e:
+                print(f"[INFOSTATION HEADER] {field_id}: {e}")
+        self._schedule_infostation_upsert("")
+        if self._on_metadata_saved:
+            self._on_metadata_saved()
 
     def _auto_derive_from_json(self):
         """Dérive timecode_ardoise, timecode_début et interesting_images depuis les événements JSON.
@@ -1200,61 +1275,170 @@ class MetadonneesController:
 
     # ── Feature : batch survey ────────────────────────────────────────────
 
-    def _apply_survey_to_all(self):
-        """Propage les valeurs survey et system du JSON actif à toutes les vidéos du dossier de travail."""
-        if not self._json_data or not self._working_dir:
+    # ── Feature : import GPX ─────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_gpx_points(gpx_path: str) -> list:
+        """Retourne une liste triée de (datetime UTC, lat, lon) depuis un fichier GPX."""
+        tree = ET.parse(gpx_path)
+        root = tree.getroot()
+
+        # Gestion des namespaces GPX 1.0, 1.1 et sans namespace
+        tag = root.tag
+        ns = ""
+        if tag.startswith("{"):
+            ns = tag[:tag.index("}") + 1]
+
+        points = []
+        for tag_name in (f"{ns}trkpt", f"{ns}wpt", f"{ns}rtept"):
+            for pt in root.iter(tag_name):
+                try:
+                    lat = float(pt.get("lat"))
+                    lon = float(pt.get("lon"))
+                    time_elem = pt.find(f"{ns}time")
+                    if time_elem is None or not time_elem.text:
+                        continue
+                    raw = time_elem.text.strip().replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(raw)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    points.append((dt, lat, lon))
+                except (ValueError, TypeError):
+                    continue
+
+        return sorted(points, key=lambda x: x[0])
+
+    @staticmethod
+    def _video_datetime_from_stem(stem: str) -> datetime | None:
+        """Extrait le datetime UTC depuis un stem de fichier vidéo (format YYYYMMDDHHMMSS_...)."""
+        m = re.match(r'^(\d{8})(\d{6})', stem)
+        if not m:
+            return None
+        try:
+            dt_str = m.group(1) + m.group(2)
+            return datetime.strptime(dt_str, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    def _import_gpx(self):
+        """Ouvre un explorateur pour choisir un .gpx et applique les coordonnées à toutes les vidéos."""
+        if not self._working_dir:
             QtWidgets.QMessageBox.warning(
                 self.widget,
-                self.translate("Impossible", "Impossible"),
-                self.translate("Ouvrez d'abord une vidéo et un répertoire de travail.",
-                               "Open a video and a working directory first.")
+                self.translate("Répertoire manquant", "Missing directory"),
+                self.translate("Sélectionnez d'abord un répertoire de travail (page Accueil).",
+                               "Select a working directory first (Home page).")
             )
             return
 
-        survey_data = self._json_data.get("survey", {})
-        system_data = self._json_data.get("system", {})
-        count, skipped = 0, 0
+        gpx_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.widget,
+            self.translate("Sélectionner un fichier GPX", "Select a GPX file"),
+            "",
+            "GPX files (*.gpx);;All files (*)"
+        )
+        if not gpx_path:
+            return
 
+        try:
+            points = self._parse_gpx_points(gpx_path)
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self.widget,
+                self.translate("Erreur GPX", "GPX Error"),
+                self.translate(f"Impossible de lire le fichier GPX :\n{e}",
+                               f"Cannot read GPX file:\n{e}")
+            )
+            return
+
+        if not points:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("GPX vide", "Empty GPX"),
+                self.translate("Aucun point GPS trouvé dans ce fichier.",
+                               "No GPS points found in this file.")
+            )
+            return
+
+        matched, unmatched = 0, 0
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
                 continue
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path or not os.path.exists(video_path):
+            if not video_path:
                 continue
-            json_path = get_working_video_json_path(self._working_dir, str(video_path))
-            if not os.path.exists(json_path):
-                skipped += 1
+            video_path = str(video_path)
+            stem = os.path.splitext(os.path.basename(video_path))[0]
+            video_dt = self._video_datetime_from_stem(stem)
+
+            # Trouver le waypoint le plus proche en temps
+            if video_dt and points:
+                closest = min(points, key=lambda p: abs((p[0] - video_dt).total_seconds()))
+                lat, lon = closest[1], closest[2]
+            elif points:
+                # Pas de timestamp dans le nom → premier point du GPX
+                lat, lon = points[0][1], points[0][2]
+            else:
+                unmatched += 1
+                continue
+
+            json_path = get_working_video_json_path(self._working_dir, video_path)
+            if not os.path.isfile(json_path):
+                unmatched += 1
                 continue
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                for field_id, field_def in survey_data.items():
-                    if isinstance(field_def, dict) and "value" in field_def:
-                        if field_id in data.get("survey", {}):
-                            data["survey"][field_id]["value"] = field_def["value"]
-                for field_id, field_def in system_data.items():
-                    if isinstance(field_def, dict) and "value" in field_def:
-                        if field_id in data.get("system", {}):
-                            data["system"][field_id]["value"] = field_def["value"]
+                obs = data.setdefault("video_observation", {})
+                lat_str = str(lat).replace(".", ",")
+                lon_str = str(lon).replace(".", ",")
+                obs["latitude"] = {"value": lat_str}
+                obs["longitude"] = {"value": lon_str}
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
-                count += 1
+                matched += 1
             except Exception as e:
-                print(f"[BATCH SURVEY] {os.path.basename(str(video_path))}: {e}")
-                skipped += 1
+                print(f"[GPX] {os.path.basename(video_path)}: {e}")
+                unmatched += 1
+
+        self._rebuild_ft_table()
+        if self._on_metadata_saved:
+            self._on_metadata_saved()
 
         msg = self.translate(
-            f"Données campagne & système appliquées à {count} vidéo(s).",
-            f"Campaign & system data applied to {count} video(s)."
+            f"Coordonnées GPX appliquées à {matched} vidéo(s).",
+            f"GPS coordinates applied to {matched} video(s)."
         )
-        if skipped:
-            msg += self.translate(f"\n{skipped} vidéo(s) ignorée(s) (JSON absent dans le dossier de sortie).",
-                                   f"\n{skipped} video(s) skipped (no output JSON yet).")
+        if unmatched:
+            msg += self.translate(f"\n{unmatched} vidéo(s) ignorée(s) (JSON absent ou introuvable).",
+                                   f"\n{unmatched} video(s) skipped (no output JSON).")
+        QtWidgets.QMessageBox.information(
+            self.widget,
+            self.translate("Import GPX terminé", "GPX import done"),
+            msg
+        )
+
+    def _apply_survey_to_all(self):
+        """Propage les valeurs de l'en-tête campagne à toutes les vidéos du dossier de travail."""
+        if not self._working_dir:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Impossible", "Impossible"),
+                self.translate("Sélectionnez d'abord un répertoire de travail (page Accueil).",
+                               "Select a working directory first (Home page).")
+            )
+            return
+        for field_id in _INFOSTATION_FIELD_BLOCKS:
+            w = self._infostation_widgets.get(field_id)
+            if isinstance(w, QtWidgets.QLineEdit):
+                self._on_infostation_changed(field_id, w.text().strip())
+        n = self.video_model.rowCount()
         QtWidgets.QMessageBox.information(
             self.widget,
             self.translate("Propagation terminée", "Propagation complete"),
-            msg
+            self.translate(f"Propriétés campagne appliquées à {n} vidéo(s).",
+                           f"Campaign properties applied to {n} video(s).")
         )
 
     # ── CSV export ────────────────────────────────────────────────────────

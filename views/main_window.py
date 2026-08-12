@@ -100,8 +100,8 @@ class MainWindow(QtWidgets.QMainWindow):
             elif action == self.actionMetadonnees:
                 continue
             elif action == self.actionEvenements:
-                ordered_actions.append(action)
                 ordered_actions.append(self.actionMetadonnees)
+                ordered_actions.append(action)
             else:
                 ordered_actions.append(action)
 

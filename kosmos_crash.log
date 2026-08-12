@@ -472,3 +472,23 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-12 09:54:24.251879
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\metadonnees_controller.py", line 601, in on_selection_changed
+    self._on_video_selected(video_name, self.current_video_path)
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 156, in _on_meta_video_selected
+    self.qualif_ctrl.select_video_by_name(video_name)
+  File "c:\KOSMOS_IHM\controllers\qualif_controller.py", line 857, in select_video_by_name
+    self.load_exploitable_value()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'QualifController' object has no attribute 'load_exploitable_value'
+
+============================================================
+2026-08-12 10:53:21.396384
+Traceback (most recent call last):
+  File "C:\Users\Administrateur\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
