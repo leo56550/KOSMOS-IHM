@@ -512,16 +512,16 @@ class ValidationController:
             print(f"[VALIDATION] Lecture JSON échouée : {e}")
             return
 
-        existing_code = (data.get("video_observation", {})
-                             .get("codeObs", {})
-                             .get("value") or "")
+        existing_num = (data.get("video_observation", {})
+                            .get("station_number", {})
+                            .get("value") or "")
 
-        # Dialog code station
-        code, ok = QtWidgets.QInputDialog.getText(
+        # Dialog numéro du point
+        num_str, ok = QtWidgets.QInputDialog.getText(
             self.page,
-            self.translate("Code station", "Station code"),
-            self.translate("Code station (ex : CC190001) :", "Station code (e.g. CC190001):"),
-            text=existing_code,
+            self.translate("N° du point", "Point number"),
+            self.translate("Numéro du point :", "Point number:"),
+            text=str(existing_num),
         )
 
         # Ajoute visuellement dans la timeline (indépendamment du dialog)
@@ -539,7 +539,7 @@ class ValidationController:
             self.player.timeline.events.append(new_evt)
             self.player.timeline.update()
 
-        # Écriture JSON unique : ardoise + codeObs si saisi
+        # Écriture JSON unique : ardoise + station_number si saisi
         try:
             obs = data.setdefault("video_observation", {})
 
@@ -559,23 +559,45 @@ class ValidationController:
                 "comment": "",
             })
 
-            # Code station
-            if ok and code.strip():
-                code = code.strip()
-                obs.setdefault("codeObs", {})["value"] = code
-                # point_name = 4 derniers caractères par convention, si vide
-                if not obs.get("point_name", {}).get("value"):
-                    obs.setdefault("point_name", {})["value"] = code[-4:] if len(code) >= 4 else code
+            # N° du point → 4 chiffres zero-padded
+            if ok and num_str.strip():
+                raw = num_str.strip()
+                try:
+                    station_num = f"{int(raw):04d}"
+                except ValueError:
+                    station_num = raw.zfill(4)[:4]
+                obs.setdefault("station_number", {})["value"] = station_num
 
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
-            # Feedback visuel bref
-            label = f"✓ {code}" if (ok and code.strip()) else "✓ Ardoise"
+            # Feedback visuel bref + flash ardoise
+            label = f"✓ N°{station_num}" if (ok and num_str.strip()) else "✓ Ardoise"
             self.player.btn_ardoise.setText(label)
             QtCore.QTimer.singleShot(2000, lambda: self.player.btn_ardoise.setText("SAISIR ARDOISE"))
+            self._flash_ardoise()
 
             if self._on_qualification_changed:
                 self._on_qualification_changed()
         except Exception as e:
             print(f"[VALIDATION] Erreur sauvegarde ardoise/codeObs : {e}")
+
+    def _flash_ardoise(self):
+        """Flash blanc sur le player vidéo — effet déclencheur d'appareil photo."""
+        target = getattr(self.player, 'video_container', self.player)
+        flash = QtWidgets.QWidget(target)
+        flash.setGeometry(target.rect())
+        flash.setStyleSheet("background: white; border: none;")
+        flash.raise_()
+        flash.show()
+
+        effect = QtWidgets.QGraphicsOpacityEffect(flash)
+        flash.setGraphicsEffect(effect)
+
+        anim = QtCore.QPropertyAnimation(effect, b"opacity", flash)
+        anim.setDuration(350)
+        anim.setStartValue(0.9)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QtCore.QEasingCurve.Type.OutQuad)
+        anim.finished.connect(flash.deleteLater)
+        anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)

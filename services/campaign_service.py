@@ -151,15 +151,23 @@ def build_video_output_name(video_path: str) -> str:
 
     year_2d = date[2:4] if len(date) >= 4 else "00"
 
-    # Index station = nom du dossier parent de la vidéo.
-    # Cas 1 – nom purement numérique (ex: "0042") → index direct
-    # Cas 2 – nom déjà formaté (ex: "202207181314_ATL_CC220006") → 4 derniers chiffres
-    parent_name = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
-    try:
-        station_idx = f"{int(parent_name):04d}"
-    except ValueError:
-        m = re.search(r'(\d{4})$', parent_name)
-        station_idx = m.group(1) if m else "0000"
+    # N° du point saisi à l'ardoise (champ station_number, 4 chiffres)
+    station_num_raw = (data.get("video_observation", {})
+                          .get("station_number", {})
+                          .get("value") or "").strip()
+    if station_num_raw:
+        try:
+            station_idx = f"{int(station_num_raw):04d}"
+        except ValueError:
+            station_idx = station_num_raw.zfill(4)[:4]
+    else:
+        # Fallback anciens projets : dossier parent numérique
+        parent_name = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
+        try:
+            station_idx = f"{int(parent_name):04d}"
+        except ValueError:
+            m = re.search(r'(\d{4})$', parent_name)
+            station_idx = m.group(1) if m else "0000"
 
     codestation = f"{zone}{year_2d}{station_idx}"
     date_hhmm = f"{date}{hhmm}" if hhmm else date

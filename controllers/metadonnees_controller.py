@@ -41,6 +41,7 @@ _INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
 # read_only=True → dérivé automatiquement, non éditable.
 _FT_TABLE_COLS: list[tuple] = [
     ("Codestation",                    "video_observation", "codeObs",                   False),
+    ("N° Point",                       "video_observation", "station_number",             False),
     ("Latitude",                       "video_observation", "latitude",                   False),
     ("Longitude",                      "video_observation", "longitude",                  False),
     ("Heure",                          "video_observation", "time",                       False),
@@ -98,6 +99,7 @@ _CUSTOM_VOB_FIELDS: list[str] = [
     "distance_min", "distance_max",
     "time", "latitude", "longitude",
     "substrat", "gps_boat_point", "timecode_atterrissage", "timecode_decollage",
+    "station_number",
 ]
 
 # Colonnes du CSV infostation (source unique de vérité — utilisée dans upsert ET génération complète)
@@ -1495,9 +1497,10 @@ class MetadonneesController:
     # Champs requis dans le JSON de chaque vidéo pour construire le nom formaté
     # Format : (block, json_key, label_affichage)
     _REQUIRED_VIDEO_JSON_FIELDS = [
-        ("survey", "date",   "Date (survey.date)"),
-        ("survey", "region", "Région / AREA (survey.region)"),
-        ("survey", "zone",   "Zone (survey.zone)"),
+        ("survey",           "date",           "Date (survey.date)"),
+        ("survey",           "region",         "Région / AREA (survey.region)"),
+        ("survey",           "zone",           "Zone (survey.zone)"),
+        ("video_observation","station_number", "N° du point (saisi à l'ardoise)"),
     ]
 
     def _on_save_clicked(self):
@@ -1638,24 +1641,29 @@ class MetadonneesController:
         # ── Année 2 chiffres ─────────────────────────────────────────────
         year_2d = date_part[2:4] if len(date_part) >= 4 else ""
 
-        # ── Index station depuis le dossier parent (ex: "0053") ──────────
-        station_idx = "0000"
-        if video_path:
+        # ── N° du point (4 chiffres saisi à l'ardoise) ───────────────────
+        station_num_raw = _sv(vob, "station_number").strip()
+        if station_num_raw:
+            try:
+                station_idx = f"{int(station_num_raw):04d}"
+            except ValueError:
+                station_idx = station_num_raw.zfill(4)[:4]
+        elif video_path:
+            # Fallback anciens projets : dossier parent numérique
             parent_name = _os.path.basename(_os.path.dirname(_os.path.normpath(video_path)))
             try:
                 station_idx = f"{int(parent_name):04d}"
             except ValueError:
                 m = _re.search(r'(\d{4,})$', parent_name)
-                if not m:
-                    stem = _os.path.splitext(_os.path.basename(video_path))[0]
-                    m = _re.search(r'(\d{4,})', stem)
                 station_idx = f"{int(m.group(1)):04d}" if m else "0000"
+        else:
+            station_idx = "0000"
 
-        # ── codeStation = ZONE + année + index  ex: CC260053 ─────────────
+        # ── codeStation = ZONE + année + N°point  ex: CC260053 ───────────
         if zone and year_2d:
             codestation = f"{zone}{year_2d}{station_idx}"
         else:
-            codestation = _sv(vob, "codeObs").strip()  # fallback
+            codestation = _sv(vob, "codeObs").strip()  # fallback legacy
 
         parts = [p for p in [date_part + time_part, region, codestation] if p]
         return "_".join(parts) if parts else ""
