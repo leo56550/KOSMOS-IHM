@@ -1,0 +1,14 @@
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.0
+PyQt6-sip==13.11.1
+PyQt6-WebEngine==6.11.0
+pyqtgraph==0.14.0
+matplotlib==3.10.9
+opencv-python==4.13.0.92
+numpy==2.4.4
+pandas==3.0.2
+paramiko==4.0.0
+cryptography==48.0.0
+requests==2.33.1
+folium==0.20.0
+branca==0.8.2
