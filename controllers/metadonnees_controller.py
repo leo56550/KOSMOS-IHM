@@ -478,9 +478,9 @@ class MetadonneesController:
         self._ft_table.horizontalHeader().setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeMode.Interactive)
         self._ft_table.horizontalHeader().setMinimumSectionSize(40)
-        self._ft_table.verticalHeader().setDefaultSectionSize(22)
+        self._ft_table.verticalHeader().setDefaultSectionSize(30)
         self._ft_table.verticalHeader().hide()
-        self._ft_table.setAlternatingRowColors(True)
+        self._ft_table.setAlternatingRowColors(False)
         self._ft_table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self._ft_table.setSortingEnabled(True)
@@ -488,13 +488,13 @@ class MetadonneesController:
             QTableWidget {
                 background-color: #111820; alternate-background-color: #0d1620;
                 color: #F2BFB4; border: none; gridline-color: #1a2e40;
-                font-size: 10px; font-family: 'Segoe UI', sans-serif;
+                font-size: 12px; font-family: 'Segoe UI', sans-serif;
             }
             QHeaderView::section {
                 background-color: #162433; color: #7ec8e3; font-weight: bold;
-                border: 1px solid #1e3448; padding: 3px 4px; font-size: 10px;
+                border: 1px solid #1e3448; padding: 5px 6px; font-size: 12px;
             }
-            QTableWidget::item { padding: 1px 4px; }
+            QTableWidget::item { padding: 3px 6px; }
             QTableWidget::item:selected { background-color: #20415d; color: white; }
             QTableWidget::item:alternate { background-color: #0d1620; }
         """)
@@ -552,6 +552,18 @@ class MetadonneesController:
 
     # ── Tableau feuille terrain ───────────────────────────────────────────
 
+    # Palette de couleurs de fond par système (fond sombre, lisible)
+    _SYSTEM_COLORS = [
+        "#0d2030",  # bleu-gris foncé (défaut)
+        "#1a2010",  # vert foncé
+        "#201020",  # violet foncé
+        "#201808",  # brun foncé
+        "#081820",  # cyan foncé
+        "#200810",  # rouge foncé
+        "#101820",  # ardoise foncé
+        "#181010",  # bordeaux foncé
+    ]
+
     def _rebuild_ft_table(self):
         """Reconstruit le tableau infostation depuis les JSONs de toutes les vidéos."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
@@ -565,6 +577,11 @@ class MetadonneesController:
                      QtCore.Qt.ItemFlag.ItemIsEnabled)
         _rw_flags = _ro_flags | QtCore.Qt.ItemFlag.ItemIsEditable
 
+        # Index de la colonne "Systeme" dans le schéma
+        _systeme_col = next((i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS)
+                             if k == "type_system"), None)
+        _system_color_map: dict[str, str] = {}
+
         for model_row in range(self.video_model.rowCount()):
             item = self.video_model.item(model_row, 0)
             if not item:
@@ -574,9 +591,16 @@ class MetadonneesController:
                 continue
             video_path = str(video_path)
 
-            # Utilise _build_infostation_row pour récupérer toutes les valeurs
-            # (gère les champs dérivés : timecodes, GPS fallback, etc.)
             row_data = self._build_infostation_row(video_path)
+
+            # Couleur de fond selon la valeur "Systeme"
+            system_val = (str(row_data[_systeme_col]).strip()
+                          if _systeme_col is not None and _systeme_col < len(row_data)
+                          else "")
+            if system_val and system_val not in _system_color_map:
+                idx = len(_system_color_map) % len(self._SYSTEM_COLORS)
+                _system_color_map[system_val] = self._SYSTEM_COLORS[idx]
+            row_bg = QtGui.QColor(_system_color_map.get(system_val, self._SYSTEM_COLORS[0]))
 
             trow = self._ft_table.rowCount()
             self._ft_table.insertRow(trow)
@@ -587,9 +611,9 @@ class MetadonneesController:
                 cell.setTextAlignment(
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
                 cell.setFlags(_ro_flags if read_only else _rw_flags)
+                cell.setBackground(QtGui.QBrush(row_bg))
                 if read_only:
-                    cell.setForeground(QtGui.QBrush(QtGui.QColor("#5a7a8a")))
-                # Stocke le video_path dans la colonne 0
+                    cell.setForeground(QtGui.QBrush(QtGui.QColor("#7a9aaa")))
                 if col_i == 0:
                     cell.setData(QtCore.Qt.ItemDataRole.UserRole, video_path)
                 self._ft_table.setItem(trow, col_i, cell)
