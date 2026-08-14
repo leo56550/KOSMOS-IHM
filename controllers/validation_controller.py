@@ -472,7 +472,10 @@ class ValidationController:
             import traceback; traceback.print_exc()
 
     def refresh_item_indicator(self, item, video_path):
-        """Met à jour l'icône et la couleur d'un item selon son statut exploitabilité."""
+        """Met à jour la couleur d'un item selon son statut exploitabilité — préserve les badges de type."""
+        # Ne pas écraser la couleur de badge (stéréo/segments)
+        if item.data(QtCore.Qt.ItemDataRole.UserRole + 1):
+            return
         json_path = get_video_json_path(video_path)
         is_processed = False
         if os.path.exists(json_path):
@@ -484,11 +487,8 @@ class ValidationController:
                     is_processed = True
             except Exception:
                 pass
-
-        if is_processed:
-            item.setForeground(QtGui.QBrush(QtGui.QColor("#4CAF50")))
-        else:
-            item.setForeground(QtGui.QBrush(QtGui.QColor("white")))
+        color = "#4CAF50" if is_processed else "#b0bec5"
+        item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
 
     def initialize_tree_indicators(self):
         """Initialise les icônes de tout l'arbre au chargement d'une campagne."""

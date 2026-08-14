@@ -565,7 +565,10 @@ class QualifController:
         main_layout.addWidget(scroll_area)
 
     def refresh_item_indicator(self, item, video_path):
-        """Colore l'item en vert si l'exploitabilité est renseignée, blanc sinon."""
+        """Colore l'item en vert si qualifiée, sinon gris-bleu — préserve les badges de type."""
+        # Ne pas écraser la couleur de badge (stéréo/segments)
+        if item.data(QtCore.Qt.ItemDataRole.UserRole + 1):
+            return
         json_path = resolve_video_json_path(self._working_dir, video_path)
         is_processed = False
         if os.path.exists(json_path):
@@ -577,7 +580,7 @@ class QualifController:
                     is_processed = True
             except Exception:
                 pass
-        color = "#4CAF50" if is_processed else "white"
+        color = "#4CAF50" if is_processed else "#b0bec5"
         item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
 
     def initialize_tree_indicators(self):
@@ -635,11 +638,13 @@ class QualifController:
             if is_stereo_video:
                 col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
                 col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
+                col_name.setData("#4a9fcf", QtCore.Qt.ItemDataRole.UserRole + 1)
                 col_name.setText(video["name"] + f"  {sys_name} · STEREO")
             elif segs:
                 names = ", ".join(os.path.basename(s) for s in segs)
                 col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
                 col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
+                col_name.setData("#E8C838", QtCore.Qt.ItemDataRole.UserRole + 1)
                 col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
             else:
                 col_name.setText(video["name"] + f"  {sys_name} · MONO")
@@ -849,11 +854,13 @@ class QualifController:
                 if is_stereo_video:
                     col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
                     col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
+                    col_name.setData("#4a9fcf", QtCore.Qt.ItemDataRole.UserRole + 1)
                     col_name.setText(video["name"] + f"  {sys_name} · STEREO")
                 elif segs:
                     names = ", ".join(os.path.basename(s) for s in segs)
                     col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
                     col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
+                    col_name.setData("#E8C838", QtCore.Qt.ItemDataRole.UserRole + 1)
                     col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
                 else:
                     col_name.setText(video["name"] + f"  {sys_name} · MONO")
