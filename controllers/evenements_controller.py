@@ -20,6 +20,7 @@ from services.image_service import extract_frame_at_time
 from services.video_service import check_stereo_status
 from services.export_service import ExportWorker
 from views.widgets.embedded_player import EmbeddedVideoPlayer
+from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
@@ -192,6 +193,8 @@ class EvenementsController:
             self.tree_view_events.setModel(self.proxy_model)
             self.tree_view_events.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.tree_view_events.clicked.connect(self.on_video_selected)
+            self._bar_delegate = VideoBarDelegate(self.tree_view_events)
+            self.tree_view_events.setItemDelegateForColumn(0, self._bar_delegate)
 
         self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)
 
@@ -1839,6 +1842,8 @@ class EvenementsController:
     def set_working_dir(self, path: str):
         """Définit le répertoire de travail IHM pour les exports."""
         self._working_dir = path
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_working_dir(path)
 
     def _get_video_out_dir(self, video_path: str) -> str:
         """Retourne le dossier de sortie pour une vidéo : répertoire de travail si défini, sinon fallback campagne."""

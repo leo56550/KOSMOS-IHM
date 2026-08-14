@@ -1,7 +1,24 @@
 import os
+import re
 import cv2
 
 from services.campaign_service import extract_date_from_template
+
+
+def get_system_name(video_path: str) -> str:
+    """Retourne le nom court du système (ex: 'K51') depuis le chemin d'une vidéo.
+
+    Structure attendue : .../campagne/systeme/station/video.mp4
+    Le dossier système est le grand-parent du fichier vidéo.
+    Le nom court est la partie commençant par 'K' dans le nom du dossier système.
+    """
+    video_dir   = os.path.dirname(video_path)          # dossier station
+    system_dir  = os.path.dirname(video_dir)           # dossier système
+    folder_name = os.path.basename(system_dir)         # ex: "260424_SVR_K51"
+    for part in folder_name.split("_"):
+        if part.upper().startswith("K") and len(part) > 1:
+            return part
+    return folder_name  # fallback : nom complet si pas de token K
 
 
 def get_all_mp4_files(parent_folder: str) -> list:
@@ -70,15 +87,17 @@ def get_all_mp4_files(parent_folder: str) -> list:
 
 
 def check_stereo_status(video_path: str):
-    """Vérifie si le dossier d'une vidéo contient exactement deux fichiers MP4 (stéréo).
+    """Détecte si un dossier vidéo est en mode stéréo ou segments séquentiels.
 
-    Args:
-        video_path: Chemin vers l'un des fichiers MP4.
+    Stéréo   : X.mp4 + X_stereo.mp4  → (True,  [path_main, path_stereo])
+    Séquentiel: X.mp4 + X_01.mp4 ...  → (False, path_main)   [_01 ignoré pour l'instant]
+    Mono     : un seul .mp4           → (False, video_path)
 
     Returns:
-        Tuple (is_stereo: bool, video_payload: str|list).
-        En mode stéréo, video_payload est une liste [path_L, path_R] triée.
+        Tuple (is_stereo: bool, video_payload: str | list[str])
     """
+    import re as _re
+
     if not video_path:
         return False, None
 
@@ -86,14 +105,57 @@ def check_stereo_status(video_path: str):
     if not os.path.exists(video_dir):
         return False, video_path
 
-    all_videos = [
+    all_videos = sorted(
         os.path.join(video_dir, f)
         for f in os.listdir(video_dir)
         if f.lower().endswith(".mp4")
-    ]
+    )
 
-    if len(all_videos) == 2:
-        all_videos.sort()
-        return True, all_videos
+    if len(all_videos) < 2:
+        return False, video_path
 
+    # --- Stéréo : cherche X.mp4 + X_stereo.mp4 parmi tous les .mp4 du dossier ---
+    for v in all_videos:
+        stem = os.path.splitext(os.path.basename(v))[0]
+        if stem.lower().endswith("_stereo"):
+            base = stem[:-7]  # retire "_stereo"
+            main_candidate = os.path.join(video_dir, base + ".mp4")
+            if os.path.exists(main_candidate):
+                return True, [main_candidate, v]
+
+    # --- Segments séquentiels : X.mp4 + X_01.mp4 / X_02.mp4 ... → charge uniquement X.mp4 ---
+    stems = [os.path.splitext(os.path.basename(v))[0] for v in all_videos]
+    primaries = [s for s in stems if not _re.search(r'_\d+$', s)]
+    if len(primaries) == 1:
+        primary_path = os.path.join(video_dir, primaries[0] + ".mp4")
+        if os.path.exists(primary_path):
+            return False, primary_path
+
+    # Fallback mono
     return False, video_path
+
+
+def get_sequential_segments(video_path: str) -> list[str]:
+    """Retourne la liste des segments séquentiels liés à video_path (hors lui-même).
+
+    Ex : pour 0066.mp4, retourne ['.../0066_01.mp4', '.../0066_02.mp4', ...]
+    Retourne [] si aucun segment trouvé ou si video_path est lui-même un segment (_NN).
+    """
+    import re as _re
+
+    if not video_path or not os.path.exists(video_path):
+        return []
+
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    # Ne pas chercher depuis un fichier _NN lui-même
+    if _re.search(r'_\d+$', stem):
+        return []
+
+    video_dir = os.path.dirname(video_path)
+    pattern = _re.compile(rf'^{_re.escape(stem)}_\d+\.mp4$', _re.IGNORECASE)
+    segments = sorted(
+        os.path.join(video_dir, f)
+        for f in os.listdir(video_dir)
+        if pattern.match(f)
+    )
+    return segments

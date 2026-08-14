@@ -4,7 +4,7 @@ import json
 from services.campaign_service import (get_campaign_json_data, get_video_json_path,
                                        sync_video_to_working_dir, migrate_json_to_template,
                                        get_working_video_json_path)
-from services.video_service import check_stereo_status
+from services.video_service import check_stereo_status, get_system_name
 from services.weather_service import WeatherWorker
 from views.dialogs.notes_dialog import NotesDialog
 from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
@@ -513,21 +513,58 @@ class AppController:
                 self.lock_navigation(True)
 
     def _detect_campaign_mode(self):
-        """Détermine si la campagne est MONO ou STEREO à partir de la première vidéo du modèle."""
+        """Détermine le mode et les systèmes de la campagne en scannant toutes les vidéos."""
         model = self.qualif_ctrl.video_model
         if model.rowCount() == 0:
             self._current_campaign_mode = ""
+            self._update_systems_label([])
             return
-        first_item = model.item(0, 0)
-        if first_item is None:
+        stereo_count = 0
+        total = 0
+        systems_ordered: list[str] = []
+        systems_seen: set[str] = set()
+        for row in range(model.rowCount()):
+            item = model.item(row, 0)
+            if not item:
+                continue
+            path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not path:
+                continue
+            total += 1
+            is_stereo, _ = check_stereo_status(str(path))
+            if is_stereo:
+                stereo_count += 1
+            sys_name = get_system_name(str(path))
+            if sys_name not in systems_seen:
+                systems_seen.add(sys_name)
+                systems_ordered.append(sys_name)
+        if total == 0:
             self._current_campaign_mode = ""
-            return
-        first_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        if first_path:
-            is_stereo, _ = check_stereo_status(first_path)
-            self._current_campaign_mode = "STEREO" if is_stereo else "MONO"
+        elif stereo_count == 0:
+            self._current_campaign_mode = "MONO"
+        elif stereo_count == total:
+            self._current_campaign_mode = "STEREO"
         else:
-            self._current_campaign_mode = ""
+            self._current_campaign_mode = "MIXTE"
+        self._update_systems_label(systems_ordered)
+
+    def _update_systems_label(self, systems: list[str]):
+        """Met à jour le label systèmes dans la toolbar."""
+        w = self.window
+        if not hasattr(w, 'systems_label'):
+            return
+        if not systems:
+            w._systems_action.setVisible(False)
+            return
+        n = len(systems)
+        label = f"{n} système{'s' if n > 1 else ''} : {' · '.join(systems)}"
+        w.systems_label.setText(label)
+        w.systems_label.setStyleSheet(
+            "color: #a0c8e0; font-family: 'Segoe UI', sans-serif;"
+            " font-size: 10px; padding: 2px 8px; border: 1px solid #405870;"
+            " border-radius: 3px; letter-spacing: 0.3px;"
+        )
+        w._systems_action.setVisible(True)
 
     def _refresh_all_page_models(self):
         """Recharge le VideoModel dans tous les controllers de page après ouverture de campagne."""

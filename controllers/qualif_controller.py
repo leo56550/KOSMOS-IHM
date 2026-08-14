@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWebChannel import QWebChannel
 
-from services.video_service import get_all_mp4_files
+from services.video_service import get_all_mp4_files, get_sequential_segments, check_stereo_status, get_system_name
 from services.campaign_service import (
     get_video_gps_coords, get_video_json_path, get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
@@ -251,15 +251,48 @@ class QualifController:
                 item.widget().deleteLater()
 
         # Vidéos gardées
+        prev_was_primary = False   # la row précédente est un primaire avec segments
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
+                prev_was_primary = False
                 continue
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not video_path:
+                prev_was_primary = False
                 continue
             dur_item = self.video_model.item(row, 1)
             size_item = self.video_model.item(row, 2)
+
+            segs = get_sequential_segments(str(video_path))
+            import re as _re
+            stem = os.path.splitext(os.path.basename(str(video_path)))[0]
+            is_seg = bool(_re.search(r"_\d+$", stem))
+            link_pos = ""
+            if segs:
+                link_pos = "primary"
+            elif is_seg and prev_was_primary:
+                link_pos = "segment"
+
+            # Bridge visuel entre une primary et son segment
+            if link_pos == "segment":
+                color = self._get_completion_color(str(video_path))
+                bridge = QtWidgets.QWidget()
+                bridge.setFixedHeight(2)   # couvre l'espace du layout spacing
+                b_lay = QtWidgets.QHBoxLayout(bridge)
+                b_lay.setContentsMargins(4, 0, 0, 0)   # aligne avec la barre (margin frame=4)
+                b_lay.setSpacing(0)
+                connector = QtWidgets.QFrame()
+                connector.setFixedSize(4, 2)
+                connector.setStyleSheet(
+                    f"background-color: {color.name()}; border: none;"
+                )
+                b_lay.addWidget(connector)
+                b_lay.addStretch()
+                self._videos_scroll_layout.insertWidget(
+                    self._videos_scroll_layout.count() - 1, bridge
+                )
+
             row_widget = self._build_video_row_widget(
                 video_path=str(video_path),
                 video_name=item.text(),
@@ -267,10 +300,12 @@ class QualifController:
                 size=size_item.text() if size_item else "",
                 icon=item.icon(),
                 is_trash=False,
+                link_pos=link_pos,
             )
             self._videos_scroll_layout.insertWidget(
                 self._videos_scroll_layout.count() - 1, row_widget
             )
+            prev_was_primary = (link_pos == "primary")
 
         # Vidéos jetées
         for row in range(self.trash_model.rowCount()):
@@ -296,7 +331,9 @@ class QualifController:
 
     def _build_video_row_widget(self, video_path: str, video_name: str,
                                 duration: str, size: str,
-                                icon: "QtGui.QIcon", is_trash: bool) -> QtWidgets.QFrame:
+                                icon: "QtGui.QIcon", is_trash: bool,
+                                link_pos: str = "") -> QtWidgets.QFrame:
+        # link_pos : "" = normal, "primary" = connecté en bas, "segment" = connecté en haut
         """Construit un widget de ligne vidéo avec indicateur couleur, vignette et boutons."""
         is_selected = video_path == (self._selected_video_path or "")
         bg = "#1e3a50" if is_selected else ("#111820" if is_trash else "#1a2a3a")
@@ -318,10 +355,17 @@ class QualifController:
         color = self._get_completion_color(video_path)
         if is_trash:
             color = QtGui.QColor("#555555")
+        # Arrondi selon la position dans un groupe de segments liés
+        if link_pos == "primary":
+            bar_radius = "border-top-left-radius: 2px; border-top-right-radius: 2px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;"
+        elif link_pos == "segment":
+            bar_radius = "border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 2px; border-bottom-right-radius: 2px;"
+        else:
+            bar_radius = "border-radius: 2px;"
         color_bar = QtWidgets.QFrame()
         color_bar.setFixedWidth(4)
         color_bar.setStyleSheet(
-            f"background-color: {color.name()}; border-radius: 2px; border: none;"
+            f"background-color: {color.name()}; {bar_radius} border: none;"
         )
         hlayout.addWidget(color_bar)
 
@@ -572,6 +616,10 @@ class QualifController:
             return
 
         for video in videos:
+            stem = os.path.splitext(video["name"])[0]
+            # Les fichiers _stereo.mp4 ne sont pas des entrées indépendantes
+            if stem.lower().endswith("_stereo"):
+                continue
             col_name = QtGui.QStandardItem(video["name"])
             col_dur = QtGui.QStandardItem(video["duration"])
             size_str = video.get("size") or (
@@ -581,6 +629,20 @@ class QualifController:
             col_size = QtGui.QStandardItem(size_str)
             col_date = QtGui.QStandardItem(video["date"])
             col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
+            sys_name = get_system_name(video["path"])
+            is_stereo_video, _ = check_stereo_status(video["path"])
+            segs = get_sequential_segments(video["path"])
+            if is_stereo_video:
+                col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
+                col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
+                col_name.setText(video["name"] + f"  {sys_name} · STEREO")
+            elif segs:
+                names = ", ".join(os.path.basename(s) for s in segs)
+                col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
+                col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
+                col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
+            else:
+                col_name.setText(video["name"] + f"  {sys_name} · MONO")
             self.video_model.appendRow([col_name, col_dur, col_size, col_date])
 
             coords = get_video_gps_coords(video["path"])
@@ -775,9 +837,26 @@ class QualifController:
 
         # Ajouter les nouveaux fichiers (non exclus)
         for video in videos:
+            stem = os.path.splitext(video["name"])[0]
+            if stem.lower().endswith("_stereo"):
+                continue  # fichier secondaire stéréo, non affiché séparément
             if video["path"] not in all_known:
                 col_name = QtGui.QStandardItem(video["name"])
                 col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
+                sys_name = get_system_name(video["path"])
+                is_stereo_video, _ = check_stereo_status(video["path"])
+                segs = get_sequential_segments(video["path"])
+                if is_stereo_video:
+                    col_name.setToolTip("Vidéo stéréo — flux gauche + flux droit")
+                    col_name.setForeground(QtGui.QBrush(QtGui.QColor("#4a9fcf")))
+                    col_name.setText(video["name"] + f"  {sys_name} · STEREO")
+                elif segs:
+                    names = ", ".join(os.path.basename(s) for s in segs)
+                    col_name.setToolTip(f"Vidéo scindée — segment(s) lié(s) : {names}")
+                    col_name.setForeground(QtGui.QBrush(QtGui.QColor("#E8C838")))
+                    col_name.setText(video["name"] + f"  {sys_name} · [+{len(segs)}]")
+                else:
+                    col_name.setText(video["name"] + f"  {sys_name} · MONO")
                 self.video_model.appendRow([
                     col_name,
                     QtGui.QStandardItem(video["duration"]),

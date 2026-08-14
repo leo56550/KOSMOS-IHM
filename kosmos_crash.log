@@ -516,3 +516,19 @@ TypeError: invalid argument to sipBadCatcherResult()
 ============================================================
 2026-08-12 13:43:44.805800
 TypeError: invalid argument to sipBadCatcherResult()
+
+============================================================
+2026-08-14 09:17:40.831668
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 683, in eventFilter
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-14 10:06:53.701179
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt

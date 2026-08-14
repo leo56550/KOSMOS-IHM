@@ -132,6 +132,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.campaign_mode_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.campaign_mode_label.setMinimumWidth(0)
 
+        self.systems_label = QtWidgets.QLabel("")
+        self.systems_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.systems_label.setMinimumWidth(0)
+
         self.nav_toolbar.addWidget(language_widget)
         self.nav_toolbar.addWidget(left_spacer)
         self.nav_toolbar.addWidget(buttons_container)
@@ -139,6 +143,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.nav_toolbar.addWidget(self.campaign_label)
         self._campaign_mode_action = self.nav_toolbar.addWidget(self.campaign_mode_label)
         self._campaign_mode_action.setVisible(False)
+        self._systems_action = self.nav_toolbar.addWidget(self.systems_label)
+        self._systems_action.setVisible(False)
         self.nav_toolbar.addWidget(right_spacer)
 
         self.nav_toolbar.setStyleSheet("""

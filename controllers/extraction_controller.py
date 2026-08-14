@@ -9,6 +9,7 @@ from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
 from services.campaign_service import get_campaign_output_dir, get_working_video_dir
 from views.widgets.embedded_player import EmbeddedVideoPlayer
+from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.capture_dialog import CaptureDialog
 
 
@@ -63,6 +64,8 @@ class ExtractionController:
                 self.tree_videos_2.setModel(self.video_model)
             else:
                 self.show_no_campaign_message()
+            self._bar_delegate = VideoBarDelegate(self.tree_videos_2)
+            self.tree_videos_2.setItemDelegateForColumn(0, self._bar_delegate)
 
         if self.param_container:
             self._fill_param_container()
@@ -248,6 +251,8 @@ class ExtractionController:
     def set_working_dir(self, path: str):
         """Définit le répertoire de travail IHM pour les exports."""
         self._working_dir = path
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_working_dir(path)
 
     def _get_video_out_dir(self, video_path: str) -> str:
         if self._working_dir:

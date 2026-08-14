@@ -7,6 +7,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path
 from views.widgets.embedded_player import EmbeddedVideoPlayer
+from views.widgets.video_bar_delegate import VideoBarDelegate
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
@@ -44,6 +45,8 @@ class ValidationController:
             self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.video_tree.clicked.connect(self.on_video_selected)
+            self._bar_delegate = VideoBarDelegate(self.video_tree)
+            self.video_tree.setItemDelegateForColumn(0, self._bar_delegate)
 
         if self.player_container:
             layout = self.player_container.layout() or QtWidgets.QVBoxLayout(self.player_container)
@@ -182,18 +185,19 @@ class ValidationController:
         return (
             "QPushButton {"
             f"  background-color: {hint_bg};"
-            "  color: #7a9ab8;"
+            "  color: #cce0f0;"
             "  font-family: 'Segoe UI', sans-serif;"
-            "  font-size: 11px;"
+            "  font-size: 13px;"
             "  font-weight: bold;"
-            "  border: 1px solid #1e3448;"
+            "  border: 1px solid #2a4a6a;"
             "  border-radius: 5px;"
-            "  padding: 5px 8px;"
+            "  padding: 8px 6px;"
             "  text-align: center;"
+            "  min-height: 36px;"
             "}"
             "QPushButton:hover {"
             "  background-color: #1e3448;"
-            "  color: #d4e8f5;"
+            "  color: #ffffff;"
             "  border-color: #2778A2;"
             "}"
             f"QPushButton:checked {{"
@@ -222,11 +226,13 @@ class ValidationController:
         for i, choice in enumerate(choices):
             btn = QtWidgets.QPushButton(choice)
             btn.setCheckable(True)
+            btn.setFlat(True)   # bypass native Windows rendering → CSS text color respecté
             btn.setChecked(choice == current)
             btn.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Fixed
             )
+            btn.setMinimumHeight(40)
             btn.setStyleSheet(self._exploitable_btn_style(choice))
             self._exploitable_btn_group.addButton(btn)
             grid.addWidget(btn, i // 2, i % 2)
@@ -241,8 +247,8 @@ class ValidationController:
 
         # Ajuste la hauteur minimale du container selon le nb de lignes
         n_rows = (len(choices) + 1) // 2
-        btn_h = 28   # hauteur estimée par bouton
-        needed = 18 + 2 + n_rows * (btn_h + 5) + 24 + 16   # titre + sep + grille + badge + marges
+        btn_h = 40   # hauteur estimée par bouton
+        needed = 18 + 2 + n_rows * (btn_h + 6) + 24 + 16   # titre + sep + grille + badge + marges
         self.exploitable_container.setMinimumHeight(needed)
         self.exploitable_container.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
@@ -313,6 +319,8 @@ class ValidationController:
 
     def set_working_dir(self, path: str):
         self._working_dir = path
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_working_dir(path)
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
