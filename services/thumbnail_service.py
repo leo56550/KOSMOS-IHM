@@ -1,9 +1,19 @@
 import os
+import hashlib
 import cv2
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PyQt6 import QtGui
 from PyQt6.QtCore import pyqtSignal, QThread
+
+
+def _thumb_cache_path(video_path: str) -> tuple[str, str]:
+    """Retourne (cache_file_path, cache_dir) dans %APPDATA%/KOSMOS_IHM/thumbs/."""
+    appdata = os.getenv("APPDATA") or os.path.expanduser("~")
+    cache_dir = os.path.join(appdata, "KOSMOS_IHM", "thumbs")
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    path_hash = hashlib.md5(os.path.abspath(video_path).encode()).hexdigest()[:10]
+    return os.path.join(cache_dir, f"{stem}_{path_hash}.jpg"), cache_dir
 
 
 THUMB_W = 80
@@ -73,11 +83,8 @@ class ThumbnailWorkerMulti(QThread):
 def _make_thumbnail_icon(path: str) -> QtGui.QIcon | None:
     """Extrait la frame du milieu de la vidéo (avec cache disque) et retourne une QIcon."""
     try:
-        # ── Cache disque ────────────────────────────────────────────────
-        video_dir = os.path.dirname(os.path.abspath(path))
-        stem = os.path.splitext(os.path.basename(path))[0]
-        cache_dir = os.path.join(video_dir, ".kosmos_thumbs")
-        cache_path = os.path.join(cache_dir, f"{stem}.jpg")
+        # ── Cache disque (%APPDATA%/KOSMOS_IHM/thumbs/) ─────────────────
+        cache_path, cache_dir = _thumb_cache_path(path)
 
         if os.path.isfile(cache_path):
             # Invalide si le cache est plus ancien que la vidéo
