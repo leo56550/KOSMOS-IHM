@@ -556,3 +556,30 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-14 15:54:29.085268
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-14 15:57:10.905297
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\metadonnees_controller.py", line 2146, in _open_web_weather_popup
+    dialog = WeatherWebDialog(web_data=fetched_api_data, lang=self.current_language, parent=self.widget)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\views\dialogs\weather_dialog.py", line 10, in __init__
+    self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
+                                             ^^^^^^
+NameError: name 'QtCore' is not defined
+
+============================================================
+2026-08-14 16:03:01.942230
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt

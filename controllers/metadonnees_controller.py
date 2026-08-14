@@ -21,13 +21,13 @@ from views.dialogs.weather_dialog import WeatherWebDialog
 # ── Chargement dynamique du schéma depuis template.json ─────────────────
 _TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.json')
 
-# Champs calculés automatiquement (non éditables directement dans le tableau)
-_COMPUTED_FIELDS = {"video_path", "video_file_name"}
+# Champs calculés automatiquement (non éditables dans le tableau)
+_COMPUTED_FIELDS = {"codeObs", "video_path"}
 
-# Champs de l'en-tête campagne (non répétés dans le tableau car identiques pour toutes les vidéos)
+# Champs de l'en-tête campagne (identiques pour toutes les vidéos → read-only dans le tableau)
 _CAMPAIGN_HEADER_KEYS = {
-    "survey_name", "zone", "type", "region", "date",
-    "boat_name", "pilot_name", "crew_names", "partners",
+    "zone", "type", "region", "date",
+    "boat_name", "pilot_name", "crew_names",
 }
 
 
@@ -61,65 +61,58 @@ def _load_infostation_schema() -> list[tuple]:
 # Schéma complet (section, field_key, name_fr, read_only) pour tous les champs infoStation
 _INFOSTATION_SCHEMA: list[tuple] = _load_infostation_schema()
 
-# Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx (ligne 5).
+# Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
-# section=None → champ calculé sans field_key direct dans le JSON
+# section=None → champ calculé ou non mappé (toujours vide)
+# Les lignes sont écrites comme LISTE ordonnée (csv.writer) pour gérer le doublon "Zone".
 _INFOSTATION_CSV_SCHEMA: list[tuple] = [
-    ("survey",            "date",                    "Date"),
-    ("survey",            "survey_name",             "Campagne"),
-    ("survey",            "region",                  "Région"),
-    ("survey",            "zone",                    "Zone"),
-    ("survey",            "type",                    "Type"),
-    ("survey",            "boat_name",               "Bateau"),
-    ("survey",            "pilot_name",              "Pilote"),
-    ("survey",            "crew_names",              "Equipage"),
-    ("survey",            "partners",                "Partenaires"),
-    ("video_observation", "video_path",              "Dossier vidéos"),
-    ("video_observation", "video_number",            "Numéro de la vidéo"),
-    ("video_observation", "exploitable",             "Exploitabilité"),
-    ("video_observation", "derush_comment",          "Commentaires vidéo"),
-    ("video_observation", "timecode_ardoise",        "Timecode Ardoise"),
-    ("video_observation", "codeObs",                 "Codestation"),
-    ("video_observation", "point_name",              "Numéro du point"),
-    ("video_observation", "time",                    "Heure"),
-    ("system",            "type_system",             "Système"),
-    ("video_observation", "gps_waypoint",            "Numéro du point (GPS portable)"),
-    ("video_observation", "latitude",                "Latitude"),
-    ("video_observation", "longitude",               "Longitude"),
-    ("video_observation", "depth",                   "Profondeur"),
-    ("video_observation", "deployment_comment",      "Commentaires terrain pose"),
-    ("video_observation", "location_comment",        "Commentaires terrain localisation"),
-    ("video_observation", "boatgps_waypoint",        "Numéro du point (GPS bateau)"),
-    ("video_observation", "site",                    "Site"),
-    ("video_observation", "monitoring_program",      "Programme de suivi"),
-    ("video_observation", "protectionStatus1",       "Statut de Protection 1"),
-    ("video_observation", "protectionStatus2",       "Statut de Protection 2"),
-    ("video_observation", "tide",                    "Phase de la marée"),
-    ("video_observation", "coefficient",             "Coefficient de marée"),
-    ("video_observation", "moon",                    "Phase de la Lune"),
-    ("video_observation", "weather",                 "Couverture nuageuse"),
-    ("video_observation", "wind",                    "Vent (Beaufort)"),
-    ("video_observation", "seaState",                "Mer (Douglas)"),
-    ("video_observation", "swell_height",            "Hauteur de la houle"),
-    ("video_observation", "video_file_name",         "Nom du fichier vidéo"),
-    ("video_observation", "timecode_landing",        "Timecode atterissage"),   # 1 s = orthographe XLSX
-    ("video_observation", "timecode_takeoff",        "Timecode décollage"),
-    ("video_observation", "timecode_debut",          "Timecode début analyse"),
-    ("video_observation", "timecode_end",            "Timecode fin analyse"),
-    ("video_observation", "habitat",                 "Milieu/Habitat"),
-    ("video_observation", "estimated_visibility",    "Visibilité estimée"),
-    ("video_observation", "distance_min",            "Distance analysable min (m)"),
-    ("video_observation", "distance_max",            "Distance analysable max (m)"),
-    (None,                "events_interesting_images","Evénements intéressants"),  # calculé
-    ("video_observation", "derusher",                "Derusher"),
-    ("video_observation", "habitat_annotator",       "Analyseur habitat"),
-    ("video_observation", "fish_annotator",          "Analyseur poisson"),
+    ("video_observation", "codeObs",                   "Codestation"),           # col  1
+    ("survey",            "zone",                      "Zone"),                   # col  2
+    ("survey",            "type",                      "Type"),                   # col  3
+    ("system",            "type_system",               "Systeme"),                # col  4
+    ("video_observation", "latitude",                  "Latitude"),               # col  5
+    ("video_observation", "longitude",                 "Longitude"),              # col  6
+    ("survey",            "date",                      "Date"),                   # col  7
+    ("video_observation", "time",                      "Heure"),                  # col  8
+    ("video_observation", "point_name",                "Nom du point"),           # col  9
+    ("video_observation", "gps_waypoint",              "Pt GPS Garmin"),          # col 10
+    ("video_observation", "boatgps_waypoint",          "Pt gps bateau"),          # col 11
+    ("survey",            "region",                    "Zone"),                   # col 12 – doublon intentionnel XLSX
+    ("video_observation", "site",                      "Site"),                   # col 13
+    ("video_observation", "monitoring_program",        "Pt de Suivi"),            # col 14
+    ("video_observation", "depth",                     "Profondeur"),             # col 15
+    ("video_observation", "deployment_comment",        "Commentaires terrain pose"),         # col 16
+    ("video_observation", "location_comment",          "Commentaires terrain localisation"),  # col 17
+    ("video_observation", "video_path",                "Dossier Datawork"),       # col 18
+    ("video_observation", "video_number",              "sous-dossier video & metadata"),      # col 19
+    ("video_observation", "derush_comment",            "Commentaires video"),     # col 20
+    (None,                "events_interesting_images", "Images interessantes"),   # col 21 – calculé
+    ("video_observation", "habitat",                   "Milieu/Habitat"),         # col 22
+    ("video_observation", "estimated_visibility",      "Visibilite"),             # col 23
+    ("video_observation", "exploitable",               "Exploitable"),            # col 24
+    ("video_observation", "protectionStatus1",         "Codestatut"),             # col 25
+    ("video_observation", "protectionStatus2",         "Codestatut2"),            # col 26
+    (None,                "statutprotection",          "Statutprotection"),       # col 27 – non mappé
+    ("video_observation", "tide",                      "Maree"),                  # col 28
+    ("video_observation", "moon",                      "Lune"),                   # col 29
+    ("video_observation", "weather",                   "Meteo"),                  # col 30
+    ("video_observation", "wind",                      "Vent"),                   # col 31
+    ("video_observation", "seaState",                  "Mer"),                    # col 32
+    ("video_observation", "swell_height",              "Houle"),                  # col 33
+    ("survey",            "boat_name",                 "Bateau"),                 # col 34
+    ("survey",            "pilot_name",                "Pilote"),                 # col 35
+    ("survey",            "crew_names",                "Equipage"),               # col 36
+    ("video_observation", "fish_annotator",            "Analyseur poisson"),      # col 37
+    ("video_observation", "habitat_annotator",         "Analyseur habitat"),      # col 38
+    ("video_observation", "distance_min",              "Distance analysable min (m)"),  # col 39
+    ("video_observation", "distance_max",              "Distance analysable max (m)"),  # col 40
+    (None,                "substrat",                  "Substrat"),               # col 41 – non mappé
 ]
 
 # Colonnes du CSV infostation (ordre XLSX)
 _INFOSTATION_COLUMNS: list[str] = [col for _, _, col in _INFOSTATION_CSV_SCHEMA]
 
-# Colonnes du tableau = exactement les mêmes que le CSV (49 colonnes, même ordre XLSX).
+# Colonnes du tableau = exactement les mêmes que le CSV (41 colonnes, même ordre XLSX).
 # Tuple : (col_name, section, field_key, read_only)
 # read_only = champs calculés (section None ou _COMPUTED_FIELDS) + champs identiques pour toutes les vidéos
 _FT_TABLE_COLS: list[tuple] = [
@@ -227,11 +220,6 @@ class MetadonneesController:
             self.data_system_container.setVisible(False)
         self.specific_container_data = self.widget.findChild(QtWidgets.QFrame, "specific_container_data")
 
-        # Remove the 1200px minimum that was causing the toolbar to go off-screen
-        meteo_outer = self.widget.findChild(QtWidgets.QFrame, "container_weather_data")
-        if meteo_outer:
-            meteo_outer.setMinimumWidth(0)
-
         self._setup_ui()
         self._init_scroll_areas()
         self._init_infostation_panel()
@@ -286,9 +274,14 @@ class MetadonneesController:
         return scroll
 
     def _init_scroll_areas(self):
-        """Crée un QScrollArea dans chaque container de données."""
-        self._scroll_weather = self._make_scroll_area(self.container_weather_data)
-        self._scroll_video = self._make_scroll_area(self.specific_container_data)
+        """Masque le panneau latéral Météo/Vidéo — les boutons sont dans la barre du tableau."""
+        self._scroll_weather = None
+        self._scroll_video = None
+        # container_weather_data est le parent de container_meteo_data et specific_container_data
+        outer = self.widget.findChild(QtWidgets.QFrame, "container_weather_data")
+        if outer:
+            outer.setVisible(False)
+            outer.setMaximumWidth(0)
 
     def _init_infostation_panel(self):
         """Construit le panneau feuille terrain : en-tête campagne + tableau des points + commentaire."""
@@ -331,6 +324,26 @@ class MetadonneesController:
         tb_row.addWidget(self.lbl_video_count)
         tb_row.addWidget(self.lbl_trash_count)
         tb_row.addStretch()
+
+        _btn_style_action = (
+            "QPushButton{background:#1a2e3a;color:#a8d8ea;border:1px solid #2778a2;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2778a2;color:white;}"
+        )
+        self._btn_ardoise = QtWidgets.QPushButton(
+            self.translate("Comparer avec l'ardoise", "Compare with slate"))
+        self._btn_ardoise.setStyleSheet(_btn_style_action)
+        self._btn_ardoise.setEnabled(False)
+        self._btn_ardoise.clicked.connect(self.on_compare_slate_clicked)
+        tb_row.addWidget(self._btn_ardoise)
+
+        self._btn_web = QtWidgets.QPushButton(
+            self.translate("Comparer données web", "Compare web data"))
+        self._btn_web.setStyleSheet(_btn_style_action)
+        self._btn_web.setEnabled(False)
+        self._btn_web.clicked.connect(self.action_compare_weather_web)
+        tb_row.addWidget(self._btn_web)
 
         btn_gpx = QtWidgets.QPushButton("IMPORT GPX")
         btn_gpx.setStyleSheet(
@@ -487,55 +500,46 @@ class MetadonneesController:
         """)
         # Largeurs par défaut — noms de colonnes = ceux du XLSX (via _INFOSTATION_CSV_SCHEMA)
         _default_widths = {
-            "Date":                              75,
-            "Campagne":                          130,
-            "Région":                            55,
+            "Codestation":                       90,
             "Zone":                              55,
             "Type":                              55,
-            "Bateau":                            90,
-            "Pilote":                            90,
-            "Equipage":                          120,
-            "Partenaires":                       120,
-            "Dossier vidéos":                    160,
-            "Numéro de la vidéo":                80,
-            "Exploitabilité":                    75,
-            "Commentaires vidéo":                160,
-            "Timecode Ardoise":                  90,
-            "Codestation":                       90,
-            "Numéro du point":                   80,
-            "Heure":                             55,
-            "Système":                           70,
-            "Numéro du point (GPS portable)":    120,
+            "Systeme":                           70,
             "Latitude":                          90,
             "Longitude":                         90,
+            "Date":                              75,
+            "Heure":                             55,
+            "Nom du point":                      80,
+            "Pt GPS Garmin":                     100,
+            "Pt gps bateau":                     100,
+            "Site":                              80,
+            "Pt de Suivi":                       90,
             "Profondeur":                        65,
             "Commentaires terrain pose":         150,
             "Commentaires terrain localisation": 150,
-            "Numéro du point (GPS bateau)":      120,
-            "Site":                              80,
-            "Programme de suivi":                110,
-            "Statut de Protection 1":            100,
-            "Statut de Protection 2":            100,
-            "Phase de la marée":                 90,
-            "Coefficient de marée":              90,
-            "Phase de la Lune":                  90,
-            "Couverture nuageuse":               100,
-            "Vent (Beaufort)":                   75,
-            "Mer (Douglas)":                     75,
-            "Hauteur de la houle":               90,
-            "Nom du fichier vidéo":              160,
-            "Timecode atterissage":              100,
-            "Timecode décollage":                90,
-            "Timecode début analyse":            100,
-            "Timecode fin analyse":              90,
+            "Dossier Datawork":                  160,
+            "sous-dossier video & metadata":     160,
+            "Commentaires video":                160,
+            "Images interessantes":              160,
             "Milieu/Habitat":                    90,
-            "Visibilité estimée":                80,
+            "Visibilite":                        80,
+            "Exploitable":                       75,
+            "Codestatut":                        80,
+            "Codestatut2":                       80,
+            "Statutprotection":                  90,
+            "Maree":                             70,
+            "Lune":                              70,
+            "Meteo":                             80,
+            "Vent":                              60,
+            "Mer":                               60,
+            "Houle":                             65,
+            "Bateau":                            90,
+            "Pilote":                            90,
+            "Equipage":                          120,
+            "Analyseur poisson":                 100,
+            "Analyseur habitat":                 100,
             "Distance analysable min (m)":       110,
             "Distance analysable max (m)":       110,
-            "Evénements intéressants":           160,
-            "Derusher":                          80,
-            "Analyseur habitat":                 100,
-            "Analyseur poisson":                 100,
+            "Substrat":                          90,
         }
         for col_i, (col_label, *_) in enumerate(_FT_TABLE_COLS):
             self._ft_table.setColumnWidth(col_i, _default_widths.get(col_label, 80))
@@ -552,6 +556,7 @@ class MetadonneesController:
         """Reconstruit le tableau infostation depuis les JSONs de toutes les vidéos."""
         if not hasattr(self, '_ft_table') or self._ft_table is None:
             return
+        self._set_video_buttons_enabled(False)
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
         self._ft_table.setRowCount(0)
@@ -577,7 +582,7 @@ class MetadonneesController:
             self._ft_table.insertRow(trow)
 
             for col_i, (col_label, block_name, json_key, read_only) in enumerate(_FT_TABLE_COLS):
-                val = str(row_data.get(col_label, "") or "")
+                val = str(row_data[col_i] if col_i < len(row_data) else "")
                 cell = QtWidgets.QTableWidgetItem(val)
                 cell.setTextAlignment(
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
@@ -627,13 +632,14 @@ class MetadonneesController:
             print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
 
     def _on_ft_table_row_clicked(self, row: int, _col: int):
-        """Charge les données de la vidéo cliquée dans les panneaux de droite."""
+        """Charge les données de la vidéo cliquée et active les boutons contextuel."""
         first_item = self._ft_table.item(row, 0)
         if first_item is None:
             return
         video_path = first_item.data(QtCore.Qt.ItemDataRole.UserRole)
         if not video_path:
             return
+        self._set_video_buttons_enabled(True)
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if os.path.isfile(json_path):
             self.current_video_path = str(video_path)
@@ -710,6 +716,11 @@ class MetadonneesController:
         self._load_infostation_fields(self.current_video_path)
         if self._on_video_selected:
             self._on_video_selected(video_name, self.current_video_path)
+
+    def _set_video_buttons_enabled(self, enabled: bool):
+        for btn in (getattr(self, '_btn_ardoise', None), getattr(self, '_btn_web', None)):
+            if btn:
+                btn.setEnabled(enabled)
 
     def load_global_campaign_metadata(self, campaign_folder: str):
         """Charge les sections système et campagne depuis le premier JSON trouvé dans campaign_folder."""
@@ -1109,42 +1120,8 @@ class MetadonneesController:
             self._upsert_infostation_row(self._infostation_pending_path)
 
     def _upsert_infostation_row(self, video_path: str):
-        """Met à jour (ou insère) la ligne de video_path dans le CSV infostation global."""
-        csv_path = get_infostation_path(self._working_dir)
-        columns = _INFOSTATION_COLUMNS
-        try:
-            new_row = self._build_infostation_row(video_path)
-            new_row = {k: str(v).replace('\n', ' | ').replace('\r', '')
-                       for k, v in new_row.items()}
-            stem = os.path.splitext(os.path.basename(video_path))[0]
-
-            # Lire les lignes existantes
-            existing_rows = []
-            if os.path.isfile(csv_path):
-                with open(csv_path, 'r', newline='', encoding='cp1252', errors='replace') as f:
-                    reader = csv.DictReader(f, delimiter=';')
-                    existing_rows = list(reader)
-
-            # Upsert : remplacer la ligne si même nom de fichier vidéo, sinon append
-            updated = False
-            for i, row in enumerate(existing_rows):
-                if row.get("Nom du fichier vidéo", "") == stem:
-                    existing_rows[i] = new_row
-                    updated = True
-                    break
-            if not updated:
-                existing_rows.append(new_row)
-
-            os.makedirs(self._working_dir, exist_ok=True)
-            with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
-                writer = csv.DictWriter(f, fieldnames=columns, delimiter=';',
-                                        extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
-                writer.writeheader()
-                writer.writerows(existing_rows)
-        except PermissionError:
-            print("[Infostation] Impossible d'écrire le CSV : fichier ouvert par un autre programme (ex: Excel). Fermez-le puis relancez une sauvegarde.")
-        except Exception as e:
-            print(f"[Infostation] Erreur upsert : {e}")
+        """Régénère le CSV infostation complet (approche simplifiée, gère le doublon 'Zone')."""
+        self.generate_infostation_csv()
 
     # ── Infostation CSV generation ────────────────────────────────────────
 
@@ -1178,12 +1155,10 @@ class MetadonneesController:
             return m.group(3), heure
         return stem, ""
 
-    def _build_infostation_row(self, video_path: str) -> dict:
-        """Construit le dict {name_fr: valeur} pour une ligne CSV, basé sur _INFOSTATION_SCHEMA.
+    def _build_infostation_row(self, video_path: str) -> list:
+        """Construit la liste ordonnée des valeurs pour une ligne CSV (ordre _INFOSTATION_CSV_SCHEMA).
 
-        Chaque champ est lu dynamiquement depuis le JSON vidéo via son field_key.
-        Les champs calculés (lat/lon GPS, timecodes dérivés, video_path, video_file_name,
-        codeObs, time, point_name) reçoivent des surcharges spécifiques.
+        Retourne une liste positionnelle (pour gérer le doublon "Zone" en cols 2 et 12).
         """
         stem = os.path.splitext(os.path.basename(video_path))[0]
         codestat, heure_stem = self._extract_stem_parts(stem)
@@ -1212,17 +1187,17 @@ class MetadonneesController:
         lon_gps = str(gps[1]).replace('.', ',') if gps else ""
 
         # ── Construction de la ligne dans l'ordre exact du XLSX ───────────
-        row: dict = {}
+        row: list = []
         for section, field_key, col_name in _INFOSTATION_CSV_SCHEMA:
 
-            # Champ calculé : Evénements intéressants
+            # Champ calculé : Images intéressantes
             if section is None and field_key == "events_interesting_images":
                 parts = []
                 for ev in (obs.get("events_interesting_images", [{}]) or [{}])[0].get("values", []):
                     tc = ev.get("time_code_start") or ""
                     detail = ev.get("comment") or ev.get("value") or ""
                     parts.append(f"{tc} {detail}".strip())
-                row[col_name] = " ; ".join(parts)
+                row.append(" ; ".join(parts))
                 continue
 
             block = jdata.get(section, {}) if section else {}
@@ -1298,7 +1273,7 @@ class MetadonneesController:
             elif field_key == "timecode_debut" and not val:
                 val = _ev_tc(["atterrissage", "landing"])
 
-            row[col_name] = val
+            row.append(val)
 
         return row
 
@@ -2018,15 +1993,13 @@ class MetadonneesController:
         self._working_dir = working_dir
         try:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
-                writer = csv.DictWriter(f, fieldnames=_INFOSTATION_COLUMNS, delimiter=';',
-                                        extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
-                writer.writeheader()
+                writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(_INFOSTATION_COLUMNS)
                 for vp in sorted(video_paths):
                     try:
                         row_data = self._build_infostation_row(vp)
-                        row_data = {k: str(v).replace('\n', ' | ').replace('\r', '')
-                                    for k, v in row_data.items()}
-                        writer.writerow(row_data)
+                        writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
+                                         for v in row_data])
                     except Exception as e:
                         print(f"[INFOSTATION QUALIF] {os.path.basename(vp)}: {e}")
             return csv_path
@@ -2049,15 +2022,13 @@ class MetadonneesController:
 
         try:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
-                writer = csv.DictWriter(f, fieldnames=_INFOSTATION_COLUMNS, delimiter=';',
-                                        extrasaction='ignore', quoting=csv.QUOTE_MINIMAL)
-                writer.writeheader()
+                writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(_INFOSTATION_COLUMNS)
                 for vp in sorted(video_paths):
                     try:
                         row_data = self._build_infostation_row(vp)
-                        row_data = {k: str(v).replace('\n', ' | ').replace('\r', '')
-                                    for k, v in row_data.items()}
-                        writer.writerow(row_data)
+                        writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
+                                         for v in row_data])
                     except Exception as e:
                         print(f"[INFOSTATION] {os.path.basename(vp)}: {e}")
         except Exception as e:
@@ -2187,8 +2158,8 @@ class MetadonneesController:
         if not self.current_template_json or not os.path.exists(self.current_template_json):
             QtWidgets.QMessageBox.warning(self.widget,
                 self.translate("Ardoise introuvable", "Slate Not Found"),
-                self.translate("Veuillez saisir l'entrée ardoise dans la vue événements d'abord.",
-                               "Please input the slate record entry inside the events timeline view first."))
+                self.translate("Aucun JSON trouvé pour cette vidéo.",
+                               "No JSON found for this video."))
             return
         try:
             with open(self.current_template_json, 'r', encoding='utf-8') as f:
@@ -2197,6 +2168,7 @@ class MetadonneesController:
             print(f"[SLATE] Failed reloading JSON: {e}")
 
         slate_frame = None
+        slate_timecode = None
         obs = self._json_data.get("video_observation", {})
         for key in ["events_deployment", "events_interesting_images", "events_animal"]:
             if key in obs and isinstance(obs[key], list) and obs[key]:
@@ -2204,15 +2176,34 @@ class MetadonneesController:
                     if any(kw in str(evt.get("value", "")).lower()
                            for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
                         slate_frame = evt.get("frame_number_start")
+                        slate_timecode = evt.get("time_code_start")
                         break
-            if slate_frame is not None:
+            if slate_frame is not None or slate_timecode:
                 break
+
+        # Fallback : calculer le frame depuis le timecode si frame_number_start absent (anciens JSONs)
+        if slate_frame is None and slate_timecode:
+            try:
+                cap_tmp = cv2.VideoCapture(self.current_video_path)
+                fps = cap_tmp.get(cv2.CAP_PROP_FPS) or 25.0
+                cap_tmp.release()
+                parts = slate_timecode.replace(',', ':').split(':')
+                parts = [int(p) for p in parts]
+                if len(parts) == 2:
+                    secs = parts[0] * 60 + parts[1]
+                elif len(parts) == 3:
+                    secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                else:
+                    secs = 0
+                slate_frame = int(secs * fps)
+            except Exception:
+                pass
 
         if slate_frame is None:
             QtWidgets.QMessageBox.warning(self.widget,
                 self.translate("Ardoise introuvable", "Slate Not Found"),
-                self.translate("Veuillez saisir l'entrée ardoise dans la vue événements d'abord.",
-                               "Please input the slate record entry inside the events timeline view first."))
+                self.translate("Aucune ardoise trouvée pour cette vidéo. Saisissez-la dans la page Validation.",
+                               "No slate found for this video. Please enter it in the Validation page."))
             return
         self._display_slate_window(slate_frame)
 

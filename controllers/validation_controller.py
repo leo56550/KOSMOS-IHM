@@ -616,12 +616,24 @@ class ValidationController:
             deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
             if not deploy:
                 deploy.append({"authorized_values_fr": [], "values": []})
+            # Calcul du numéro de frame depuis la position courante
+            frame_num = None
+            if self.current_video_path and os.path.exists(self.current_video_path):
+                try:
+                    import cv2 as _cv2
+                    _cap = _cv2.VideoCapture(self.current_video_path)
+                    _fps = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
+                    _cap.release()
+                    frame_num = int(pos_ms * _fps / 1000)
+                except Exception:
+                    pass
+
             deploy[0].setdefault("values", []).append({
                 "event_id": event_uid,
                 "time_code_start": time_str,
                 "time_code_end": time_str,
-                "frame_number_start": None,
-                "frame_number_end": None,
+                "frame_number_start": frame_num,
+                "frame_number_end": frame_num,
                 "description_fr": None,
                 "description_en": None,
                 "value": value,

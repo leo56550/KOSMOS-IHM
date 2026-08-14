@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets
+from PyQt6 import QtWidgets, QtCore
 
 
 class WeatherWebDialog(QtWidgets.QDialog):
