@@ -657,7 +657,6 @@ class QualifController:
         self.update_minimap(self.selected_video_name, show_dialog=False)
         self._start_thumbnail_generation()
 
-        update_counter = 0
         first_loaded_json = None
 
         for video in videos:
@@ -668,18 +667,6 @@ class QualifController:
             migrate_json_file_if_needed(json_path)
             if not first_loaded_json:
                 first_loaded_json = json_path
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    json_payload = json.load(f)
-                if "survey" in json_payload and "derusher" in json_payload.get("video_observation", {}):
-                    json_payload["video_observation"]["derusher"]["value"] = derusher_name
-                    with open(json_path, 'w', encoding='utf-8') as f:
-                        json.dump(json_payload, f, indent=2, ensure_ascii=False)
-                    update_counter += 1
-            except Exception as e:
-                print(f"Error patching {json_path}: {e}")
-
-        print(f"[JSON] Derusher '{derusher_name}' written into {update_counter} files.")
 
         self.system_data = None
         if first_loaded_json:

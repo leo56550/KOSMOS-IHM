@@ -18,15 +18,136 @@ from services.campaign_service import (
 )
 from views.dialogs.weather_dialog import WeatherWebDialog
 
+# ── Chargement dynamique du schéma depuis template.json ─────────────────
+_TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.json')
+
+# Champs calculés automatiquement (non éditables directement dans le tableau)
+_COMPUTED_FIELDS = {"video_path", "video_file_name"}
+
+# Champs de l'en-tête campagne (non répétés dans le tableau car identiques pour toutes les vidéos)
+_CAMPAIGN_HEADER_KEYS = {
+    "survey_name", "zone", "type", "region", "date",
+    "boat_name", "pilot_name", "crew_names", "partners",
+}
+
+
+def _load_infostation_schema() -> list[tuple]:
+    """Lit template.json et retourne la liste ordonnée des champs infoStation_visibility=oui.
+
+    Retourne : [(section, field_key, name_fr, read_only), ...]
+    section order: survey → video_observation → system
+    """
+    try:
+        with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as f:
+            template = json.load(f)
+    except Exception as e:
+        print(f"[SCHEMA] Impossible de lire template.json : {e}")
+        return []
+
+    result = []
+    for section_name, section in template.items():
+        if not isinstance(section, dict):
+            continue
+        for field_key, field_def in section.items():
+            if not isinstance(field_def, dict):
+                continue
+            if field_def.get("infoStation_visibility") == "oui":
+                label = field_def.get("name_fr") or field_def.get("name") or field_key
+                read_only = field_key in _COMPUTED_FIELDS
+                result.append((section_name, field_key, label, read_only))
+    return result
+
+
+# Schéma complet (section, field_key, name_fr, read_only) pour tous les champs infoStation
+_INFOSTATION_SCHEMA: list[tuple] = _load_infostation_schema()
+
+# Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx (ligne 5).
+# Chaque tuple : (section, field_key, csv_column_name)
+# section=None → champ calculé sans field_key direct dans le JSON
+_INFOSTATION_CSV_SCHEMA: list[tuple] = [
+    ("survey",            "date",                    "Date"),
+    ("survey",            "survey_name",             "Campagne"),
+    ("survey",            "region",                  "Région"),
+    ("survey",            "zone",                    "Zone"),
+    ("survey",            "type",                    "Type"),
+    ("survey",            "boat_name",               "Bateau"),
+    ("survey",            "pilot_name",              "Pilote"),
+    ("survey",            "crew_names",              "Equipage"),
+    ("survey",            "partners",                "Partenaires"),
+    ("video_observation", "video_path",              "Dossier vidéos"),
+    ("video_observation", "video_number",            "Numéro de la vidéo"),
+    ("video_observation", "exploitable",             "Exploitabilité"),
+    ("video_observation", "derush_comment",          "Commentaires vidéo"),
+    ("video_observation", "timecode_ardoise",        "Timecode Ardoise"),
+    ("video_observation", "codeObs",                 "Codestation"),
+    ("video_observation", "point_name",              "Numéro du point"),
+    ("video_observation", "time",                    "Heure"),
+    ("system",            "type_system",             "Système"),
+    ("video_observation", "gps_waypoint",            "Numéro du point (GPS portable)"),
+    ("video_observation", "latitude",                "Latitude"),
+    ("video_observation", "longitude",               "Longitude"),
+    ("video_observation", "depth",                   "Profondeur"),
+    ("video_observation", "deployment_comment",      "Commentaires terrain pose"),
+    ("video_observation", "location_comment",        "Commentaires terrain localisation"),
+    ("video_observation", "boatgps_waypoint",        "Numéro du point (GPS bateau)"),
+    ("video_observation", "site",                    "Site"),
+    ("video_observation", "monitoring_program",      "Programme de suivi"),
+    ("video_observation", "protectionStatus1",       "Statut de Protection 1"),
+    ("video_observation", "protectionStatus2",       "Statut de Protection 2"),
+    ("video_observation", "tide",                    "Phase de la marée"),
+    ("video_observation", "coefficient",             "Coefficient de marée"),
+    ("video_observation", "moon",                    "Phase de la Lune"),
+    ("video_observation", "weather",                 "Couverture nuageuse"),
+    ("video_observation", "wind",                    "Vent (Beaufort)"),
+    ("video_observation", "seaState",                "Mer (Douglas)"),
+    ("video_observation", "swell_height",            "Hauteur de la houle"),
+    ("video_observation", "video_file_name",         "Nom du fichier vidéo"),
+    ("video_observation", "timecode_landing",        "Timecode atterissage"),   # 1 s = orthographe XLSX
+    ("video_observation", "timecode_takeoff",        "Timecode décollage"),
+    ("video_observation", "timecode_debut",          "Timecode début analyse"),
+    ("video_observation", "timecode_end",            "Timecode fin analyse"),
+    ("video_observation", "habitat",                 "Milieu/Habitat"),
+    ("video_observation", "estimated_visibility",    "Visibilité estimée"),
+    ("video_observation", "distance_min",            "Distance analysable min (m)"),
+    ("video_observation", "distance_max",            "Distance analysable max (m)"),
+    (None,                "events_interesting_images","Evénements intéressants"),  # calculé
+    ("video_observation", "derusher",                "Derusher"),
+    ("video_observation", "habitat_annotator",       "Analyseur habitat"),
+    ("video_observation", "fish_annotator",          "Analyseur poisson"),
+]
+
+# Colonnes du CSV infostation (ordre XLSX)
+_INFOSTATION_COLUMNS: list[str] = [col for _, _, col in _INFOSTATION_CSV_SCHEMA]
+
+# Colonnes du tableau = exactement les mêmes que le CSV (49 colonnes, même ordre XLSX).
+# Tuple : (col_name, section, field_key, read_only)
+# read_only = champs calculés (section None ou _COMPUTED_FIELDS) + champs identiques pour toutes les vidéos
+_FT_TABLE_COLS: list[tuple] = [
+    (col_name, section, field_key,
+     section is None or field_key in _COMPUTED_FIELDS or field_key in _CAMPAIGN_HEADER_KEYS)
+    for section, field_key, col_name in _INFOSTATION_CSV_SCHEMA
+]
+
+# Champs custom à initialiser dans les anciens JSONs (backward compat)
+_CUSTOM_VOB_FIELDS: list[str] = [
+    "habitat", "timecode_ardoise", "timecode_debut",
+    "location_comment", "derush_comment", "interesting_images",
+    "fish_annotator", "habitat_annotator",
+    "distance_min", "distance_max",
+    "time", "latitude", "longitude",
+    "substrat", "boatgps_waypoint",
+    "timecode_landing", "timecode_takeoff", "timecode_end",
+    "video_path", "video_number",
+    "site", "protectionStatus1", "protectionStatus2",
+    "station_number",  # backward compat (anciens JSONs)
+]
+
 # En-tête campagne (champs identiques pour toutes les vidéos) : widget_id → (block, json_key)
 _INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
     "ft_nom_campagne":    ("survey", "survey_name"),
     "ft_zone":            ("survey", "zone"),
     "ft_type":            ("survey", "type"),
     "ft_region":          ("survey", "region"),
-    "ft_site":            ("survey", "site"),
-    "ft_codestatut":      ("survey", "protectionStatus1"),
-    "ft_codestatut2":     ("survey", "protectionStatus2"),
     "ft_date":            ("survey", "date"),
     "ft_bateau":          ("survey", "boat_name"),
     "ft_pilote":          ("survey", "pilot_name"),
@@ -36,95 +157,6 @@ _INFOSTATION_FIELD_BLOCKS: dict[str, tuple] = {
     "ft_sous_dossier":    ("survey", "video_subfolder"),
 }
 
-# Colonnes du tableau infostation (une ligne = une vidéo).
-# Tuple : (label CSV, block, json_key, read_only)
-# read_only=True → dérivé automatiquement, non éditable.
-_FT_TABLE_COLS: list[tuple] = [
-    ("Codestation",                    "video_observation", "codeObs",                   False),
-    ("N° Point",                       "video_observation", "station_number",             False),
-    ("Latitude",                       "video_observation", "latitude",                   False),
-    ("Longitude",                      "video_observation", "longitude",                  False),
-    ("Heure",                          "video_observation", "time",                       False),
-    ("Exploitable",                    "video_observation", "exploitable",                False),
-    ("Nom du point",                   "video_observation", "point_name",                 False),
-    ("Nom du point GPS",               "video_observation", "gps_waypoint",               False),
-    ("Pt de Suivi",                    "video_observation", "monitoring_program",          False),
-    ("Profondeur",                     "video_observation", "depth",                       False),
-    ("Commentaires terrain pose",      "video_observation", "deployment_comment",          False),
-    ("Commentaires terrain localisation", "video_observation", "location_comment",          False),
-    ("Nom du fichier",                 None,                None,                          True),
-    ("Timecode ardoise",               "video_observation", "timecode_ardoise",            False),
-    ("Timecode début",                 "video_observation", "timecode_debut",              False),
-    ("Commentaires video",             "video_observation", "derush_comment",              False),
-    ("Images interessantes",           "video_observation", "interesting_images",          False),
-    ("Capture écran",                  "video_observation", "screenshot",                  False),
-    ("Milieu/Habitat",                 "video_observation", "habitat",                     False),
-    ("Visibilite",                     "video_observation", "estimated_visibility",        False),
-    ("Camera",                         "system",            "camera",                      False),
-    ("Modèle MCU",                     "system",            "model_mcu",                   False),
-    ("Version système",                "system",            "system_version",               False),
-    ("Moteur",                         "video_observation", "moteur",                      False),
-    ("Systeme",                        "system",            "type_system",                  False),
-    ("Maree",                          "video_observation", "tide",                        False),
-    ("Coefficient marée",              "video_observation", "coefficient",                 False),
-    ("Lune",                           "video_observation", "moon",                        False),
-    ("Meteo",                          "video_observation", "weather",                     False),
-    ("Vent (beaufort)",                "video_observation", "wind",                        False),
-    ("Direction vent",                 "video_observation", "wind_direction",              False),
-    ("Mer (beaufort)",                 "video_observation", "seaState",                    False),
-    ("Houle",                          "video_observation", "swell_height",                False),
-    ("Direction houle",                "video_observation", "swell_direction",             False),
-    ("Température air",                "video_observation", "airTemp",                     False),
-    ("Température eau",                "video_observation", "water_temperature",           False),
-    ("Dérusher",                       "video_observation", "derusher",                    False),
-    ("Analyseur poisson",              "video_observation", "fish_annotator",              False),
-    ("Analyseur habitat",              "video_observation", "habitat_annotator",           False),
-    ("Distance analysable min (m)",     "video_observation", "distance_min",                False),
-    ("Distance analysable max (m)",     "video_observation", "distance_max",                False),
-    ("Commentaire qualification",      "video_observation", "commentaire_qualification",   False),
-    ("Partenaires",                    "survey",            "partners",                    False),
-    ("Dossier Datawork",               "survey",            "datawork_folder",             False),
-    ("Sous-dossier vidéo",             "survey",            "video_subfolder",             False),
-    ("N° Point GPS bateau",            "video_observation", "gps_boat_point",              False),
-    ("Timecode atterrissage",          "video_observation", "timecode_atterrissage",       False),
-    ("Timecode décollage",             "video_observation", "timecode_decollage",          False),
-    ("Substrat",                       "video_observation", "substrat",                    False),
-    ("Chemin vidéo",                   None,                None,                          True),
-]
-# Champs du template non présents dans les anciens JSONs → à initialiser à null si absents
-_CUSTOM_VOB_FIELDS: list[str] = [
-    "habitat", "timecode_ardoise", "timecode_debut",
-    "location_comment", "moteur", "derush_comment", "interesting_images",
-    "screenshot", "fish_annotator", "habitat_annotator",
-    "distance_min", "distance_max",
-    "time", "latitude", "longitude",
-    "substrat", "gps_boat_point", "timecode_atterrissage", "timecode_decollage",
-    "station_number",
-]
-
-# Colonnes du CSV infostation (source unique de vérité — utilisée dans upsert ET génération complète)
-_INFOSTATION_COLUMNS: list[str] = [
-    "Codestation", "Zone", "Type", "Région", "Nom campagne",
-    "Latitude", "Longitude", "Date", "Heure",
-    "Exploitable", "Nom du point", "Nom du point GPS",
-    "Codestatut", "Codestatut2", "Site", "Pt de Suivi", "Profondeur",
-    "Commentaires terrain pose", "Commentaires terrain localisation",
-    "Nom du fichier", "Timecode ardoise", "Timecode début",
-    "Commentaires video", "Images interessantes", "Capture écran",
-    "Milieu/Habitat", "Visibilite",
-    "Camera", "Modèle MCU", "Version système", "Moteur", "Systeme",
-    "Maree", "Coefficient marée", "Lune",
-    "Meteo", "Vent (beaufort)", "Direction vent",
-    "Mer (beaufort)", "Houle", "Direction houle",
-    "Température air", "Température eau",
-    "Bateau", "Pilote", "Equipage",
-    "Dérusher", "Analyseur poisson", "Analyseur habitat",
-    "Distance analysable min (m)", "Distance analysable max (m)",
-    "Commentaire qualification",
-    "Partenaires", "Dossier Datawork", "Sous-dossier vidéo",
-    "N° Point GPS bateau", "Timecode atterrissage", "Timecode décollage", "Substrat",
-    "Chemin vidéo",
-]
 
 _FIELD_STYLE = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
                 " border-radius: 3px; padding: 3px 6px; font-family: 'Segoe UI', sans-serif;")
@@ -377,18 +409,9 @@ class MetadonneesController:
         row1.addStretch()
         cp.addLayout(row1)
 
-        # Ligne 2 : Site | Codestatut | Codestatut2 | Date
+        # Ligne 2 : Date (Site/Codestatut/Codestatut2 sont désormais par vidéo → tableau)
         row2 = QtWidgets.QHBoxLayout()
         row2.setSpacing(6)
-        row2.addWidget(_hl("Site"))
-        row2.addWidget(_hi("ft_site", "Gléhan", 100))
-        row2.addSpacing(8)
-        row2.addWidget(_hl("Codestatut"))
-        row2.addWidget(_hi("ft_codestatut", "", 60))
-        row2.addSpacing(8)
-        row2.addWidget(_hl("Codestatut2"))
-        row2.addWidget(_hi("ft_codestatut2", "", 60))
-        row2.addSpacing(8)
         row2.addWidget(_hl("Date"))
         row2.addWidget(_hi("ft_date", "09/07/2026", 80))
         row2.addStretch()
@@ -462,24 +485,57 @@ class MetadonneesController:
             QTableWidget::item:selected { background-color: #20415d; color: white; }
             QTableWidget::item:alternate { background-color: #0d1620; }
         """)
-        # Largeurs par défaut selon le type de colonne
+        # Largeurs par défaut — noms de colonnes = ceux du XLSX (via _INFOSTATION_CSV_SCHEMA)
         _default_widths = {
-            "Codestation": 80, "Latitude": 90, "Longitude": 90, "Heure": 52,
-            "Exploitable": 70, "Nom du point": 70, "Nom du point GPS": 70,
-            "Pt de Suivi": 70, "Profondeur": 65,
-            "Commentaires terrain pose": 150, "Commentaires terrain localisation": 150,
-            "Nom du fichier": 140, "Timecode ardoise": 85, "Timecode début": 85,
-            "Commentaires video": 150, "Images interessantes": 130, "Capture écran": 80,
-            "Milieu/Habitat": 90, "Visibilite": 65,
-            "Camera": 80, "Modèle MCU": 75, "Version système": 90,
-            "Moteur": 55, "Systeme": 70,
-            "Maree": 55, "Coefficient marée": 90, "Lune": 50,
-            "Meteo": 80, "Vent (beaufort)": 85, "Direction vent": 90,
-            "Mer (beaufort)": 85, "Houle": 55, "Direction houle": 90,
-            "Température air": 95, "Température eau": 95,
-            "Dérusher": 70, "Analyseur poisson": 100, "Analyseur habitat": 100,
-            "Distance analysable min (m)": 110, "Distance analysable max (m)": 110,
-            "Commentaire qualification": 140, "Chemin vidéo": 200,
+            "Date":                              75,
+            "Campagne":                          130,
+            "Région":                            55,
+            "Zone":                              55,
+            "Type":                              55,
+            "Bateau":                            90,
+            "Pilote":                            90,
+            "Equipage":                          120,
+            "Partenaires":                       120,
+            "Dossier vidéos":                    160,
+            "Numéro de la vidéo":                80,
+            "Exploitabilité":                    75,
+            "Commentaires vidéo":                160,
+            "Timecode Ardoise":                  90,
+            "Codestation":                       90,
+            "Numéro du point":                   80,
+            "Heure":                             55,
+            "Système":                           70,
+            "Numéro du point (GPS portable)":    120,
+            "Latitude":                          90,
+            "Longitude":                         90,
+            "Profondeur":                        65,
+            "Commentaires terrain pose":         150,
+            "Commentaires terrain localisation": 150,
+            "Numéro du point (GPS bateau)":      120,
+            "Site":                              80,
+            "Programme de suivi":                110,
+            "Statut de Protection 1":            100,
+            "Statut de Protection 2":            100,
+            "Phase de la marée":                 90,
+            "Coefficient de marée":              90,
+            "Phase de la Lune":                  90,
+            "Couverture nuageuse":               100,
+            "Vent (Beaufort)":                   75,
+            "Mer (Douglas)":                     75,
+            "Hauteur de la houle":               90,
+            "Nom du fichier vidéo":              160,
+            "Timecode atterissage":              100,
+            "Timecode décollage":                90,
+            "Timecode début analyse":            100,
+            "Timecode fin analyse":              90,
+            "Milieu/Habitat":                    90,
+            "Visibilité estimée":                80,
+            "Distance analysable min (m)":       110,
+            "Distance analysable max (m)":       110,
+            "Evénements intéressants":           160,
+            "Derusher":                          80,
+            "Analyseur habitat":                 100,
+            "Analyseur poisson":                 100,
         }
         for col_i, (col_label, *_) in enumerate(_FT_TABLE_COLS):
             self._ft_table.setColumnWidth(col_i, _default_widths.get(col_label, 80))
@@ -565,7 +621,6 @@ class MetadonneesController:
                 block[json_key] = {"value": new_value or None}
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
-            self._schedule_infostation_upsert(video_path)
             if self._on_metadata_saved:
                 self._on_metadata_saved()
         except Exception as e:
@@ -697,13 +752,17 @@ class MetadonneesController:
             weather = {k: v for k, v in obs.items() if k in self.weather_sea_keys}
             # Champs gérés dans la feuille terrain ou dans la page Événements → masqués ici
             _feuille_terrain_keys = {
-                "depth", "point_name", "gps_waypoint", "deployment_comment",
+                "depth", "point_name", "gps_waypoint", "boatgps_waypoint", "deployment_comment",
                 "fish_annotator", "habitat_annotator",
                 "distance_min", "distance_max",
                 "timecode_ardoise", "timecode_debut",
+                "timecode_landing", "timecode_takeoff", "timecode_end",
+                "timecode_atterrissage", "timecode_decollage",  # backward compat
                 "derush_comment", "interesting_images",
                 "moteur", "screenshot",
                 "latitude", "longitude", "time",
+                "video_path", "video_number",
+                "site", "protectionStatus1", "protectionStatus2",
             }
             specific = {k: v for k, v in obs.items()
                         if k not in self.weather_sea_keys and k not in _feuille_terrain_keys}
@@ -937,7 +996,6 @@ class MetadonneesController:
                     json.dump(data, f, indent=4, ensure_ascii=False)
             except Exception as e:
                 print(f"[INFOSTATION HEADER] {field_id}: {e}")
-        self._schedule_infostation_upsert("")
         if self._on_metadata_saved:
             self._on_metadata_saved()
 
@@ -967,23 +1025,23 @@ class MetadonneesController:
                     self._json_data["video_observation"]["timecode_debut"]["value"] = _tc_str(ev)
                     break
 
-        # ── Timecode atterrissage (dédié) ────────────────────────────────
-        if not self._v(obs, "timecode_atterrissage"):
+        # ── Timecode atterrissage ────────────────────────────────────────
+        if not self._v(obs, "timecode_landing") and not self._v(obs, "timecode_atterrissage"):
             for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
                 if any(kw in (ev.get("value") or "").lower()
                        for kw in ["atterrissage", "atterissage", "landing"]):
                     self._json_data["video_observation"].setdefault(
-                        "timecode_atterrissage", {"value": None}
+                        "timecode_landing", {"value": None}
                     )["value"] = _tc_str(ev)
                     break
 
         # ── Timecode décollage ───────────────────────────────────────────
-        if not self._v(obs, "timecode_decollage"):
+        if not self._v(obs, "timecode_takeoff") and not self._v(obs, "timecode_decollage"):
             for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
                 if any(kw in (ev.get("value") or "").lower()
                        for kw in ["décollage", "decollage", "takeoff", "take_off"]):
                     self._json_data["video_observation"].setdefault(
-                        "timecode_decollage", {"value": None}
+                        "timecode_takeoff", {"value": None}
                     )["value"] = _tc_str(ev)
                     break
 
@@ -1067,10 +1125,10 @@ class MetadonneesController:
                     reader = csv.DictReader(f, delimiter=';')
                     existing_rows = list(reader)
 
-            # Upsert : remplacer la ligne si même "Nom du fichier", sinon append
+            # Upsert : remplacer la ligne si même nom de fichier vidéo, sinon append
             updated = False
             for i, row in enumerate(existing_rows):
-                if row.get("Nom du fichier", "") == stem:
+                if row.get("Nom du fichier vidéo", "") == stem:
                     existing_rows[i] = new_row
                     updated = True
                     break
@@ -1121,7 +1179,12 @@ class MetadonneesController:
         return stem, ""
 
     def _build_infostation_row(self, video_path: str) -> dict:
-        """Construit un dictionnaire de valeurs pour une ligne Infostation depuis le JSON."""
+        """Construit le dict {name_fr: valeur} pour une ligne CSV, basé sur _INFOSTATION_SCHEMA.
+
+        Chaque champ est lu dynamiquement depuis le JSON vidéo via son field_key.
+        Les champs calculés (lat/lon GPS, timecodes dérivés, video_path, video_file_name,
+        codeObs, time, point_name) reçoivent des surcharges spécifiques.
+        """
         stem = os.path.splitext(os.path.basename(video_path))[0]
         codestat, heure_stem = self._extract_stem_parts(stem)
 
@@ -1133,109 +1196,111 @@ class MetadonneesController:
                     jdata = json.load(f)
             except Exception:
                 pass
-        sys_ = jdata.get("system", {})
         surv = jdata.get("survey", {})
         obs  = jdata.get("video_observation", {})
 
-        # Lat/lon : JSON en priorité, fallback fichier GPS
+        # ── Helpers ──────────────────────────────────────────────────────────
+        def _ev_tc(keywords: list[str]) -> str:
+            """Cherche le premier event_deployment dont la valeur contient un des mots-clés."""
+            for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
+                if any(kw in (ev.get("value") or "").lower() for kw in keywords):
+                    return ev.get("time_code_start") or ""
+            return ""
+
         gps = get_video_gps_coords(video_path)
         lat_gps = str(gps[0]).replace('.', ',') if gps else ""
         lon_gps = str(gps[1]).replace('.', ',') if gps else ""
-        lat_json = self._v(obs, "latitude")
-        lon_json = self._v(obs, "longitude")
-        lat = lat_json.replace('.', ',') if lat_json else lat_gps
-        lon = lon_json.replace('.', ',') if lon_json else lon_gps
 
-        # codeObs : JSON en priorité, fallback stem du fichier
-        code_obs   = self._v(obs, "codeObs") or codestat
-        # point_name : JSON en priorité, fallback stem du fichier
-        point_name = self._v(obs, "point_name") or codestat
-        # heure : JSON en priorité, fallback extraite du stem
-        heure      = self._v(obs, "time") or heure_stem
+        # ── Construction de la ligne dans l'ordre exact du XLSX ───────────
+        row: dict = {}
+        for section, field_key, col_name in _INFOSTATION_CSV_SCHEMA:
 
-        def _derive_tc_ardoise():
-            v = self._v(obs, "timecode_ardoise")
-            if v: return v
-            for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
-                if any(kw in (ev.get("value") or "").lower()
-                       for kw in ["ardoise", "slate", "tableau blanc", "whiteboard"]):
-                    return ev.get("time_code_start") or ""
-            return ""
+            # Champ calculé : Evénements intéressants
+            if section is None and field_key == "events_interesting_images":
+                parts = []
+                for ev in (obs.get("events_interesting_images", [{}]) or [{}])[0].get("values", []):
+                    tc = ev.get("time_code_start") or ""
+                    detail = ev.get("comment") or ev.get("value") or ""
+                    parts.append(f"{tc} {detail}".strip())
+                row[col_name] = " ; ".join(parts)
+                continue
 
-        def _derive_tc_debut():
-            v = self._v(obs, "timecode_debut")
-            if v: return v
-            for ev in (obs.get("events_deployment", [{}]) or [{}])[0].get("values", []):
-                if any(kw in (ev.get("value") or "").lower()
-                       for kw in ["atterrissage", "landing"]):
-                    return ev.get("time_code_start") or ""
-            return ""
+            block = jdata.get(section, {}) if section else {}
+            val = self._v(block, field_key)
 
-        def _derive_interesting_images():
-            v = self._v(obs, "interesting_images")
-            if v: return v
-            parts = []
-            for ev in (obs.get("events_interesting_images", [{}]) or [{}])[0].get("values", []):
-                tc     = ev.get("time_code_start") or ""
-                detail = ev.get("comment") or ev.get("value") or ""
-                parts.append(f"{tc} {detail}".strip())
-            return " ; ".join(parts)
+            # ── Surcharges par field_key ──────────────────────────────────
+            if field_key == "date":
+                val = self._fmt_date(val) if val else ""
 
-        return {
-            "Codestation":                       code_obs,
-            "Zone":                              self._v(surv, "zone"),
-            "Type":                              self._v(surv, "type"),
-            "Région":                            self._v(surv, "region"),
-            "Nom campagne":                      self._v(surv, "survey_name"),
-            "Latitude":                          lat,
-            "Longitude":                         lon,
-            "Date":                              self._fmt_date(self._v(surv, "date")),
-            "Heure":                             heure,
-            "Exploitable":                       self._v(obs, "exploitable"),
-            "Nom du point":                      point_name,
-            "Nom du point GPS":                  self._v(obs, "gps_waypoint"),
-            "Codestatut":                        self._v(surv, "protectionStatus1"),
-            "Codestatut2":                       self._v(surv, "protectionStatus2"),
-            "Site":                              self._v(surv, "site"),
-            "Pt de Suivi":                       self._v(obs, "monitoring_program"),
-            "Profondeur":                        self._v(obs, "depth"),
-            "Commentaires terrain pose":         self._v(obs, "deployment_comment"),
-            "Commentaires terrain localisation": self._v(obs, "location_comment"),
-            "Nom du fichier":                    stem,
-            "Timecode ardoise":                  _derive_tc_ardoise(),
-            "Timecode début":                    _derive_tc_debut(),
-            "Commentaires video":                self._v(obs, "derush_comment"),
-            "Images interessantes":              _derive_interesting_images(),
-            "Capture écran":                     self._v(obs, "screenshot"),
-            "Milieu/Habitat":                    self._v(obs, "habitat"),
-            "Visibilite":                        self._v(obs, "estimated_visibility"),
-            "Camera":                            self._v(sys_, "camera"),
-            "Modèle MCU":                        self._v(sys_, "model_mcu"),
-            "Version système":                   self._v(sys_, "system_version"),
-            "Moteur":                            self._v(obs, "moteur"),
-            "Systeme":                           self._v(sys_, "type_system"),
-            "Maree":                             self._v(obs, "tide"),
-            "Coefficient marée":                 self._v(obs, "coefficient"),
-            "Lune":                              self._v(obs, "moon"),
-            "Meteo":                             self._v(obs, "weather"),
-            "Vent (beaufort)":                   self._v(obs, "wind"),
-            "Direction vent":                    self._v(obs, "wind_direction"),
-            "Mer (beaufort)":                    self._v(obs, "seaState"),
-            "Houle":                             self._v(obs, "swell_height"),
-            "Direction houle":                   self._v(obs, "swell_direction"),
-            "Température air":                   self._v(obs, "airTemp"),
-            "Température eau":                   self._v(obs, "water_temperature"),
-            "Bateau":                            self._v(surv, "boat_name"),
-            "Pilote":                            self._v(surv, "pilot_name"),
-            "Equipage":                          self._v(surv, "crew_names"),
-            "Dérusher":                          self._v(obs, "derusher"),
-            "Analyseur poisson":                 self._v(obs, "fish_annotator"),
-            "Analyseur habitat":                 self._v(obs, "habitat_annotator"),
-            "Distance analysable min (m)":       self._v(obs, "distance_min"),
-            "Distance analysable max (m)":       self._v(obs, "distance_max"),
-            "Commentaire qualification":          self._v(obs, "commentaire_qualification"),
-            "Chemin vidéo":                      video_path,
-        }
+            elif field_key == "video_path":
+                val = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
+
+            elif field_key == "video_file_name":
+                val = stem
+
+            elif field_key == "video_number" and not val:
+                val = self._v(obs, "station_number")
+
+            elif field_key == "latitude":
+                val = val.replace('.', ',') if val else lat_gps
+
+            elif field_key == "longitude":
+                val = val.replace('.', ',') if val else lon_gps
+
+            elif field_key == "time" and not val:
+                val = heure_stem
+
+            elif field_key == "codeObs" and not val:
+                # Reconstruction dynamique : zone + 2 derniers chiffres de l'année + n° point 0000
+                import re as _re2
+                zone_v   = self._v(surv, "zone").strip()
+                date_v   = self._v(surv, "date").strip()
+                year_2d  = _re2.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+                pname_v  = (self._v(obs, "point_name") or self._v(obs, "station_number")).strip()
+                if pname_v:
+                    try:
+                        station_idx = f"{int(pname_v):04d}"
+                    except ValueError:
+                        station_idx = pname_v.zfill(4)[:4]
+                else:
+                    station_idx = ""
+                if zone_v and year_2d and station_idx:
+                    val = f"{zone_v}{year_2d}{station_idx}"
+                else:
+                    val = codestat  # fallback stem si infos insuffisantes
+
+            elif field_key == "point_name" and not val:
+                val = self._v(obs, "station_number") or codestat
+
+            elif field_key == "boatgps_waypoint" and not val:
+                val = self._v(obs, "gps_boat_point")
+
+            elif field_key == "site" and not val:
+                val = self._v(surv, "site")
+
+            elif field_key == "protectionStatus1" and not val:
+                val = self._v(surv, "protectionStatus1")
+
+            elif field_key == "protectionStatus2" and not val:
+                val = self._v(surv, "protectionStatus2")
+
+            elif field_key == "timecode_ardoise" and not val:
+                val = _ev_tc(["ardoise", "slate", "tableau blanc", "whiteboard"])
+
+            elif field_key == "timecode_landing" and not val:
+                val = (self._v(obs, "timecode_atterrissage")
+                       or _ev_tc(["atterrissage", "atterissage", "landing"]))
+
+            elif field_key == "timecode_takeoff" and not val:
+                val = (self._v(obs, "timecode_decollage")
+                       or _ev_tc(["décollage", "decollage", "takeoff", "take_off"]))
+
+            elif field_key == "timecode_debut" and not val:
+                val = _ev_tc(["atterrissage", "landing"])
+
+            row[col_name] = val
+
+        return row
 
     # ── Feature : vérification cohérence ────────────────────────────────
 
@@ -1500,7 +1565,7 @@ class MetadonneesController:
         ("survey",           "date",           "Date (survey.date)"),
         ("survey",           "region",         "Région / AREA (survey.region)"),
         ("survey",           "zone",           "Zone (survey.zone)"),
-        ("video_observation","station_number", "N° du point (saisi à l'ardoise)"),
+        ("video_observation","point_name",     "N° du point (video_observation.point_name)"),
     ]
 
     def _on_save_clicked(self):
@@ -1561,6 +1626,7 @@ class MetadonneesController:
 
         # ── 2. Tout est rempli → génération ──────────────────────────────────
         self._generate_benthoss_folder()
+        self.generate_infostation_csv()
 
     def _blink_widgets(self, header_widgets: list, table_cells: list):
         """Fait clignoter en rouge les champs vides (3 allers-retours, 200 ms chacun)."""
@@ -1641,8 +1707,8 @@ class MetadonneesController:
         # ── Année 2 chiffres ─────────────────────────────────────────────
         year_2d = date_part[2:4] if len(date_part) >= 4 else ""
 
-        # ── N° du point (4 chiffres saisi à l'ardoise) ───────────────────
-        station_num_raw = _sv(vob, "station_number").strip()
+        # ── N° du point : point_name en priorité, fallback station_number (backward compat) ──
+        station_num_raw = (_sv(vob, "point_name") or _sv(vob, "station_number")).strip()
         if station_num_raw:
             try:
                 station_idx = f"{int(station_num_raw):04d}"
@@ -1842,11 +1908,53 @@ class MetadonneesController:
                                "Select a working directory first (Home page).")
             )
             return
-        for field_id in _INFOSTATION_FIELD_BLOCKS:
+
+        # Collecte des valeurs depuis les widgets de l'en-tête
+        field_values: dict[str, tuple] = {}  # field_id → (block_name, json_key, value)
+        for field_id, (block_name, json_key) in _INFOSTATION_FIELD_BLOCKS.items():
             w = self._infostation_widgets.get(field_id)
+            if w is None:
+                continue
             if isinstance(w, QtWidgets.QLineEdit):
-                self._on_infostation_changed(field_id, w.text().strip())
-        n = self.video_model.rowCount()
+                val = w.text().strip()
+            elif isinstance(w, QtWidgets.QPlainTextEdit):
+                val = w.toPlainText().strip()
+            elif isinstance(w, QtWidgets.QComboBox):
+                val = w.currentText().strip()
+            else:
+                continue
+            field_values[field_id] = (block_name, json_key, val)
+
+        # Écriture en une passe par vidéo, une reconstruction de tableau à la fin
+        n = 0
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            json_path = get_working_video_json_path(self._working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for _fid, (block_name, json_key, val) in field_values.items():
+                    block = data.setdefault(block_name, {})
+                    if json_key in block and isinstance(block[json_key], dict):
+                        block[json_key]["value"] = val or None
+                    else:
+                        block[json_key] = {"value": val or None}
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                n += 1
+            except Exception as e:
+                print(f"[APPLY_ALL] {video_path}: {e}")
+
+        # Reconstruction du tableau une seule fois
+        self._rebuild_ft_table()
+
         QtWidgets.QMessageBox.information(
             self.widget,
             self.translate("Propagation terminée", "Propagation complete"),
@@ -2007,8 +2115,7 @@ class MetadonneesController:
                     json.dump(self._json_data, f, indent=4, ensure_ascii=False)
                 if self._on_metadata_saved:
                     self._on_metadata_saved()
-                if self.current_video_path:
-                    self._schedule_infostation_upsert(self.current_video_path)
+                pass  # CSV généré uniquement via le bouton Qualifier
             except Exception as e:
                 print(f"[ERROR] Failed writing JSON: {e}")
 

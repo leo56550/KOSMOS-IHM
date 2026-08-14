@@ -532,3 +532,27 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-14 13:29:31.689480
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\enum.py", line 720, in __call__
+    def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-14 13:49:38.563243
+Traceback (most recent call last):
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\enum.py", line 720, in __call__
+    def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-14 14:13:40.150342
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt

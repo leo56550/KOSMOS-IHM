@@ -105,6 +105,21 @@ class ValidationController:
         layout.setContentsMargins(8, 8, 8, 6)
         layout.setSpacing(6)
 
+        # ── Bandeau alerte ardoises manquantes ──────────────────────────
+        self._ardoise_warning = QtWidgets.QLabel("")
+        self._ardoise_warning.setWordWrap(True)
+        self._ardoise_warning.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self._ardoise_warning.setStyleSheet(
+            "color: #ffcc00; background-color: #3a2800;"
+            " border: 1px solid #cc8800; border-radius: 4px;"
+            " padding: 6px 8px; font-size: 11px;"
+            " font-family: 'Segoe UI', sans-serif;"
+        )
+        self._ardoise_warning.setVisible(False)
+        layout.addWidget(self._ardoise_warning)
+
         # Titre
         self.lbl_exploitable = QtWidgets.QLabel(
             self.translate("Exploitabilité vidéo", "Video Exploitability")
@@ -164,6 +179,49 @@ class ValidationController:
         self._comment_edit.textChanged.connect(self._on_comment_changed)
         layout.addWidget(self._comment_edit)
         layout.addStretch()
+
+    def refresh_ardoise_warning(self):
+        """Affiche un bandeau si des vidéos exploitables (oui) n'ont pas d'ardoise saisie."""
+        if not hasattr(self, '_ardoise_warning') or self.video_model is None:
+            return
+        missing = []
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            json_path = resolve_video_json_path(self._working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+            obs = data.get("video_observation", {})
+            expl = obs.get("exploitable", {})
+            val = expl.get("value", "") if isinstance(expl, dict) else str(expl)
+            if str(val).strip().lower() not in ("oui", "yes"):
+                continue
+            events_deploy = obs.get("events_deployment", []) or []
+            values = events_deploy[0].get("values", []) if events_deploy else []
+            has_ardoise = any(
+                str(ev.get("value", "")).lower() in ("ardoise", "slate")
+                for ev in values
+            )
+            if not has_ardoise:
+                missing.append(item.text())
+
+        if missing:
+            names = "\n".join(f"  • {n}" for n in missing)
+            self._ardoise_warning.setText(
+                f"⚠ Ardoise manquante pour :\n{names}"
+            )
+            self._ardoise_warning.setVisible(True)
+        else:
+            self._ardoise_warning.setVisible(False)
 
     # Couleurs par valeur d'exploitabilité (bg_checked, color_checked, border_checked, hint_bg)
     _EXPLOITABLE_COLORS = {
@@ -342,6 +400,7 @@ class ValidationController:
         """Remplace le modèle source du proxy après un changement de campagne."""
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
+        self.refresh_ardoise_warning()
 
     def select_video_by_name(self, video_name: str):
         """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
@@ -460,6 +519,8 @@ class ValidationController:
             if self._on_qualification_changed:
                 self._on_qualification_changed()
 
+            self.refresh_ardoise_warning()
+
             if self.video_tree:
                 selected = self.video_tree.selectionModel().selectedRows()
                 if selected:
@@ -520,9 +581,9 @@ class ValidationController:
             print(f"[VALIDATION] Lecture JSON échouée : {e}")
             return
 
-        existing_num = (data.get("video_observation", {})
-                            .get("station_number", {})
-                            .get("value") or "")
+        vob_tmp = data.get("video_observation", {})
+        existing_num = (vob_tmp.get("point_name", {}).get("value")
+                        or vob_tmp.get("station_number", {}).get("value") or "")
 
         # Dialog numéro du point
         num_str, ok = QtWidgets.QInputDialog.getText(
@@ -567,13 +628,14 @@ class ValidationController:
                 "comment": "",
             })
 
-            # N° du point → 4 chiffres zero-padded
+            # N° du point → 4 chiffres zero-padded, écrit dans point_name (+ compat station_number)
             if ok and num_str.strip():
                 raw = num_str.strip()
                 try:
                     station_num = f"{int(raw):04d}"
                 except ValueError:
                     station_num = raw.zfill(4)[:4]
+                obs.setdefault("point_name", {})["value"] = station_num
                 obs.setdefault("station_number", {})["value"] = station_num
 
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
@@ -587,6 +649,7 @@ class ValidationController:
 
             if self._on_qualification_changed:
                 self._on_qualification_changed()
+            self.refresh_ardoise_warning()
         except Exception as e:
             print(f"[VALIDATION] Erreur sauvegarde ardoise/codeObs : {e}")
 

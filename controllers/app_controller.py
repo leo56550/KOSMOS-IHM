@@ -3,7 +3,7 @@ import json
 
 from services.campaign_service import (get_campaign_json_data, get_video_json_path,
                                        sync_video_to_working_dir, migrate_json_to_template,
-                                       get_working_video_json_path)
+                                       get_working_video_json_path, resolve_video_json_path)
 from services.video_service import check_stereo_status, get_system_name
 from services.weather_service import WeatherWorker
 from views.dialogs.notes_dialog import NotesDialog
@@ -159,11 +159,15 @@ class AppController:
             self.qualif_ctrl.selected_video_name = prev
 
     def _sync_all_to_working_dir(self) -> None:
-        """Copie les fichiers compagnon de toutes les vidéos et génère l'Infostation CSV."""
+        """Copie les fichiers compagnon de toutes les vidéos dans le répertoire de travail.
+
+        Seules les copies de travail sont modifiées — les JSON bruts ne sont jamais touchés.
+        """
         if not self.working_dir or not self._campaign_ready:
             return
 
         model = self.qualif_ctrl.video_model
+        video_paths = []
         for row in range(model.rowCount()):
             item = model.item(row, 0)
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
@@ -172,9 +176,34 @@ class AppController:
                     sync_video_to_working_dir(self.working_dir, video_path)
                     wjson = get_working_video_json_path(self.working_dir, video_path)
                     migrate_json_to_template(wjson)
+                    video_paths.append(video_path)
                 except Exception as e:
                     print(f"[SYNC] {video_path}: {e}")
-        self.metadonnees_ctrl.generate_infostation_csv()
+
+        # Écriture du dérusher uniquement dans les copies de travail (jamais dans les bruts)
+        if self._current_derusher_name:
+            self._write_derusher_to_working_copies(video_paths, self._current_derusher_name)
+
+    def _write_derusher_to_working_copies(self, video_paths: list, derusher_name: str) -> None:
+        """Écrit le nom du dérusher dans les copies de travail des JSONs vidéo."""
+        import json as _json
+        count = 0
+        for video_path in video_paths:
+            wjson = get_working_video_json_path(self.working_dir, video_path)
+            if not os.path.isfile(wjson):
+                continue
+            try:
+                with open(wjson, 'r', encoding='utf-8') as f:
+                    data = _json.load(f)
+                vo = data.get("video_observation", {})
+                if "derusher" in vo:
+                    vo["derusher"]["value"] = derusher_name
+                    with open(wjson, 'w', encoding='utf-8') as f:
+                        _json.dump(data, f, indent=2, ensure_ascii=False)
+                    count += 1
+            except Exception as e:
+                print(f"[DERUSHER] {wjson}: {e}")
+        print(f"[DERUSHER] '{derusher_name}' écrit dans {count} copies de travail.")
 
     def _open_working_dir(self):
         """Ouvre un sélecteur de dossier pour choisir le répertoire de travail IHM."""
@@ -290,6 +319,7 @@ class AppController:
         """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit stats + vue globale."""
         self.refresh_status_bar()
         self._do_refresh_overview()  # immédiat — un seul clic, pas besoin de debounce
+        self.metadonnees_ctrl.refresh_feuille_terrain()
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés.
@@ -586,31 +616,64 @@ class AppController:
         w = self.window
         w.actionValidation.setEnabled(True)
         w.actionEvenements.setEnabled(True)
-
-        # Récupère les vidéos retenues (video_model, pas trash)
-        video_paths = []
-        model = self.qualif_ctrl.video_model
-        for row in range(model.rowCount()):
-            item = model.item(row, 0)
-            if item:
-                vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
-                if vp:
-                    video_paths.append(str(vp))
-
-        if video_paths and self.working_dir:
-            csv_path = self.metadonnees_ctrl.generate_qualification_infostation(
-                video_paths, self.working_dir
-            )
-            if csv_path:
-                QtWidgets.QMessageBox.information(
-                    w,
-                    "Infostation générée",
-                    f"CSV Infostation créé avec {len(video_paths)} vidéo(s) :\n{csv_path}"
-                )
+        if self.btn_finir_qualif:
+            self.btn_finir_qualif.setEnabled(False)
+            trans = w.translations[w.current_language]
+            self.btn_finir_qualif.setText(trans.get('Qualification Terminée ✓', 'Qualification Terminée ✓'))
 
         self.switch_page(w.page_validation)
 
+    def _check_ardoises_for_exploitable_videos(self) -> list[str]:
+        """Retourne les noms de vidéos exploitables (oui/yes) sans ardoise saisie."""
+        missing = []
+        n = self.qualif_ctrl.video_model.rowCount()
+        print(f"[ARDOISE_CHECK] working_dir={self.working_dir!r}  nb_videos={n}")
+        for row in range(n):
+            item = self.qualif_ctrl.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            json_path = resolve_video_json_path(self.working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                print(f"[ARDOISE_CHECK]   {item.text()} → JSON introuvable : {json_path!r}")
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception as e:
+                print(f"[ARDOISE_CHECK]   {item.text()} → erreur lecture JSON : {e}")
+                continue
+            obs = data.get("video_observation", {})
+            expl = obs.get("exploitable", {})
+            val = expl.get("value", "") if isinstance(expl, dict) else str(expl)
+            val_low = str(val).strip().lower()
+            if val_low not in ("oui", "yes"):
+                print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r} → ignoré")
+                continue
+            events_deploy = obs.get("events_deployment", []) or []
+            values = events_deploy[0].get("values", []) if events_deploy else []
+            has_ardoise = any(
+                str(ev.get("value", "")).lower() in ("ardoise", "slate")
+                for ev in values
+            )
+            print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r}, has_ardoise={has_ardoise}")
+            if not has_ardoise:
+                missing.append(item.text())
+        print(f"[ARDOISE_CHECK] → missing={missing}")
+        return missing
+
     def complete_validation(self):
+        missing = self._check_ardoises_for_exploitable_videos()
+        if missing:
+            names = "\n".join(f"  • {n}" for n in missing)
+            QtWidgets.QMessageBox.warning(
+                self.window, "Ardoises manquantes",
+                f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
+                "Veuillez saisir les ardoises avant de valider."
+            )
+            return
         self.validation_completed = True
         w = self.window
         if self.btn_finir_validation:
@@ -668,6 +731,18 @@ class AppController:
 
         if not w.actionQualification.isEnabled():
             return
+
+        if page == w.page_metadonnees:
+            missing = self._check_ardoises_for_exploitable_videos()
+            if missing:
+                names = "\n".join(f"  • {n}" for n in missing)
+                QtWidgets.QMessageBox.warning(
+                    w, "Ardoises manquantes",
+                    f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
+                    "Veuillez saisir les ardoises avant d'accéder aux métadonnées."
+                )
+                return
+
         if page == w.page_extraction:
             self.extraction_ctrl.refresh_video_list()
 
