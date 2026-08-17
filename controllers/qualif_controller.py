@@ -3,6 +3,7 @@ import io
 import json
 import math
 import shutil
+import threading
 import folium
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -241,14 +242,37 @@ class QualifController:
         if not hasattr(self, '_videos_scroll_layout'):
             return
 
+        # Mémorise la position du scroll pour la restaurer après rebuild
+        _scroll_bar = self._videos_scroll.verticalScrollBar() if hasattr(self, '_videos_scroll') else None
+        _saved_scroll = _scroll_bar.value() if _scroll_bar else 0
+
         self._video_row_icon_labels.clear()
         self._video_row_widgets.clear()
+
+        # Bloque les repaints pendant le rebuild pour éviter N passes de rendu
+        _scroll_content = getattr(self, '_videos_scroll_content', None)
+        if _scroll_content:
+            _scroll_content.setUpdatesEnabled(False)
 
         # Vider le layout (garder le stretch en dernier)
         while self._videos_scroll_layout.count() > 1:
             item = self._videos_scroll_layout.takeAt(0)
             if item and item.widget():
                 item.widget().deleteLater()
+
+        # Pré-calcule une seule fois les fichiers de chaque répertoire pour la
+        # détection des segments (évite N appels os.listdir sur le même dossier)
+        import re as _re
+        _dir_cache: dict[str, list[str]] = {}
+
+        def _check_has_segments(vpath: str, vstem: str) -> bool:
+            if _re.search(r'_\d+$', vstem):
+                return False
+            d = os.path.dirname(vpath)
+            if d not in _dir_cache:
+                _dir_cache[d] = os.listdir(d) if os.path.isdir(d) else []
+            pat = _re.compile(rf'^{_re.escape(vstem)}_\d+\.mp4$', _re.IGNORECASE)
+            return any(pat.match(f) for f in _dir_cache[d])
 
         # Vidéos gardées
         prev_was_primary = False   # la row précédente est un primaire avec segments
@@ -264,10 +288,9 @@ class QualifController:
             dur_item = self.video_model.item(row, 1)
             size_item = self.video_model.item(row, 2)
 
-            segs = get_sequential_segments(str(video_path))
-            import re as _re
             stem = os.path.splitext(os.path.basename(str(video_path)))[0]
             is_seg = bool(_re.search(r"_\d+$", stem))
+            segs = _check_has_segments(str(video_path), stem)
             link_pos = ""
             if segs:
                 link_pos = "primary"
@@ -328,6 +351,15 @@ class QualifController:
             self._videos_scroll_layout.insertWidget(
                 self._videos_scroll_layout.count() - 1, row_widget
             )
+
+        # Réactive les repaints et force un seul repaint global
+        if _scroll_content:
+            _scroll_content.setUpdatesEnabled(True)
+
+        # Restaure la position du scroll après rebuild (via QTimer pour laisser le
+        # layout se recalculer avant de forcer la valeur)
+        if _scroll_bar and _saved_scroll > 0:
+            QtCore.QTimer.singleShot(0, lambda v=_saved_scroll: _scroll_bar.setValue(v))
 
     def _build_video_row_widget(self, video_path: str, video_name: str,
                                 duration: str, size: str,
@@ -686,15 +718,27 @@ class QualifController:
     # ── Indicateur de complétion ─────────────────────────────────────────
 
     def _get_completion_color(self, video_path: str) -> QtGui.QColor:
-        """Rouge / orange / vert selon le remplissage des champs critiques du JSON."""
+        """Rouge / orange / vert selon le remplissage des champs critiques du JSON.
+
+        Résultat mis en cache pour éviter de relire le JSON à chaque rebuild de liste.
+        """
+        if not hasattr(self, '_completion_cache'):
+            self._completion_cache: dict[str, QtGui.QColor] = {}
+        if video_path in self._completion_cache:
+            return self._completion_cache[video_path]
+
         json_path = resolve_video_json_path(self._working_dir, video_path)
         if not os.path.exists(json_path):
-            return QtGui.QColor("#D94F38")
+            color = QtGui.QColor("#D94F38")
+            self._completion_cache[video_path] = color
+            return color
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         except Exception:
-            return QtGui.QColor("#D94F38")
+            color = QtGui.QColor("#D94F38")
+            self._completion_cache[video_path] = color
+            return color
 
         def _filled(block: dict, key: str) -> bool:
             entry = block.get(key, {})
@@ -707,10 +751,13 @@ class QualifController:
         important = [_filled(obs, "habitat"), _filled(obs, "depth"), _filled(surv, "date")]
 
         if not all(critical):
-            return QtGui.QColor("#D94F38")   # rouge — champ critique absent
-        if sum(important) < 2:
-            return QtGui.QColor("#E8A838")   # orange — incomplet
-        return QtGui.QColor("#5DBB63")       # vert — complet
+            color = QtGui.QColor("#D94F38")
+        elif sum(important) < 2:
+            color = QtGui.QColor("#E8A838")
+        else:
+            color = QtGui.QColor("#5DBB63")
+        self._completion_cache[video_path] = color
+        return color
 
     def _apply_completion_color(self, row: int):
         """Applique un fond semi-transparent sur la ligne selon la complétion JSON."""
@@ -735,6 +782,9 @@ class QualifController:
 
     def refresh_completion_color_for_video(self, video_path: str):
         """Recalcule la couleur de complétion uniquement pour la vidéo donnée."""
+        # Invalide le cache pour que _get_completion_color relise le JSON
+        if hasattr(self, '_completion_cache'):
+            self._completion_cache.pop(str(video_path), None)
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == str(video_path):
@@ -1473,15 +1523,16 @@ class QualifController:
         if self._on_before_delete:
             self._on_before_delete(video_path)
 
-        # Supprimer le sous-dossier de sortie de cette vidéo dans le working_dir
+        # Supprimer le sous-dossier de sortie en arrière-plan pour ne pas bloquer l'UI
         if self._working_dir and video_path:
             output_dir = get_working_video_dir(self._working_dir, video_path)
             if os.path.isdir(output_dir):
-                try:
-                    shutil.rmtree(output_dir)
-                    print(f"[QUALIF] Dossier de sortie supprimé : {output_dir}")
-                except Exception as e:
-                    print(f"[QUALIF] Impossible de supprimer le dossier de sortie : {e}")
+                def _rm(path):
+                    try:
+                        shutil.rmtree(path)
+                    except Exception as e:
+                        print(f"[QUALIF] Impossible de supprimer le dossier de sortie : {e}")
+                threading.Thread(target=_rm, args=(output_dir,), daemon=True).start()
 
         items = [self.video_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)
