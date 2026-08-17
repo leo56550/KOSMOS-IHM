@@ -12,6 +12,66 @@ from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
 
+class _ToggleFrame(QtWidgets.QFrame):
+    """Bouton toggle QFrame+QLabel — texte toujours rendu correctement sous Windows 11/Qt6."""
+
+    toggled = QtCore.pyqtSignal(bool)
+
+    def __init__(self, choice: str, checked: bool = False, parent=None):
+        super().__init__(parent)
+        self._choice = choice
+        self._checked = checked
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setMinimumHeight(40)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        self._lbl = QtWidgets.QLabel(choice)
+        self._lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        # Transparent pour que les clics passent au QFrame parent
+        self._lbl.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        lay.addWidget(self._lbl)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, v: bool):
+        self._checked = v
+
+    def text(self) -> str:
+        return self._choice
+
+    def mousePressEvent(self, ev):
+        if ev.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.toggled.emit(True)
+        super().mousePressEvent(ev)
+
+    def apply_style(self, colors: tuple, checked: bool | None = None):
+        """Met à jour le style visuel selon l'état checked courant (ou forcé)."""
+        if checked is not None:
+            self._checked = checked
+        bg_c, col_c, brd_c, hint_bg = colors
+        if self._checked:
+            self.setStyleSheet(
+                f"QFrame {{ background-color: {bg_c}; border: 2px solid {brd_c}; border-radius: 5px; }}"
+            )
+            self._lbl.setStyleSheet(
+                f"color: {col_c}; font-size: 13px; font-weight: bold;"
+                " font-family: 'Segoe UI', sans-serif; background: transparent; border: none;"
+            )
+        else:
+            self.setStyleSheet(
+                f"QFrame {{ background-color: {hint_bg}; border: 1px solid #2a4a6a; border-radius: 5px; }}"
+            )
+            self._lbl.setStyleSheet(
+                "color: #cce0f0; font-size: 13px; font-weight: bold;"
+                " font-family: 'Segoe UI', sans-serif; background: transparent; border: none;"
+            )
+
+
 class ValidationController:
     """Contrôleur de la page Validation : lecture vidéo et saisie de l'exploitabilité."""
 
@@ -68,8 +128,26 @@ class ValidationController:
             main_splitter.setStretchFactor(1, 1)
             main_splitter.setCollapsible(1, False)
 
-        self._exploitable_btn_group = QtWidgets.QButtonGroup()
-        self._exploitable_btn_group.setExclusive(True)
+        # Restructure le panneau gauche : le tree et la section exploitabilité sont
+        # actuellement dans un QVBoxLayout — impossible de traîner entre eux.
+        # On intègre splitter_14 (exploitable+VALIDER) comme 2ème enfant de splitter_4
+        # pour qu'une poignée draggable apparaisse entre le tree et le bloc exploitable.
+        sp4 = self.page.findChild(QtWidgets.QSplitter, "splitter_4")
+        sp14 = self.page.findChild(QtWidgets.QSplitter, "splitter_14")
+        if sp4 and sp14 and sp14.parent() is not sp4:
+            # Le minimumHeight=750 du .ui empêche le tree de rétrécir
+            if self.video_tree:
+                self.video_tree.setMinimumHeight(80)
+            sp4.addWidget(sp14)            # sp14 devient enfant de sp4
+            sp4.setStretchFactor(0, 1)    # le tree prend l'espace disponible
+            sp4.setStretchFactor(1, 0)    # le bloc exploitable garde sa taille
+            sp4.setSizes([450, 220])
+            sp4.setHandleWidth(8)
+            sp4.setStyleSheet(
+                "QSplitter::handle { background-color: #2778A2; border-radius: 3px; }"
+            )
+
+        self._exploitable_btns: list[_ToggleFrame] = []
         self._exploitable_choices: list[str] = []
 
         if self.exploitable_container:
@@ -91,14 +169,16 @@ class ValidationController:
             if w:
                 w.setParent(None)   # suppression immédiate du parent → invisible de suite
 
-        # Applique le style au container
+        # Stylesheet scopée à QFrame pour ne PAS cascader aux boutons enfants
         self.exploitable_container.setStyleSheet(
-            "background-color: #0d1b2a; border: none;"
+            "QFrame#exploitable_container { background-color: #0d1b2a; border: none; }"
         )
 
         # Widget interne qui porte tout le contenu — évite les conflits de layout
         self._panel_widget = QtWidgets.QWidget()
-        self._panel_widget.setStyleSheet("background: transparent;")
+        self._panel_widget.setObjectName("panel_widget")
+        # Scoper au nom de l'objet pour ne PAS cascader aux boutons enfants
+        self._panel_widget.setStyleSheet("QWidget#panel_widget { background: transparent; }")
         outer.addWidget(self._panel_widget)
 
         layout = QtWidgets.QVBoxLayout(self._panel_widget)
@@ -139,7 +219,10 @@ class ValidationController:
 
         # Zone des boutons toggle (remplie dynamiquement par _rebuild_choice_buttons)
         self._choice_container = QtWidgets.QWidget()
-        self._choice_container.setStyleSheet("background: transparent;")
+        self._choice_container.setObjectName("choice_container")
+        self._choice_container.setStyleSheet(
+            "QWidget#choice_container { background: transparent; }"
+        )
         self._choice_layout = QtWidgets.QVBoxLayout(self._choice_container)
         self._choice_layout.setContentsMargins(0, 4, 0, 4)
         self._choice_layout.setSpacing(6)
@@ -234,45 +317,14 @@ class ValidationController:
         "?":         ("#2a2a2a", "#aaaaaa", "#777777", "#1a1a1a"),
     }
 
-    def _exploitable_btn_style(self, choice: str) -> str:
-        """Retourne le stylesheet d'un bouton toggle avec couleur spécifique à sa valeur."""
-        key = choice.lower().strip()
-        bg_c, col_c, brd_c, hint_bg = self._EXPLOITABLE_COLORS.get(
-            key, ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
-        )
-        return (
-            "QPushButton {"
-            f"  background-color: {hint_bg};"
-            "  color: #cce0f0;"
-            "  font-family: 'Segoe UI', sans-serif;"
-            "  font-size: 13px;"
-            "  font-weight: bold;"
-            "  border: 1px solid #2a4a6a;"
-            "  border-radius: 5px;"
-            "  padding: 8px 6px;"
-            "  text-align: center;"
-            "  min-height: 36px;"
-            "}"
-            "QPushButton:hover {"
-            "  background-color: #1e3448;"
-            "  color: #ffffff;"
-            "  border-color: #2778A2;"
-            "}"
-            f"QPushButton:checked {{"
-            f"  background-color: {bg_c};"
-            f"  color: {col_c};"
-            f"  border: 2px solid {brd_c};"
-            "}"
-        )
-
     def _rebuild_choice_buttons(self, choices: list[str], current: str):
-        """Reconstruit les boutons toggle en grille 2 colonnes selon les valeurs autorisées."""
-        for btn in self._exploitable_btn_group.buttons():
-            self._exploitable_btn_group.removeButton(btn)
+        """Reconstruit les _ToggleFrame en grille 2 colonnes selon les valeurs autorisées."""
+        # Supprime les anciens widgets
         while self._choice_layout.count():
             item = self._choice_layout.takeAt(0)
             if item.widget():
                 item.widget().setParent(None)
+        self._exploitable_btns.clear()
 
         self._exploitable_choices = choices
         self._rebuilding_buttons = True
@@ -282,44 +334,52 @@ class ValidationController:
         grid.setContentsMargins(0, 0, 0, 0)
 
         for i, choice in enumerate(choices):
-            btn = QtWidgets.QPushButton(choice)
-            btn.setCheckable(True)
-            btn.setFlat(True)   # bypass native Windows rendering → CSS text color respecté
-            btn.setChecked(choice == current)
-            btn.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Fixed
+            is_checked = (choice == current)
+            colors = self._EXPLOITABLE_COLORS.get(
+                choice.lower().strip(), ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
             )
-            btn.setMinimumHeight(40)
-            btn.setStyleSheet(self._exploitable_btn_style(choice))
-            self._exploitable_btn_group.addButton(btn)
-            grid.addWidget(btn, i // 2, i % 2)
-            btn.toggled.connect(lambda checked, c=choice: self._on_choice_toggled(checked, c))
+            frame = _ToggleFrame(choice, is_checked)
+            frame.apply_style(colors)
+            frame.toggled.connect(
+                lambda _, c=choice, f=frame: self._on_frame_toggled(c, f)
+            )
+            self._exploitable_btns.append(frame)
+            grid.addWidget(frame, i // 2, i % 2)
 
-        # Wrapper pour insérer le QGridLayout dans le QVBoxLayout parent
         grid_widget = QtWidgets.QWidget()
-        grid_widget.setStyleSheet("background: transparent;")
+        grid_widget.setObjectName("exploitable_grid")
+        grid_widget.setStyleSheet("QWidget#exploitable_grid { background: transparent; }")
         grid_widget.setLayout(grid)
         self._choice_layout.addWidget(grid_widget)
-        self._rebuilding_buttons = False  # autorise à nouveau on_exploitable_changed
+        self._rebuilding_buttons = False
 
-        # Ajuste la hauteur minimale du container selon le nb de lignes
+        # Hauteur minimale = juste assez pour afficher les boutons sans scroll
         n_rows = (len(choices) + 1) // 2
-        btn_h = 40   # hauteur estimée par bouton
-        needed = 18 + 2 + n_rows * (btn_h + 6) + 24 + 16   # titre + sep + grille + badge + marges
-        self.exploitable_container.setMinimumHeight(needed)
+        min_h = 50 + n_rows * (40 + 6)
+        self.exploitable_container.setMinimumHeight(min_h)
+        # Expanding vertical permet au splitter parent de l'étirer vers le haut
         self.exploitable_container.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Minimum
+            QtWidgets.QSizePolicy.Policy.Expanding
         )
         self.exploitable_container.updateGeometry()
 
         self._update_status_badge(current)
 
-    def _on_choice_toggled(self, checked: bool, choice: str):
-        """Déclenché quand un bouton toggle change d'état."""
-        if checked and not getattr(self, '_rebuilding_buttons', False):
-            self.on_exploitable_changed(choice)
+    def _on_frame_toggled(self, choice: str, clicked_frame: _ToggleFrame):
+        """Exclusion mutuelle + persistance quand un _ToggleFrame est cliqué."""
+        if getattr(self, '_rebuilding_buttons', False):
+            return
+        for frame in self._exploitable_btns:
+            new_state = (frame is clicked_frame)
+            if frame.isChecked() != new_state:
+                frame.setChecked(new_state)
+                colors = self._EXPLOITABLE_COLORS.get(
+                    frame.text().lower().strip(), ("#1a3a4a", "#4a9fcf", "#2778A2", "#101e28")
+                )
+                frame.apply_style(colors)
+        self._update_status_badge(choice)
+        self.on_exploitable_changed(choice)
 
     def _update_status_badge(self, current: str):
         """Met à jour le badge de statut sous les boutons avec la couleur de la valeur."""
