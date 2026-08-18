@@ -5,6 +5,7 @@ import json
 from PyQt6 import QtWidgets, QtGui, QtCore
 
 from services.campaign_service import resolve_video_json_path
+from services.thumbnail_service import THUMB_W, THUMB_H
 
 
 class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
@@ -102,33 +103,41 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     def paint(self, painter: QtGui.QPainter,
               option: QtWidgets.QStyleOptionViewItem,
               index: QtCore.QModelIndex):
-        super().paint(painter, option, index)
 
         if index.column() != 0:
+            super().paint(painter, option, index)
             return
+
+        # ── Fond / sélection ─────────────────────────────────────────────────
+        opt = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        opt.icon = QtGui.QIcon()
+        style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
+        style.drawControl(
+            QtWidgets.QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget
+        )
 
         vp = index.data(QtCore.Qt.ItemDataRole.UserRole)
         if not vp:
             return
 
         color, ardoise_missing = self._get_video_status(str(vp))
-        ext_top, ext_bot   = self._link_info(index)
-
+        ext_top, ext_bot = self._link_info(index)
         rect = option.rect
-        ti   = 0 if ext_top else 3
-        bi   = 0 if ext_bot else 3
-        bar  = QtCore.QRectF(rect.left() + self.BAR_X,
-                             rect.top()  + ti,
-                             self.BAR_W,
-                             rect.height() - ti - bi)
 
+        # ── Barre de complétion ───────────────────────────────────────────────
+        ti = 0 if ext_top else 3
+        bi = 0 if ext_bot else 3
+        bar = QtCore.QRectF(
+            rect.left() + self.BAR_X, rect.top() + ti,
+            self.BAR_W, rect.height() - ti - bi
+        )
         painter.save()
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setBrush(QtGui.QBrush(color))
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-
         if ext_top or ext_bot:
-            # Bords plats du côté connecté, arrondis de l'autre côté
             path = QtGui.QPainterPath()
             x, y, w, h = bar.x(), bar.y(), bar.width(), bar.height()
             r = 2.0
@@ -157,10 +166,9 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawPath(path)
         else:
             painter.drawRoundedRect(bar, 2, 2)
-
         painter.restore()
 
-        # Petit point amber si ardoise manquante explicitement signalée
+        # ── Point amber (ardoise manquante) ───────────────────────────────────
         if ardoise_missing:
             painter.save()
             painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
@@ -171,6 +179,60 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawEllipse(dot_x, dot_y, 5, 5)
             painter.restore()
 
+        # ── Icône (miniature) ─────────────────────────────────────────────────
+        icon = index.data(QtCore.Qt.ItemDataRole.DecorationRole)
+        icon_left = rect.left() + self.BAR_X + self.BAR_W + 6
+        icon_top  = rect.top() + (rect.height() - THUMB_H) // 2
+        if icon and not icon.isNull():
+            pix = icon.pixmap(THUMB_W, THUMB_H)
+            painter.drawPixmap(icon_left, icon_top, THUMB_W, THUMB_H, pix)
+
+        # ── Textes : nom (haut) + sous-titre (bas) ───────────────────────────
+        text_left = icon_left + THUMB_W + 6
+        text_w    = rect.right() - text_left - 4
+        half_h    = rect.height() // 2
+
+        name_text = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        station_time = index.data(QtCore.Qt.ItemDataRole.UserRole + 2) or ""
+        if station_time == "99:99":
+            station_time = ""
+        dur_idx = index.sibling(index.row(), 1)
+        duration = (dur_idx.data(QtCore.Qt.ItemDataRole.DisplayRole) or "") if dur_idx.isValid() else ""
+
+        painter.save()
+        # Nom — moitié haute
+        name_font = QtGui.QFont(painter.font())
+        name_font.setBold(True)
+        name_font.setPointSize(9)
+        painter.setFont(name_font)
+        is_selected = bool(option.state & QtWidgets.QStyle.StateFlag.State_Selected)
+        painter.setPen(QtGui.QColor("#ffffff" if is_selected else "#d4e8f5"))
+        name_rect = QtCore.QRect(text_left, rect.top() + 4, text_w, half_h - 4)
+        painter.drawText(
+            name_rect,
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+            name_text,
+        )
+        # Sous-titre — moitié basse
+        if station_time or duration:
+            parts = []
+            if station_time:
+                parts.append(f"Heure de prise : {station_time}")
+            if duration:
+                parts.append(f"Durée : {duration}")
+            sub_font = QtGui.QFont(painter.font())
+            sub_font.setBold(False)
+            sub_font.setPointSize(8)
+            painter.setFont(sub_font)
+            painter.setPen(QtGui.QColor("#90b8d0"))
+            sub_rect = QtCore.QRect(text_left, rect.top() + half_h, text_w, half_h - 4)
+            painter.drawText(
+                sub_rect,
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                "    ".join(parts),
+            )
+        painter.restore()
+
     def sizeHint(self, option, index):
         sh = super().sizeHint(option, index)
-        return QtCore.QSize(sh.width(), max(sh.height(), 40))
+        return QtCore.QSize(sh.width(), max(sh.height(), 52))

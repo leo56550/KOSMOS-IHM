@@ -1,10 +1,12 @@
 import os
 import io
+import csv
 import json
 import math
 import shutil
 import threading
 import folium
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -20,6 +22,47 @@ from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from views.dialogs.map_dialog import MapDialog, MapBridge
+
+_STATION_TIME_SORT_MISSING = "99:99"
+
+
+def _get_station_time(video_path: str, cache: dict) -> str:
+    """Retourne 'HH:MM' depuis systemEvent.csv du dossier vidéo, '99:99' si absent."""
+    folder = os.path.dirname(video_path)
+    if folder in cache:
+        return cache[folder]
+    result = _STATION_TIME_SORT_MISSING
+    csv_path = os.path.join(folder, "systemEvent.csv")
+    if os.path.exists(csv_path):
+        for enc in ("utf-8", "cp1252"):
+            try:
+                with open(csv_path, "r", encoding=enc, errors="replace") as _f:
+                    content = _f.read()
+                dialect = csv.Sniffer().sniff(content[:2048])
+                rows = list(csv.reader(content.splitlines(), dialect))
+                if not rows:
+                    break
+                header = [h.strip().lower() for h in rows[0]]
+                if "heure" not in header:
+                    break
+                h_idx = header.index("heure")
+                ev_idx = header.index("event") if "event" in header else -1
+                t_str = ""
+                for r in rows[1:]:
+                    if len(r) > h_idx:
+                        if ev_idx >= 0 and len(r) > ev_idx and r[ev_idx].strip().upper() == "START ENCODER":
+                            t_str = r[h_idx].strip()
+                            break
+                        elif not t_str:
+                            t_str = r[h_idx].strip()
+                if t_str:
+                    t = datetime.strptime(t_str, "%Hh%Mm%Ss")
+                    result = t.strftime("%H:%M")
+                break
+            except Exception:
+                continue
+    cache[folder] = result
+    return result
 
 
 class _CameraFrameWorker(QtCore.QThread):
@@ -274,36 +317,72 @@ class QualifController:
             pat = _re.compile(rf'^{_re.escape(vstem)}_\d+\.mp4$', _re.IGNORECASE)
             return any(pat.match(f) for f in _dir_cache[d])
 
-        # Vidéos gardées
-        prev_was_primary = False   # la row précédente est un primaire avec segments
-        for row in range(self.video_model.rowCount()):
-            item = self.video_model.item(row, 0)
-            if not item:
-                prev_was_primary = False
-                continue
-            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path:
-                prev_was_primary = False
-                continue
-            dur_item = self.video_model.item(row, 1)
-            size_item = self.video_model.item(row, 2)
+        # Collecte toutes les vidéos (gardées + jetées) — heure déjà stockée en UserRole+2
+        all_rows = []
+        for _model, _is_trash in ((self.video_model, False), (self.trash_model, True)):
+            for row in range(_model.rowCount()):
+                item = _model.item(row, 0)
+                if not item:
+                    continue
+                video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if not video_path:
+                    continue
+                st = item.data(QtCore.Qt.ItemDataRole.UserRole + 2) or _STATION_TIME_SORT_MISSING
+                all_rows.append({
+                    "video_path": str(video_path),
+                    "video_name": item.text(),
+                    "duration": (_model.item(row, 1).text() if _model.item(row, 1) else ""),
+                    "size": (_model.item(row, 2).text() if _model.item(row, 2) else ""),
+                    "icon": item.icon(),
+                    "is_trash": _is_trash,
+                    "station_time": st if st != _STATION_TIME_SORT_MISSING else "",
+                })
 
-            stem = os.path.splitext(os.path.basename(str(video_path)))[0]
+        # Tri par heure de station, puis numéro de fichier caméra
+        def _chrono_key(entry: dict) -> tuple:
+            item0 = None
+            for _m in (self.video_model, self.trash_model):
+                for r in range(_m.rowCount()):
+                    it = _m.item(r, 0)
+                    if it and str(it.data(QtCore.Qt.ItemDataRole.UserRole)) == entry["video_path"]:
+                        item0 = it
+                        break
+                if item0:
+                    break
+            time_key = (item0.data(QtCore.Qt.ItemDataRole.UserRole + 2) or _STATION_TIME_SORT_MISSING) if item0 else _STATION_TIME_SORT_MISSING
+            stem = os.path.splitext(os.path.basename(entry["video_path"]))[0]
+            try:
+                nums = _re.findall(r'\d+', stem)
+                num = int(nums[-1]) if nums else 9_999_999
+            except Exception:
+                num = 9_999_999
+            return (time_key, num)
+
+        all_rows.sort(key=lambda e: (
+            e.get("station_time") or _STATION_TIME_SORT_MISSING,
+            int(_re.findall(r'\d+', os.path.splitext(os.path.basename(e["video_path"]))[0])[-1])
+            if _re.findall(r'\d+', os.path.splitext(os.path.basename(e["video_path"]))[0]) else 9_999_999
+        ))
+
+        # Rendu de la liste unifiée triée
+        prev_was_primary = False
+        for entry in all_rows:
+            video_path = entry["video_path"]
+            stem = os.path.splitext(os.path.basename(video_path))[0]
             is_seg = bool(_re.search(r"_\d+$", stem))
-            segs = _check_has_segments(str(video_path), stem)
+            segs = _check_has_segments(video_path, stem)
             link_pos = ""
             if segs:
                 link_pos = "primary"
             elif is_seg and prev_was_primary:
                 link_pos = "segment"
 
-            # Bridge visuel entre une primary et son segment
             if link_pos == "segment":
-                color = self._get_completion_color(str(video_path))
+                color = self._get_completion_color(video_path)
                 bridge = QtWidgets.QWidget()
-                bridge.setFixedHeight(2)   # couvre l'espace du layout spacing
+                bridge.setFixedHeight(2)
                 b_lay = QtWidgets.QHBoxLayout(bridge)
-                b_lay.setContentsMargins(4, 0, 0, 0)   # aligne avec la barre (margin frame=4)
+                b_lay.setContentsMargins(4, 0, 0, 0)
                 b_lay.setSpacing(0)
                 connector = QtWidgets.QFrame()
                 connector.setFixedSize(4, 2)
@@ -317,40 +396,19 @@ class QualifController:
                 )
 
             row_widget = self._build_video_row_widget(
-                video_path=str(video_path),
-                video_name=item.text(),
-                duration=dur_item.text() if dur_item else "",
-                size=size_item.text() if size_item else "",
-                icon=item.icon(),
-                is_trash=False,
+                video_path=video_path,
+                video_name=entry["video_name"],
+                duration=entry["duration"],
+                size=entry["size"],
+                icon=entry["icon"],
+                is_trash=entry["is_trash"],
                 link_pos=link_pos,
+                station_time=entry.get("station_time", ""),
             )
             self._videos_scroll_layout.insertWidget(
                 self._videos_scroll_layout.count() - 1, row_widget
             )
             prev_was_primary = (link_pos == "primary")
-
-        # Vidéos jetées
-        for row in range(self.trash_model.rowCount()):
-            item = self.trash_model.item(row, 0)
-            if not item:
-                continue
-            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path:
-                continue
-            dur_item = self.trash_model.item(row, 1)
-            size_item = self.trash_model.item(row, 2)
-            row_widget = self._build_video_row_widget(
-                video_path=str(video_path),
-                video_name=item.text(),
-                duration=dur_item.text() if dur_item else "",
-                size=size_item.text() if size_item else "",
-                icon=item.icon(),
-                is_trash=True,
-            )
-            self._videos_scroll_layout.insertWidget(
-                self._videos_scroll_layout.count() - 1, row_widget
-            )
 
         # Réactive les repaints et force un seul repaint global
         if _scroll_content:
@@ -364,7 +422,8 @@ class QualifController:
     def _build_video_row_widget(self, video_path: str, video_name: str,
                                 duration: str, size: str,
                                 icon: "QtGui.QIcon", is_trash: bool,
-                                link_pos: str = "") -> QtWidgets.QFrame:
+                                link_pos: str = "",
+                                station_time: str = "") -> QtWidgets.QFrame:
         # link_pos : "" = normal, "primary" = connecté en bas, "segment" = connecté en haut
         """Construit un widget de ligne vidéo avec indicateur couleur, vignette et boutons."""
         is_selected = video_path == (self._selected_video_path or "")
@@ -430,8 +489,9 @@ class QualifController:
         lbl_name.setToolTip(video_name)
         lbl_name.setWordWrap(False)
 
-        lbl_info = QtWidgets.QLabel(f"{duration}  {size}")
-        lbl_info.setStyleSheet("color: #506070; font-size: 10px; background: transparent;")
+        time_part = f"Heure de prise : {station_time}    " if station_time else ""
+        lbl_info = QtWidgets.QLabel(f"{time_part}Durée : {duration}    {size}")
+        lbl_info.setStyleSheet("color: #90b8d0; font-size: 10px; background: transparent;")
 
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_info)
@@ -650,6 +710,7 @@ class QualifController:
             print("[WARNING] No MP4 files found.")
             return
 
+        _time_cache: dict = {}
         for video in videos:
             stem = os.path.splitext(video["name"])[0]
             # Les fichiers _stereo.mp4 ne sont pas des entrées indépendantes
@@ -664,6 +725,7 @@ class QualifController:
             col_size = QtGui.QStandardItem(size_str)
             col_date = QtGui.QStandardItem(video["date"])
             col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
+            col_name.setData(_get_station_time(video["path"], _time_cache), QtCore.Qt.ItemDataRole.UserRole + 2)
             sys_name = get_system_name(video["path"])
             is_stereo_video, _ = check_stereo_status(video["path"])
             segs = get_sequential_segments(video["path"])
@@ -1562,6 +1624,10 @@ class QualifController:
         items = [self.video_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)
         col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
+        col_name.setData(
+            name_item.data(QtCore.Qt.ItemDataRole.UserRole + 2),
+            QtCore.Qt.ItemDataRole.UserRole + 2,
+        )
         self.trash_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
@@ -1593,6 +1659,10 @@ class QualifController:
         items = [self.trash_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)
         col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
+        col_name.setData(
+            item_name.data(QtCore.Qt.ItemDataRole.UserRole + 2),
+            QtCore.Qt.ItemDataRole.UserRole + 2,
+        )
         self.video_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )

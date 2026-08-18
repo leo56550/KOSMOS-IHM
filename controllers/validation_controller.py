@@ -444,6 +444,8 @@ class ValidationController:
         """Remplace le modèle source du proxy après un changement de campagne."""
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
+        self.proxy_model.setSortRole(QtCore.Qt.ItemDataRole.UserRole + 2)
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
         self.refresh_ardoise_warning()
 
     def select_video_by_name(self, video_name: str):
