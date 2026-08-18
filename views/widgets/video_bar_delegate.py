@@ -27,6 +27,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     # ── Couleur de complétion ─────────────────────────────────────────────
 
     def _completion_color(self, video_path: str) -> QtGui.QColor:
+        """Rouge = rien, orange = ardoise seule, vert = ardoise + statut exploitabilité."""
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if not os.path.exists(json_path):
             return QtGui.QColor("#D94F38")
@@ -36,18 +37,26 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         except Exception:
             return QtGui.QColor("#D94F38")
 
-        def _filled(block: dict, key: str) -> bool:
-            e = block.get(key, {})
-            v = e.get("value") if isinstance(e, dict) else e
-            return bool(v and str(v).strip() not in ("", "None", "null"))
+        obs = data.get("video_observation", {})
 
-        obs  = data.get("video_observation", {})
-        surv = data.get("survey", {})
-        if not all([_filled(obs, "codeObs"), _filled(obs, "exploitable")]):
-            return QtGui.QColor("#D94F38")
-        if sum([_filled(obs, "habitat"), _filled(obs, "depth"), _filled(surv, "date")]) < 2:
-            return QtGui.QColor("#E8A838")
-        return QtGui.QColor("#5DBB63")
+        # Ardoise saisie = un événement "ardoise"/"slate" dans events_deployment
+        events_deploy = obs.get("events_deployment", []) or []
+        values = events_deploy[0].get("values", []) if events_deploy else []
+        has_ardoise = any(
+            str(ev.get("value", "")).lower() in ("ardoise", "slate")
+            for ev in values
+        )
+
+        # Statut exploitabilité = valeur non vide et différente de "?"
+        expl = obs.get("exploitable", {})
+        expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
+        has_status = bool(expl_val and str(expl_val).strip() not in ("", "None", "null", "?"))
+
+        if has_ardoise and has_status:
+            return QtGui.QColor("#5DBB63")   # vert — ardoise + statut
+        if has_ardoise:
+            return QtGui.QColor("#E8A838")   # orange — ardoise seulement
+        return QtGui.QColor("#D94F38")       # rouge — rien de fait
 
     # ── Détection liaison séquentielle ────────────────────────────────────
 
