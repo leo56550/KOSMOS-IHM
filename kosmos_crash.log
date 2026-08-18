@@ -599,3 +599,11 @@ Traceback (most recent call last):
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
     
 KeyboardInterrupt
+
+============================================================
+2026-08-18 09:52:05.162014
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\widgets\GraphicsView.py", line 200, in resizeEvent
+    def resizeEvent(self, ev):
+    
+KeyboardInterrupt

@@ -627,6 +627,9 @@ class ValidationController:
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
 
+        # Met en pause avant d'ouvrir le dialog pour figer la position
+        self.player.pause()
+
         import uuid
         pos_ms = self.player.timeline.get_current_position() if hasattr(self.player, 'timeline') else 0
         time_str = self.player.timeline._format_ms(pos_ms) if hasattr(self.player, 'timeline') else "00:00:00"
