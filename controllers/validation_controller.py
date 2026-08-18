@@ -656,7 +656,10 @@ class ValidationController:
             text=str(existing_num),
         )
 
-        # Ajoute visuellement dans la timeline (indépendamment du dialog)
+        if not ok:
+            return
+
+        # Ajoute visuellement dans la timeline
         if hasattr(self.player, 'timeline'):
             new_evt = {
                 "start": pos_ms, "end": pos_ms,
