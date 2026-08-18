@@ -18,7 +18,7 @@ from services.campaign_service import (
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
     get_temp_json_path,
 )
-from services.migration_service import migrate_json_file_if_needed, initialise_temp_json_if_needed, update_temp_json_paths
+from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
@@ -772,7 +772,6 @@ class QualifController:
             json_path = get_video_json_path(video["path"])
             if not os.path.exists(json_path):
                 continue
-            migrate_json_file_if_needed(json_path)
             if not first_loaded_json:
                 first_loaded_json = json_path
 
@@ -1701,13 +1700,6 @@ class QualifController:
         video_name = item_name.text()
         video_path = item_name.data(QtCore.Qt.ItemDataRole.UserRole)
 
-        # Recréer le sous-dossier de sortie dans le working_dir
-        if self._working_dir and video_path and os.path.exists(video_path):
-            try:
-                sync_video_to_working_dir(self._working_dir, video_path)
-                print(f"[QUALIF] Dossier de sortie recréé : {get_working_video_dir(self._working_dir, video_path)}")
-            except Exception as e:
-                print(f"[QUALIF] Impossible de recréer le dossier de sortie : {e}")
 
         items = [self.trash_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)

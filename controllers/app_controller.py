@@ -2,7 +2,6 @@ from PyQt6 import QtWidgets, QtCore
 import json
 
 from services.campaign_service import (get_campaign_json_data, get_video_json_path,
-                                       sync_video_to_working_dir, migrate_json_to_template,
                                        get_working_video_json_path, resolve_video_json_path)
 from services.video_service import check_stereo_status, get_system_name
 from services.weather_service import WeatherWorker
@@ -173,13 +172,7 @@ class AppController:
             item = model.item(row, 0)
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
             if video_path:
-                try:
-                    sync_video_to_working_dir(self.working_dir, video_path)
-                    wjson = get_working_video_json_path(self.working_dir, video_path)
-                    migrate_json_to_template(wjson)
-                    video_paths.append(video_path)
-                except Exception as e:
-                    print(f"[SYNC] {video_path}: {e}")
+                video_paths.append(video_path)
 
         # Écriture du dérusher uniquement dans les copies de travail (jamais dans les bruts)
         if self._current_derusher_name:
