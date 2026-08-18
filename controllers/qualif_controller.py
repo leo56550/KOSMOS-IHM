@@ -925,47 +925,68 @@ class QualifController:
         self.dynamic_form_container = new_container
         self.campaign_fields.clear()
 
+        # Charge le template pour avoir la liste complète et ordonnée des champs survey
+        _template_path = os.path.join(os.path.dirname(__file__), '..', 'template.json')
+        template_survey: dict = {}
+        try:
+            with open(_template_path, 'r', encoding='utf-8') as _tf:
+                template_survey = json.load(_tf).get("survey", {})
+        except Exception:
+            pass
+
+        # Charge les valeurs actuelles depuis le JSON de campagne
+        campaign_survey: dict = {}
         if os.path.exists(json_path):
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
-                    json_payload = json.load(f)
-                if "survey" in json_payload:
-                    form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
-                    form_layout.setContentsMargins(6, 4, 6, 4)
-                    form_layout.setSpacing(4)
-                    form_layout.setVerticalSpacing(4)
-                    form_layout.setHorizontalSpacing(8)
-                    form_layout.setFieldGrowthPolicy(
-                        QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-                    for key, meta in json_payload["survey"].items():
-                        display_name = meta.get("name_fr", key).capitalize()
-                        value = meta.get("value") or ""
-                        value_str = str(value)
-                        input_field = QtWidgets.QLineEdit()
-                        input_field.setText(value_str)
-                        input_field.setFixedHeight(24)
-                        input_field.setStyleSheet(
-                            "QLineEdit { font-size: 11px; padding: 1px 5px;"
-                            " color: #ffffff; background-color: #1a1a1a;"
-                            " border: 1px solid #555555; border-radius: 3px; }"
-                        )
-                        if meta.get("example"):
-                            input_field.setPlaceholderText(str(meta["example"]))
-                        if value_str:
-                            input_field.setToolTip(value_str)
-                        self.campaign_fields[key] = input_field
-                        input_field.editingFinished.connect(
-                            lambda tk=key: self.on_campaign_field_modified(tk))
-                        input_field.textChanged.connect(
-                            lambda txt, f=input_field: f.setToolTip(txt))
-                        lbl = QtWidgets.QLabel(f"{display_name} :")
-                        lbl.setStyleSheet(
-                            "font-size: 11px; font-weight: bold; color: #a0b8c8;"
-                        )
-                        form_layout.addRow(lbl, input_field)
-                    return
+                    _payload = json.load(f)
+                campaign_survey = _payload.get("survey", {})
             except Exception as e:
                 print(f"Error loading campaign JSON: {e}")
+
+        # Fusion : template donne l'ordre et les métadonnées, campagne donne les valeurs
+        merged: dict = {}
+        for key, tmpl_meta in template_survey.items():
+            merged[key] = dict(tmpl_meta)
+            if key in campaign_survey:
+                merged[key]["value"] = campaign_survey[key].get("value")
+        # Champs présents dans la campagne mais absents du template (rétrocompat)
+        for key, meta in campaign_survey.items():
+            if key not in merged:
+                merged[key] = meta
+
+        if merged:
+            form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
+            form_layout.setContentsMargins(6, 4, 6, 4)
+            form_layout.setSpacing(4)
+            form_layout.setVerticalSpacing(4)
+            form_layout.setHorizontalSpacing(8)
+            form_layout.setFieldGrowthPolicy(
+                QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            for key, meta in merged.items():
+                display_name = meta.get("name_fr", key).capitalize()
+                value_str = str(meta.get("value") or "")
+                input_field = QtWidgets.QLineEdit()
+                input_field.setText(value_str)
+                input_field.setFixedHeight(24)
+                input_field.setStyleSheet(
+                    "QLineEdit { font-size: 11px; padding: 1px 5px;"
+                    " color: #ffffff; background-color: #1a1a1a;"
+                    " border: 1px solid #555555; border-radius: 3px; }"
+                )
+                if meta.get("example"):
+                    input_field.setPlaceholderText(str(meta["example"]))
+                if value_str:
+                    input_field.setToolTip(value_str)
+                self.campaign_fields[key] = input_field
+                input_field.editingFinished.connect(
+                    lambda tk=key: self.on_campaign_field_modified(tk))
+                input_field.textChanged.connect(
+                    lambda txt, f=input_field: f.setToolTip(txt))
+                lbl = QtWidgets.QLabel(f"{display_name} :")
+                lbl.setStyleSheet("font-size: 11px; font-weight: bold; color: #a0b8c8;")
+                form_layout.addRow(lbl, input_field)
+            return
 
         fallback_layout = QtWidgets.QVBoxLayout(self.dynamic_form_container)
         lbl_error = QtWidgets.QLabel("No active campaign data found.")
@@ -997,8 +1018,12 @@ class QualifController:
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                if "survey" in data and key in data["survey"]:
-                    data["survey"][key]["value"] = value
+                if "survey" in data:
+                    if key in data["survey"]:
+                        data["survey"][key]["value"] = value
+                    else:
+                        # Champ absent du JSON (ex. campagne ancienne) → l'ajouter
+                        data["survey"][key] = {"value": value}
                     with open(json_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, indent=4, ensure_ascii=False)
             except Exception as e:

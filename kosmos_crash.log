@@ -751,3 +751,11 @@ Traceback (most recent call last):
     def on_player_position_changed(self, position_ms: int):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-18 10:56:36.009691
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
