@@ -16,8 +16,9 @@ from services.video_service import get_all_mp4_files, get_sequential_segments, c
 from services.campaign_service import (
     get_video_gps_coords, get_video_json_path, get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
+    get_temp_json_path,
 )
-from services.migration_service import migrate_json_file_if_needed, initialise_temp_json_if_needed
+from services.migration_service import migrate_json_file_if_needed, initialise_temp_json_if_needed, update_temp_json_paths
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
@@ -152,6 +153,18 @@ class QualifController:
             self.dynamic_form_container = QtWidgets.QWidget()
             self.scroll_campaign.setWidget(self.dynamic_form_container)
             layout.addWidget(self.scroll_campaign)
+            self.btn_save_campaign = QtWidgets.QPushButton(
+                self.translate("Sauvegarder", "Save"))
+            self.btn_save_campaign.setFixedHeight(28)
+            self.btn_save_campaign.setStyleSheet(
+                "QPushButton { background-color: #1a3a4a; color: #7ec8e3;"
+                " border: 1px solid #2778a2; border-radius: 4px; font-size: 11px;"
+                " font-weight: bold; }"
+                "QPushButton:hover { background-color: #2778a2; color: white; }"
+                "QPushButton:pressed { background-color: #1a5a7a; }"
+            )
+            self.btn_save_campaign.clicked.connect(self.save_all_campaign_fields)
+            layout.addWidget(self.btn_save_campaign)
 
         self._init_video_list()
         self._init_trash_list()
@@ -755,6 +768,7 @@ class QualifController:
 
         for video in videos:
             initialise_temp_json_if_needed(video["path"])    # crée <stem>_temp.json (valeurs nulles)
+            update_temp_json_paths(video["path"])             # remplit les champs chemin si absents
             json_path = get_video_json_path(video["path"])
             if not os.path.exists(json_path):
                 continue
@@ -1057,13 +1071,30 @@ class QualifController:
         fallback_layout.addWidget(lbl_error)
 
     def on_campaign_field_modified(self, key: str):
-        """Synchronise un champ campagne dans tous les JSON vidéo quand l'utilisateur l'édite."""
+        """Synchronise un champ campagne dans tous les _temp.json quand l'utilisateur l'édite."""
         widget = self.campaign_fields.get(key)
         if widget:
             self.synchronize_campaign_field(key, widget.text())
 
+    def save_all_campaign_fields(self):
+        """Sauvegarde tous les champs de campagne dans les _temp.json de toutes les vidéos."""
+        if not self.campaign_fields:
+            return
+        count = 0
+        for key, widget in self.campaign_fields.items():
+            self.synchronize_campaign_field(key, widget.text())
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item:
+                count += 1
+        print(f"[CAMPAIGN] {len(self.campaign_fields)} champs sauvegardés dans {count} vidéos")
+        if hasattr(self, 'btn_save_campaign'):
+            self.btn_save_campaign.setText(self.translate("✓ Sauvegardé", "✓ Saved"))
+            QtCore.QTimer.singleShot(2000, lambda: self.btn_save_campaign.setText(
+                self.translate("Sauvegarder", "Save")))
+
     def synchronize_campaign_field(self, key: str, value: str):
-        """Écrit value dans le champ key de la section survey de chaque JSON vidéo de la campagne."""
+        """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
@@ -1071,25 +1102,21 @@ class QualifController:
             video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not video_path or not os.path.exists(video_path):
                 continue
-            if self._working_dir:
-                json_path = get_working_video_json_path(self._working_dir, video_path)
-            else:
-                json_path = get_video_json_path(video_path)
-            if not os.path.exists(json_path):
-                continue  # ne jamais écrire dans les données source
+            json_path = get_temp_json_path(str(video_path))
+            if not os.path.isfile(json_path):
+                continue
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                if "survey" in data:
-                    if key in data["survey"]:
-                        data["survey"][key]["value"] = value
-                    else:
-                        # Champ absent du JSON (ex. campagne ancienne) → l'ajouter
-                        data["survey"][key] = {"value": value}
-                    with open(json_path, 'w', encoding='utf-8') as f:
-                        json.dump(data, f, indent=4, ensure_ascii=False)
+                survey = data.setdefault("survey", {})
+                if key in survey:
+                    survey[key]["value"] = value
+                else:
+                    survey[key] = {"value": value}
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
             except Exception as e:
-                print(f"[IO SYNC ERROR] {e}")
+                print(f"[CAMPAIGN SYNC] {key} → {os.path.basename(json_path)} : {e}")
 
     # --- Video selection ---
 

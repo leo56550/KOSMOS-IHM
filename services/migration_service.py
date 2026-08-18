@@ -177,13 +177,100 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         with open(app_template, "r", encoding="utf-8") as f:
             data = json.load(f)
         _nullify_values(data)
+
+        # ── Auto-remplissage des champs dérivés du chemin ─────────────────
+        import re as _re
+        vo = data.get("video_observation", {})
+
+        # video_path → "<campagne>\<système>"
+        # Structure : campagne/système/numéro_vidéo/fichier.mp4
+        # ex. "260611_ATL_CC_ENEZEG\260611_SVR_K53"
+        system_folder = os.path.basename(os.path.dirname(folder))
+        campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+        vpath_val = f"{campaign_folder}\\{system_folder}"
+        if "video_path" in vo:
+            vo["video_path"]["value"] = vpath_val
+
+        # video_number → dernier bloc numérique du stem, zero-paddé sur 4 chiffres
+        # ex. "0018" depuis "0018.mp4"
+        digits = _re.findall(r'\d+', stem)
+        if digits and "video_number" in vo:
+            vo["video_number"]["value"] = digits[-1].zfill(4)
+
+        # video_file_name → nom du fichier vidéo sans extension
+        if "video_file_name" in vo:
+            vo["video_file_name"]["value"] = stem
+
+        # survey.datawork_folder / survey.video_subfolder → dérivés du chemin
+        # (non présents dans template.json, ajoutés explicitement)
+        survey = data.setdefault("survey", {})
+        survey["datawork_folder"] = {"value": campaign_folder}
+        survey["video_subfolder"] = {"value": system_folder}
+
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"[INIT] {stem}_temp.json créé (valeurs nulles)")
+        print(f"[INIT] {stem}_temp.json créé"
+              f" (video_path={vpath_val!r}, video_number={vo.get('video_number', {}).get('value')!r})")
         return True
     except Exception as e:
         print(f"[INIT] Impossible de créer {stem}_temp.json : {e}")
         return False
+
+
+def update_temp_json_paths(video_path: str) -> None:
+    """Met à jour les champs chemin dans un _temp.json existant si leurs valeurs sont nulles.
+
+    Appelée à chaque ouverture de campagne pour garantir que video_path,
+    video_number, video_file_name, datawork_folder et video_subfolder sont remplis.
+    """
+    import re as _re
+    folder = os.path.dirname(os.path.normpath(video_path))
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    temp_path = os.path.join(folder, f"{stem}_temp.json")
+    if not os.path.isfile(temp_path):
+        return
+
+    system_folder = os.path.basename(os.path.dirname(folder))
+    campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+    vpath_val = f"{campaign_folder}\\{system_folder}"
+    digits = _re.findall(r'\d+', stem)
+    video_number_val = digits[-1].zfill(4) if digits else stem
+
+    try:
+        with open(temp_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        modified = False
+        vo = data.get("video_observation", {})
+
+        # Champs purement dérivés du chemin : toujours recalculés (jamais saisis manuellement)
+        for field, value in (
+            ("video_path",      vpath_val),
+            ("video_number",    video_number_val),
+            ("video_file_name", stem),
+        ):
+            if field in vo:
+                entry = vo[field] if isinstance(vo[field], dict) else {}
+                if entry.get("value") != value:
+                    entry["value"] = value
+                    vo[field] = entry
+                    modified = True
+
+        survey = data.setdefault("survey", {})
+        for field, value in (
+            ("datawork_folder", campaign_folder),
+            ("video_subfolder", system_folder),
+        ):
+            entry = survey.get(field, {}) if isinstance(survey.get(field), dict) else {}
+            if entry.get("value") != value:
+                survey[field] = {"value": value}
+                modified = True
+
+        if modified:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[UPDATE_PATHS] {stem}_temp.json : {e}")
 
 
 def migrate_json_file_if_needed(json_path: str) -> bool:

@@ -771,7 +771,11 @@ class MetadonneesController:
             return
 
     def load_all_data(self, json_path: str):
-        """Lit json_path et peuple tous les panneaux (système, campagne, vidéo, météo)."""
+        """Lit json_path et peuple tous les panneaux (système, campagne, vidéo, météo).
+
+        Si json_path est un _temp.json, fusionne avec le JSON brut d'acquisition pour
+        récupérer les données system et survey de l'acquisition (caméra, date, GPS…).
+        """
         if not os.path.isfile(json_path):
             return
         try:
@@ -781,6 +785,28 @@ class MetadonneesController:
         except Exception as e:
             print(f"[ERROR] Unable to read JSON file: {e}")
             return
+
+        # Fusion avec le JSON brut si on lit un _temp.json
+        if json_path.endswith('_temp.json'):
+            _base = os.path.splitext(os.path.basename(json_path))[0]  # "<stem>_temp"
+            _stem = _base[:-5]  # retire "_temp"
+            _raw = os.path.join(os.path.dirname(json_path), f"{_stem}.json")
+            if os.path.isfile(_raw):
+                try:
+                    with open(_raw, 'r', encoding='utf-8') as _f:
+                        _raw_data = json.load(_f)
+                    # system : toujours depuis le JSON brut (données acquisition)
+                    if "system" in _raw_data:
+                        self._json_data["system"] = _raw_data["system"]
+                    # survey : base = acquisition, surchargé par valeurs IHM non-nulles
+                    if "survey" in _raw_data:
+                        merged_survey = dict(_raw_data["survey"])
+                        for k, v in self._json_data.get("survey", {}).items():
+                            if isinstance(v, dict) and v.get("value") is not None:
+                                merged_survey[k] = v
+                        self._json_data["survey"] = merged_survey
+                except Exception as e:
+                    print(f"[META] Fusion JSON brut impossible : {e}")
 
         if "video_observation" in self._json_data:
             self._ensure_custom_fields()
@@ -1243,10 +1269,13 @@ class MetadonneesController:
             if field_key == "date":
                 val = self._fmt_date(val) if val else ""
 
-            elif field_key == "video_path":
-                val = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
+            elif field_key == "video_path" and not val:
+                _vdir = os.path.dirname(os.path.normpath(video_path))
+                _sys = os.path.basename(os.path.dirname(_vdir))
+                _camp = os.path.basename(os.path.dirname(os.path.dirname(_vdir)))
+                val = f"{_camp}\\{_sys}"
 
-            elif field_key == "video_file_name":
+            elif field_key == "video_file_name" and not val:
                 val = stem
 
             elif field_key == "video_number" and not val:
