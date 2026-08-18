@@ -656,6 +656,45 @@ class MetadonneesController:
         except Exception as e:
             print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
 
+        if json_key == "point_name" and new_value:
+            self._check_point_name_duplicate(video_path, new_value)
+
+    def _check_point_name_duplicate(self, video_path: str, point_name: str) -> None:
+        """Avertit si point_name est déjà utilisé par une autre vidéo du même système."""
+        system_dir = os.path.dirname(os.path.dirname(os.path.normpath(video_path)))
+        duplicates = []
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            other_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not other_path or os.path.normpath(str(other_path)) == os.path.normpath(video_path):
+                continue
+            if os.path.dirname(os.path.dirname(os.path.normpath(str(other_path)))) != system_dir:
+                continue
+            temp_path = get_temp_json_path(str(other_path))
+            if not os.path.isfile(temp_path):
+                continue
+            try:
+                with open(temp_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                other_pname = (data.get("video_observation", {})
+                                   .get("point_name", {})
+                                   .get("value") or "").strip()
+                if other_pname == point_name:
+                    duplicates.append(os.path.basename(str(other_path)))
+            except Exception:
+                continue
+
+        if duplicates:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                "Doublon de point détecté",
+                f"⚠️  Le point « {point_name} » est déjà utilisé par :\n"
+                + "\n".join(f"  •  {v}" for v in duplicates)
+                + "\n\nVérifiez le numéro de point saisi à l'ardoise."
+            )
+
     def _on_ft_table_row_clicked(self, row: int, _col: int):
         """Charge les données de la vidéo cliquée et active les boutons contextuel."""
         first_item = self._ft_table.item(row, 0)

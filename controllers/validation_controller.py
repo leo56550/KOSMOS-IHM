@@ -667,18 +667,52 @@ class ValidationController:
         existing_num = (vob_tmp.get("point_name", {}).get("value")
                         or vob_tmp.get("station_number", {}).get("value") or "")
 
-        # Dialog numéro du point
+        # Dialog numéro du point — boucle jusqu'à ce que le numéro soit unique dans le système
         dialog_title = (self.translate("Modifier l'ardoise", "Modify slate")
                         if _is_modify else self.translate("N° du point", "Point number"))
-        num_str, ok = QtWidgets.QInputDialog.getText(
-            self.page,
-            dialog_title,
-            self.translate("Numéro du point :", "Point number:"),
-            text=str(existing_num),
-        )
+        current_input = str(existing_num)
+        station_num = ""
+        while True:
+            num_str, ok = QtWidgets.QInputDialog.getText(
+                self.page,
+                dialog_title,
+                self.translate("Numéro du point :", "Point number:"),
+                text=current_input,
+            )
+            if not ok:
+                return
 
-        if not ok:
-            return
+            station_num = ""
+            if num_str.strip():
+                raw = num_str.strip()
+                try:
+                    station_num = f"{int(raw):04d}"
+                except ValueError:
+                    station_num = raw.zfill(4)[:4]
+
+            # Vérification doublon (ignoré si le numéro n'a pas changé)
+            existing_norm = ""
+            if existing_num:
+                try:
+                    existing_norm = f"{int(existing_num):04d}"
+                except ValueError:
+                    existing_norm = existing_num
+            if station_num and station_num != existing_norm:
+                dup = self._find_point_name_duplicate(station_num)
+                if dup:
+                    QtWidgets.QMessageBox.critical(
+                        self.page,
+                        self.translate("Doublon de point", "Duplicate point"),
+                        self.translate(
+                            f"⛔  Le point « {station_num} » est déjà attribué à :\n  •  {dup}\n\n"
+                            "Saisissez un numéro de point différent.",
+                            f"⛔  Point « {station_num} » is already assigned to:\n  •  {dup}\n\n"
+                            "Please enter a different point number."
+                        )
+                    )
+                    current_input = num_str
+                    continue
+            break
 
         # Timeline : ajoute ou déplace le marker ardoise
         if hasattr(self.player, 'timeline'):
@@ -704,14 +738,8 @@ class ValidationController:
             # Timecode ardoise → champ dédié
             obs.setdefault("timecode_ardoise", {})["value"] = time_str
 
-            # N° du point → 4 chiffres zero-padded (saisie et modification)
-            station_num = ""
-            if num_str.strip():
-                raw = num_str.strip()
-                try:
-                    station_num = f"{int(raw):04d}"
-                except ValueError:
-                    station_num = raw.zfill(4)[:4]
+            # N° du point → 4 chiffres zero-padded (calculé dans la boucle de saisie)
+            if station_num:
                 obs.setdefault("point_name", {})["value"] = station_num
                 obs.setdefault("station_number", {})["value"] = station_num
 
@@ -753,6 +781,49 @@ class ValidationController:
             self.refresh_ardoise_warning()
         except Exception as e:
             print(f"[VALIDATION] Erreur sauvegarde ardoise/codeObs : {e}")
+
+    def _find_point_name_duplicate(self, station_num: str) -> str | None:
+        """Scanne le dossier système pour trouver une autre vidéo ayant déjà ce point_name."""
+        if not station_num or not self.current_video_path:
+            return None
+        current_norm = os.path.normcase(os.path.normpath(self.current_video_path))
+        # Structure : campaign/système/dossier_vidéo/video.mp4
+        # → system_dir = campaign/système
+        video_num_dir = os.path.dirname(os.path.normpath(self.current_video_path))
+        system_dir = os.path.dirname(video_num_dir)
+        if not os.path.isdir(system_dir):
+            return None
+        try:
+            entries = os.listdir(system_dir)
+        except OSError:
+            return None
+        for entry in entries:
+            folder = os.path.join(system_dir, entry)
+            if not os.path.isdir(folder):
+                continue
+            try:
+                for fname in os.listdir(folder):
+                    if not fname.endswith("_temp.json"):
+                        continue
+                    stem = fname[:-len("_temp.json")]
+                    # Ignorer la vidéo courante
+                    video_file = os.path.join(folder, f"{stem}.mp4")
+                    if os.path.normcase(os.path.normpath(video_file)) == current_norm:
+                        continue
+                    temp_path = os.path.join(folder, fname)
+                    try:
+                        with open(temp_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        other_pname = (data.get("video_observation", {})
+                                           .get("point_name", {})
+                                           .get("value") or "").strip()
+                        if other_pname == station_num:
+                            return f"{stem}.mp4"
+                    except Exception:
+                        continue
+            except OSError:
+                continue
+        return None
 
     def _flash_ardoise(self):
         """Flash blanc sur le player vidéo — effet déclencheur d'appareil photo."""
