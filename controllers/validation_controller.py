@@ -645,6 +645,21 @@ class ValidationController:
             return
 
         vob_tmp = data.get("video_observation", {})
+
+        # Vérifie qu'aucune ardoise n'a déjà été saisie pour cette vidéo
+        _deploy = vob_tmp.get("events_deployment", []) or []
+        _vals = _deploy[0].get("values", []) if _deploy else []
+        if any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals):
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Ardoise déjà saisie", "Slate already recorded"),
+                self.translate(
+                    "Une ardoise a déjà été enregistrée pour cette vidéo.",
+                    "A slate has already been recorded for this video.",
+                ),
+            )
+            return
+
         existing_num = (vob_tmp.get("point_name", {}).get("value")
                         or vob_tmp.get("station_number", {}).get("value") or "")
 

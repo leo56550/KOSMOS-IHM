@@ -607,3 +607,11 @@ Traceback (most recent call last):
     def resizeEvent(self, ev):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-18 09:56:49.279053
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 683, in eventFilter
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    
+KeyboardInterrupt
