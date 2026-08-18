@@ -44,13 +44,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
         obs = data.get("video_observation", {})
 
-        events_deploy = obs.get("events_deployment", []) or []
-        values = events_deploy[0].get("values", []) if events_deploy else []
-        has_ardoise = any(
-            str(ev.get("value", "")).lower() in ("ardoise", "slate")
-            for ev in values
-        )
-        ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
+        has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
+        ardoise_missing = bool((obs.get("ardoise_missing") or {}).get("value"))
         has_ardoise_effective = has_ardoise or ardoise_missing
 
         expl = obs.get("exploitable", {})

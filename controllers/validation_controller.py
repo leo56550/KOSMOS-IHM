@@ -276,12 +276,7 @@ class ValidationController:
                 data = json.load(f)
             obs = data.get("video_observation", {})
             ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
-            events_deploy = obs.get("events_deployment", []) or []
-            values = events_deploy[0].get("values", []) if events_deploy else []
-            has_ardoise = any(
-                str(ev.get("value", "")).lower() in ("ardoise", "slate")
-                for ev in values
-            )
+            has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
             if ardoise_missing and not has_ardoise:
                 self._ardoise_warning.setText("⚠ Ardoise manquante pour cette vidéo")
                 self._ardoise_warning.setVisible(True)
@@ -517,16 +512,33 @@ class ValidationController:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
             _vob = _jdata.get("video_observation", {})
-            _deploy = _vob.get("events_deployment", []) or []
-            _vals = _deploy[0].get("values", []) if _deploy else []
             _ardoise_missing = bool(_vob.get("ardoise_missing", {}).get("value"))
+            _tc = (_vob.get("timecode_ardoise") or {}).get("value")
             if _ardoise_missing:
                 # Ardoise manquante déclarée : bouton "SAISIR ARDOISE" actif, overlay visible
                 self.player.btn_ardoise_manquante.setEnabled(False)
                 self.player.set_ardoise_missing_overlay(True)
-            elif any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals):
-                # Ardoise saisie, pas de flag manquante : "MODIFIER ARDOISE"
+            elif _tc:
+                # Ardoise saisie : "MODIFIER ARDOISE" + restaure le marker sur la timeline
                 self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
+                try:
+                    _parts = str(_tc).split(":")
+                    if len(_parts) == 3:
+                        _ms = int((int(_parts[0]) * 3600 + int(_parts[1]) * 60 + float(_parts[2])) * 1000)
+                    elif len(_parts) == 2:
+                        _ms = int((int(_parts[0]) * 60 + float(_parts[1])) * 1000)
+                    else:
+                        _ms = 0
+                    detected_events.append({
+                        "start": _ms, "end": _ms,
+                        "title": self.translate("Ardoise", "Slate"),
+                        "type": "custom_event",
+                        "zone": 0,
+                        "single_frame": True,
+                        "_json_key": "timecode_ardoise",
+                    })
+                except Exception:
+                    pass
         except Exception:
             pass
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
@@ -627,7 +639,7 @@ class ValidationController:
                     self.refresh_item_indicator(item, path)
 
     def _saisir_ardoise(self):
-        """Capture un événement ardoise et ouvre un champ pour saisir le code station."""
+        """Capture le timecode ardoise et ouvre un champ pour saisir le code station."""
         if not hasattr(self, 'player') or self.player is None:
             return
         if not self.current_json_path or not os.path.exists(self.current_json_path):
@@ -636,11 +648,8 @@ class ValidationController:
         # Met en pause avant d'ouvrir le dialog pour figer la position
         self.player.pause()
 
-        import uuid
         pos_ms = self.player.timeline.get_current_position() if hasattr(self.player, 'timeline') else 0
         time_str = self.player.timeline._format_ms(pos_ms) if hasattr(self.player, 'timeline') else "00:00:00"
-        value = "ardoise" if self.current_language == 'fr' else "slate"
-        event_uid = str(uuid.uuid4())
 
         # Lecture du JSON pour pré-remplir le code station
         try:
@@ -652,10 +661,8 @@ class ValidationController:
 
         vob_tmp = data.get("video_observation", {})
 
-        # Détecte si une ardoise existe déjà (mode modification)
-        _deploy = vob_tmp.get("events_deployment", []) or []
-        _vals = _deploy[0].get("values", []) if _deploy else []
-        _is_modify = any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals)
+        # Mode modification si timecode_ardoise déjà rempli
+        _is_modify = bool((vob_tmp.get("timecode_ardoise") or {}).get("value"))
 
         existing_num = (vob_tmp.get("point_name", {}).get("value")
                         or vob_tmp.get("station_number", {}).get("value") or "")
@@ -673,51 +680,29 @@ class ValidationController:
         if not ok:
             return
 
-        # Ajoute visuellement dans la timeline (saisie initiale uniquement)
-        if not _is_modify and hasattr(self.player, 'timeline'):
-            new_evt = {
+        # Timeline : ajoute ou déplace le marker ardoise
+        if hasattr(self.player, 'timeline'):
+            # Retire l'ancien marker s'il existe
+            self.player.timeline.events = [
+                e for e in self.player.timeline.events
+                if e.get("_json_key") != "timecode_ardoise"
+            ]
+            self.player.timeline.events.append({
                 "start": pos_ms, "end": pos_ms,
-                "title": f"Pic: {value}",
+                "title": self.translate("Ardoise", "Slate"),
                 "type": "custom_event",
                 "zone": 0,
                 "single_frame": True,
-                "comment": "",
-                "_json_key": "events_deployment",
-                "_event_uid": event_uid,
-            }
-            self.player.timeline.events.append(new_evt)
+                "_json_key": "timecode_ardoise",
+            })
             self.player.timeline.update()
 
         # Écriture JSON
         try:
             obs = data.setdefault("video_observation", {})
 
-            if not _is_modify:
-                # Ajout de l'événement ardoise (première saisie seulement)
-                deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
-                if not deploy:
-                    deploy.append({"authorized_values_fr": [], "values": []})
-                frame_num = None
-                if self.current_video_path and os.path.exists(self.current_video_path):
-                    try:
-                        import cv2 as _cv2
-                        _cap = _cv2.VideoCapture(self.current_video_path)
-                        _fps = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
-                        _cap.release()
-                        frame_num = int(pos_ms * _fps / 1000)
-                    except Exception:
-                        pass
-                deploy[0].setdefault("values", []).append({
-                    "event_id": event_uid,
-                    "time_code_start": time_str,
-                    "time_code_end": time_str,
-                    "frame_number_start": frame_num,
-                    "frame_number_end": frame_num,
-                    "description_fr": None,
-                    "description_en": None,
-                    "value": value,
-                    "comment": "",
-                })
+            # Timecode ardoise → champ dédié
+            obs.setdefault("timecode_ardoise", {})["value"] = time_str
 
             # N° du point → 4 chiffres zero-padded (saisie et modification)
             station_num = ""
@@ -737,6 +722,8 @@ class ValidationController:
 
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+
+            print(f"[VALIDATION] timecode_ardoise='{time_str}' écrit dans {self.current_json_path}")
 
             # Masque l'overlay et réactive le bouton si ardoise_missing était actif
             if _had_missing:
@@ -823,23 +810,19 @@ class ValidationController:
         try:
             vob = data.setdefault("video_observation", {})
 
-            # Efface l'événement ardoise existant si présent
-            _deploy = vob.get("events_deployment", []) or []
-            if _deploy and _deploy[0].get("values"):
-                _deploy[0]["values"] = [
-                    ev for ev in _deploy[0]["values"]
-                    if str(ev.get("value", "")).lower() not in ("ardoise", "slate")
-                ]
+            # Efface le timecode ardoise existant
+            if "timecode_ardoise" in vob:
+                vob["timecode_ardoise"]["value"] = None
 
             vob["ardoise_missing"] = {"value": True}
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
-            # Supprime les événements ardoise de la timeline
+            # Supprime le marker ardoise de la timeline
             if hasattr(self.player, 'timeline'):
                 self.player.timeline.events = [
                     e for e in self.player.timeline.events
-                    if e.get("_json_key") != "events_deployment"
+                    if e.get("_json_key") != "timecode_ardoise"
                 ]
                 self.player.timeline.update()
 

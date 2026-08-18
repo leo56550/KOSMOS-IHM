@@ -201,14 +201,6 @@ def migrate_json_file_if_needed(json_path: str) -> bool:
     print(f"[MIGRATION] Legacy JSON detected — converting: {json_path}")
     new_data = migrate_legacy_to_new(data)
 
-    backup_path = json_path + ".legacy_backup"
-    if not os.path.exists(backup_path):
-        try:
-            with open(backup_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[MIGRATION] Warning: could not write backup {backup_path}: {e}")
-
     try:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(new_data, f, indent=2, ensure_ascii=False)

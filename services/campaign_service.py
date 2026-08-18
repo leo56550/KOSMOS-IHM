@@ -55,7 +55,6 @@ def _find_first_json_in_folder(folder: str) -> str | None:
             fname for fname in os.listdir(folder)
             if fname.endswith(".json")
             and fname != "template.json"
-            and not fname.endswith(".legacy_backup")
         )
         if candidates:
             return os.path.join(folder, candidates[0])
