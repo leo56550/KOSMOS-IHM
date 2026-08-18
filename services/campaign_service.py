@@ -254,23 +254,21 @@ def sync_video_to_working_dir(working_dir: str, video_path: str) -> None:
         pass
 
 
-def get_working_video_json_path(working_dir: str, video_path: str) -> str:
-    """Retourne le chemin du JSON dans le sous-dossier de travail d'une vidéo."""
+def get_temp_json_path(video_path: str) -> str:
+    """Retourne le chemin du fichier <stem>_temp.json dans le dossier de la vidéo brute."""
+    folder = os.path.dirname(os.path.normpath(video_path))
     stem = os.path.splitext(os.path.basename(video_path))[0]
-    return os.path.join(get_working_video_dir(working_dir, video_path), f"{stem}.json")
+    return os.path.join(folder, f"{stem}_temp.json")
+
+
+def get_working_video_json_path(working_dir: str, video_path: str) -> str:
+    """Redirige vers get_temp_json_path (ancien système working_dir remplacé par _temp.json)."""
+    return get_temp_json_path(video_path)
 
 
 def resolve_video_json_path(working_dir: str, video_path: str) -> str:
-    """Retourne le chemin JSON actif.
-
-    Préfère le JSON du répertoire de travail (modifiable) si disponible.
-    Fallback sur le JSON source (lecture seule) sinon.
-    """
-    if working_dir:
-        wp = get_working_video_json_path(working_dir, video_path)
-        if os.path.exists(wp):
-            return wp
-    return get_video_json_path(video_path)
+    """Retourne le chemin JSON IHM actif : <stem>_temp.json dans le dossier brut."""
+    return get_temp_json_path(video_path)
 
 
 _WORK_SUBDIR = ".kosmos_work"

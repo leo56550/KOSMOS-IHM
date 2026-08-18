@@ -141,6 +141,51 @@ def initialise_video_json_if_needed(video_path: str) -> bool:
         return False
 
 
+def _nullify_values(node) -> None:
+    """Met récursivement à null tous les champs 'value' d'un arbre JSON."""
+    if isinstance(node, dict):
+        if "value" in node:
+            node["value"] = None
+        for v in node.values():
+            _nullify_values(v)
+    elif isinstance(node, list):
+        for item in node:
+            _nullify_values(item)
+
+
+def initialise_temp_json_if_needed(video_path: str) -> bool:
+    """Crée <stem>_temp.json dans le dossier brut si absent.
+
+    Basé sur le template.json de l'application (dossier racine du projet),
+    toutes les valeurs 'value' sont mises à null — l'IHM les complète progressivement.
+    Ne touche jamais à <stem>.json (données d'acquisition brutes).
+    Retourne True si le fichier a été créé.
+    """
+    folder = os.path.dirname(os.path.normpath(video_path))
+    stem = os.path.splitext(os.path.basename(video_path))[0]
+    temp_path = os.path.join(folder, f"{stem}_temp.json")
+    if os.path.isfile(temp_path):
+        return False  # déjà initialisé
+
+    # template.json de l'application (dossier racine, pas du dossier vidéo)
+    app_template = os.path.join(os.path.dirname(__file__), "..", "template.json")
+    if not os.path.isfile(app_template):
+        print(f"[INIT] template.json introuvable : {app_template}")
+        return False
+
+    try:
+        with open(app_template, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _nullify_values(data)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        print(f"[INIT] {stem}_temp.json créé (valeurs nulles)")
+        return True
+    except Exception as e:
+        print(f"[INIT] Impossible de créer {stem}_temp.json : {e}")
+        return False
+
+
 def migrate_json_file_if_needed(json_path: str) -> bool:
     """Read *json_path*, migrate in place if legacy format. Returns True if migrated."""
     try:
