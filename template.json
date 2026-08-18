@@ -226,6 +226,19 @@
         "communication"
       ]
     },
+    "qualifiable": {
+      "name": "Qualifiable",
+      "name_fr": "Qualifiable",
+      "type": "str",
+      "format": "yes/no",
+      "value": "yes",
+      "description": "Whether the video has been selected for qualification (no = rejected via JETER)",
+      "description_fr": "Indique si la vidéo a été retenue pour qualification (no = rejetée via JETER)",
+      "acquisition_mode": "IHM qualification",
+      "ifdo_id": null,
+      "infoStation_visibility": "non",
+      "authorized_values": ["yes", "no"]
+    },
     "derush_comment": {
       "name": "Derush Comment",
       "name_fr": "Commentaire vidéos",

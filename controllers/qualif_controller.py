@@ -1598,6 +1598,31 @@ class QualifController:
         if clicked_action == trash_action:
             self.delete_video_by_index(index.siblingAtColumn(0))
 
+    def _set_qualifiable(self, video_path: str, value: str):
+        """Écrit video_observation.qualifiable dans le JSON de travail ('yes' ou 'no')."""
+        video_name = os.path.basename(str(video_path))
+        if not self._working_dir or not video_path:
+            print(f"[QUALIF] _set_qualifiable ignoré pour {video_name} : working_dir ou chemin manquant")
+            return
+        json_path = resolve_video_json_path(self._working_dir, str(video_path))
+        if not os.path.exists(json_path):
+            print(f"[QUALIF] _set_qualifiable ignoré pour {video_name} : JSON introuvable ({json_path})")
+            return
+        try:
+            with open(json_path, "r", encoding="utf-8") as _f:
+                data = json.load(_f)
+            obs = data.setdefault("video_observation", {})
+            previous = (obs.get("qualifiable") or {}).get("value", "<absent>")
+            if "qualifiable" in obs:
+                obs["qualifiable"]["value"] = value
+            else:
+                obs["qualifiable"] = {"value": value}
+            with open(json_path, "w", encoding="utf-8") as _f:
+                json.dump(data, _f, ensure_ascii=False, indent=2)
+            print(f"[QUALIF] qualifiable mis à jour : {video_name}  {previous!r} → {value!r}  ({json_path})")
+        except Exception as e:
+            print(f"[QUALIF] Erreur _set_qualifiable pour {video_name} : {e}")
+
     def delete_video_by_index(self, index: QtCore.QModelIndex):
         """Déplace la vidéo dans la liste 'supprimées' (en mémoire) et supprime son dossier de sortie."""
         row = index.row()
@@ -1632,6 +1657,7 @@ class QualifController:
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
         self.video_model.removeRow(row)
+        self._set_qualifiable(video_path, "no")
         if self.selected_video_name == video_name:
             self.selected_video_name = None
             self._selected_video_path = None
@@ -1667,6 +1693,7 @@ class QualifController:
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
         self.trash_model.removeRow(row)
+        self._set_qualifiable(video_path, "yes")
 
         # Régénérer la miniature pour cette ligne (stocker sur self pour éviter le GC)
         new_row = self.video_model.rowCount() - 1
