@@ -15,6 +15,7 @@ from services.campaign_service import (
     get_video_gps_coords,
     get_working_video_dir, get_infostation_path,
     resolve_video_json_path, get_working_video_json_path,
+    get_temp_json_path,
 )
 from views.dialogs.weather_dialog import WeatherWebDialog
 
@@ -1187,12 +1188,23 @@ class MetadonneesController:
         stem = os.path.splitext(os.path.basename(video_path))[0]
         codestat, heure_stem = self._extract_stem_parts(stem)
 
-        json_path = resolve_video_json_path(self._working_dir, video_path)
+        # Données brutes d'acquisition (system, survey) depuis le JSON d'origine
+        raw_path = get_video_json_path(video_path)
         jdata = {}
-        if os.path.isfile(json_path):
+        if os.path.isfile(raw_path):
             try:
-                with open(json_path, 'r', encoding='utf-8') as f:
+                with open(raw_path, 'r', encoding='utf-8') as f:
                     jdata = json.load(f)
+            except Exception:
+                pass
+        # Données IHM (video_observation) depuis _temp.json — remplace la section brute
+        temp_path = get_temp_json_path(video_path)
+        if os.path.isfile(temp_path):
+            try:
+                with open(temp_path, 'r', encoding='utf-8') as f:
+                    temp_data = json.load(f)
+                if "video_observation" in temp_data:
+                    jdata["video_observation"] = temp_data["video_observation"]
             except Exception:
                 pass
         surv = jdata.get("survey", {})

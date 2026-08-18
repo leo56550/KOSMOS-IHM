@@ -652,12 +652,7 @@ class AppController:
             if val_low not in ("oui", "yes"):
                 print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r} → ignoré")
                 continue
-            events_deploy = obs.get("events_deployment", []) or []
-            values = events_deploy[0].get("values", []) if events_deploy else []
-            has_ardoise = any(
-                str(ev.get("value", "")).lower() in ("ardoise", "slate")
-                for ev in values
-            )
+            has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
             print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r}, has_ardoise={has_ardoise}")
             if not has_ardoise:
                 missing.append(item.text())
