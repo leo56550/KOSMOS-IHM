@@ -366,14 +366,14 @@ class MetadonneesController:
         btn_terrain.clicked.connect(self._open_feuille_terrain)
         tb_row.addWidget(btn_terrain)
 
-        btn_save = QtWidgets.QPushButton("SAUVEGARDER")
+        btn_save = QtWidgets.QPushButton("GENERER INFOSTATION")
         btn_save.setStyleSheet(
             "QPushButton{background:#1a3a1a;color:#80e880;border:1px solid #2a8a2a;"
             "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#2a8a2a;color:white;}"
         )
-        btn_save.clicked.connect(self._on_save_clicked)
+        btn_save.clicked.connect(self._export_infostation_action)
         tb_row.addWidget(btn_save)
         outer.addWidget(title_bar)
 
@@ -1378,7 +1378,8 @@ class MetadonneesController:
         return issues
 
     def _show_consistency_dialog(self, issues: list[tuple]):
-        """Affiche tous les champs manquants par vidéo dans un arbre expandable. Export bloqué."""
+        """Affiche tous les champs manquants par vidéo dans un arbre expandable.
+        Retourne True si l'utilisateur choisit de générer quand-même."""
         dlg = QtWidgets.QDialog(self.widget)
         dlg.setWindowTitle(self.translate(
             "Métadonnées incomplètes — export bloqué",
@@ -1433,6 +1434,21 @@ class MetadonneesController:
 
         layout.addWidget(tree)
 
+        _force = [False]
+
+        btn_row = QtWidgets.QHBoxLayout()
+
+        btn_force = QtWidgets.QPushButton(self.translate("Générer quand-même", "Generate anyway"))
+        btn_force.setStyleSheet(
+            "QPushButton{background:#3a2800;color:#E8A838;border:1px solid #E8A838;"
+            "border-radius:4px;padding:5px 14px;font-size:11px;}"
+            "QPushButton:hover{background:#E8A838;color:#1a1a1a;}"
+        )
+        def _on_force():
+            _force[0] = True
+            dlg.accept()
+        btn_force.clicked.connect(_on_force)
+
         btn_close = QtWidgets.QPushButton(self.translate("Fermer et corriger", "Close and fix"))
         btn_close.setStyleSheet(
             "QPushButton{background:#20415d;color:#F2BFB4;border:1px solid #2778a2;"
@@ -1440,9 +1456,14 @@ class MetadonneesController:
             "QPushButton:hover{background:#2778a2;}"
         )
         btn_close.clicked.connect(dlg.accept)
-        layout.addWidget(btn_close, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+
+        btn_row.addWidget(btn_force)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
 
         dlg.exec()
+        return _force[0]
 
     # ── Feature : batch survey ────────────────────────────────────────────
 
@@ -1655,16 +1676,56 @@ class MetadonneesController:
                 lines.append(f"• {vid_name} : {', '.join(fields)}")
             if len(missing_by_video) > 10:
                 lines.append(f"  … et {len(missing_by_video) - 10} autre(s) vidéo(s)")
-            QtWidgets.QMessageBox.warning(
-                self.widget,
-                "Champs manquants",
+
+            dlg = QtWidgets.QDialog(self.widget)
+            dlg.setWindowTitle("Champs manquants")
+            dlg.setMinimumWidth(520)
+            _lay = QtWidgets.QVBoxLayout(dlg)
+            _lay.setSpacing(10)
+            _lay.setContentsMargins(14, 14, 14, 14)
+
+            _icon_row = QtWidgets.QHBoxLayout()
+            _ico = QtWidgets.QLabel()
+            _ico.setPixmap(self.widget.style().standardPixmap(
+                QtWidgets.QStyle.StandardPixmap.SP_MessageBoxWarning))
+            _icon_row.addWidget(_ico, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+            _msg = QtWidgets.QLabel(
                 "Les champs suivants sont requis pour générer les noms de dossier :\n\n"
                 + "\n".join(lines)
                 + "\n\nRenseignez ces champs dans la feuille terrain ou directement dans les JSON vidéo."
             )
-            return
+            _msg.setWordWrap(True)
+            _icon_row.addWidget(_msg, stretch=1)
+            _lay.addLayout(_icon_row)
 
-        # ── 2. Tout est rempli → génération ──────────────────────────────────
+            _force = [False]
+            _btn_row = QtWidgets.QHBoxLayout()
+
+            _btn_force = QtWidgets.QPushButton("Générer quand-même")
+            _btn_force.setStyleSheet(
+                "QPushButton{background:#3a2800;color:#E8A838;border:1px solid #E8A838;"
+                "border-radius:4px;padding:5px 14px;font-size:11px;}"
+                "QPushButton:hover{background:#E8A838;color:#1a1a1a;}"
+            )
+            def _on_force():
+                _force[0] = True
+                dlg.accept()
+            _btn_force.clicked.connect(_on_force)
+
+            _btn_ok = QtWidgets.QPushButton("OK")
+            _btn_ok.setDefault(True)
+            _btn_ok.clicked.connect(dlg.accept)
+
+            _btn_row.addWidget(_btn_force)
+            _btn_row.addStretch()
+            _btn_row.addWidget(_btn_ok)
+            _lay.addLayout(_btn_row)
+
+            dlg.exec()
+            if not _force[0]:
+                return
+
+        # ── 2. Tout est rempli ou génération forcée ───────────────────────────
         self._generate_benthoss_folder()
         self.generate_infostation_csv()
 
@@ -2031,11 +2092,10 @@ class MetadonneesController:
 
         issues = self._run_consistency_check(video_paths)
         if issues:
-            # Des champs manquent → on affiche le bilan et on bloque l'export
-            self._show_consistency_dialog(issues)
-            return
+            if not self._show_consistency_dialog(issues):
+                return
 
-        # Toutes les métadonnées sont complètes → export
+        # Métadonnées complètes ou export forcé par l'utilisateur
         self.generate_infostation_csv()
         csv_path = get_infostation_path(self._working_dir)
         QtWidgets.QMessageBox.information(
