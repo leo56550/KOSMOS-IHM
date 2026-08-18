@@ -129,23 +129,22 @@ class ValidationController:
             main_splitter.setStretchFactor(1, 1)
             main_splitter.setCollapsible(1, False)
 
-        # Restructure le panneau gauche : le tree et la section exploitabilité sont
-        # actuellement dans un QVBoxLayout — impossible de traîner entre eux.
-        # On intègre splitter_14 (exploitable+VALIDER) comme 2ème enfant de splitter_4
-        # pour qu'une poignée draggable apparaisse entre le tree et le bloc exploitable.
+        # Panneau gauche : tree (hauteur variable) + bloc exploitable (hauteur fixe en bas).
+        # sp14 reste dans son layout parent (verticalLayout_4), sp4 prend tout l'espace libre.
         sp4 = self.page.findChild(QtWidgets.QSplitter, "splitter_4")
         sp14 = self.page.findChild(QtWidgets.QSplitter, "splitter_14")
-        if sp4 and sp14 and sp14.parent() is not sp4:
-            # Le minimumHeight=750 du .ui empêche le tree de rétrécir
+        if sp4:
             if self.video_tree:
                 self.video_tree.setMinimumHeight(80)
-            sp4.addWidget(sp14)            # sp14 devient enfant de sp4
-            sp4.setStretchFactor(0, 1)    # le tree prend l'espace disponible
-            sp4.setStretchFactor(1, 0)    # le bloc exploitable garde sa taille
-            sp4.setSizes([450, 220])
-            sp4.setHandleWidth(8)
-            sp4.setStyleSheet(
-                "QSplitter::handle { background-color: #2778A2; border-radius: 3px; }"
+            sp4.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+        if sp14:
+            # Hauteur fixe : le panneau exploitable ne se redimensionne pas
+            sp14.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Fixed,
             )
 
         self._exploitable_btns: list[_ToggleFrame] = []

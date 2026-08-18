@@ -631,3 +631,123 @@ Traceback (most recent call last):
     def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:41.952132
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:42.102391
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:42.252539
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:42.502257
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:42.702508
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:42.851929
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:43.002117
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:43.101127
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:43.251025
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:43.452292
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:43.651908
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:45.351999
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:45.552393
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:45.702411
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-18 10:51:45.852276
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
