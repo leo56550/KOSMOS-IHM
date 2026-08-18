@@ -26,37 +26,44 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
     # ── Couleur de complétion ─────────────────────────────────────────────
 
-    def _completion_color(self, video_path: str) -> QtGui.QColor:
-        """Rouge = rien, orange = ardoise seule, vert = ardoise + statut exploitabilité."""
+    def _get_video_status(self, video_path: str) -> tuple:
+        """Retourne (couleur_barre, ardoise_manquante).
+
+        Couleur : rouge = rien, orange = ardoise/manquante, vert = ardoise + statut.
+        ardoise_manquante : True si ardoise_missing a été explicitement signalée.
+        """
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if not os.path.exists(json_path):
-            return QtGui.QColor("#D94F38")
+            return QtGui.QColor("#D94F38"), False
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception:
-            return QtGui.QColor("#D94F38")
+            return QtGui.QColor("#D94F38"), False
 
         obs = data.get("video_observation", {})
 
-        # Ardoise saisie = un événement "ardoise"/"slate" dans events_deployment
         events_deploy = obs.get("events_deployment", []) or []
         values = events_deploy[0].get("values", []) if events_deploy else []
         has_ardoise = any(
             str(ev.get("value", "")).lower() in ("ardoise", "slate")
             for ev in values
         )
+        ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
+        has_ardoise_effective = has_ardoise or ardoise_missing
 
-        # Statut exploitabilité = valeur non vide et différente de "?"
         expl = obs.get("exploitable", {})
         expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
         has_status = bool(expl_val and str(expl_val).strip() not in ("", "None", "null", "?"))
 
-        if has_ardoise and has_status:
-            return QtGui.QColor("#5DBB63")   # vert — ardoise + statut
-        if has_ardoise:
-            return QtGui.QColor("#E8A838")   # orange — ardoise seulement
-        return QtGui.QColor("#D94F38")       # rouge — rien de fait
+        if has_ardoise_effective and has_status:
+            color = QtGui.QColor("#5DBB63")
+        elif has_ardoise_effective:
+            color = QtGui.QColor("#E8A838")
+        else:
+            color = QtGui.QColor("#D94F38")
+
+        return color, ardoise_missing
 
     # ── Détection liaison séquentielle ────────────────────────────────────
 
@@ -104,7 +111,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         if not vp:
             return
 
-        color              = self._completion_color(str(vp))
+        color, ardoise_missing = self._get_video_status(str(vp))
         ext_top, ext_bot   = self._link_info(index)
 
         rect = option.rect
@@ -152,6 +159,17 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawRoundedRect(bar, 2, 2)
 
         painter.restore()
+
+        # Petit point amber si ardoise manquante explicitement signalée
+        if ardoise_missing:
+            painter.save()
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QtGui.QBrush(QtGui.QColor("#E8A838")))
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            dot_x = rect.left() + self.BAR_X + self.BAR_W + 2
+            dot_y = rect.top() + (rect.height() - 5) // 2
+            painter.drawEllipse(dot_x, dot_y, 5, 5)
+            painter.restore()
 
     def sizeHint(self, option, index):
         sh = super().sizeHint(option, index)

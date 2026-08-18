@@ -121,6 +121,7 @@ class ValidationController:
                 QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
             )
             self.player.btn_ardoise.clicked.connect(self._saisir_ardoise)
+            self.player.btn_ardoise_manquante.clicked.connect(self._saisir_ardoise_manquante)
 
         main_splitter = self.page.findChild(QtWidgets.QSplitter, "splitter_3")
         if main_splitter:
@@ -264,46 +265,30 @@ class ValidationController:
         layout.addStretch()
 
     def refresh_ardoise_warning(self):
-        """Affiche un bandeau si des vidéos exploitables (oui) n'ont pas d'ardoise saisie."""
-        if not hasattr(self, '_ardoise_warning') or self.video_model is None:
+        """Affiche un bandeau si la vidéo courante a été marquée 'ardoise manquante'
+        sans qu'une vraie ardoise ait été saisie par la suite."""
+        if not hasattr(self, '_ardoise_warning'):
             return
-        missing = []
-        for row in range(self.video_model.rowCount()):
-            item = self.video_model.item(row, 0)
-            if not item:
-                continue
-            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path:
-                continue
-            json_path = resolve_video_json_path(self._working_dir, str(video_path))
-            if not os.path.isfile(json_path):
-                continue
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            except Exception:
-                continue
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            self._ardoise_warning.setVisible(False)
+            return
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             obs = data.get("video_observation", {})
-            expl = obs.get("exploitable", {})
-            val = expl.get("value", "") if isinstance(expl, dict) else str(expl)
-            if str(val).strip().lower() not in ("oui", "yes"):
-                continue
+            ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
             events_deploy = obs.get("events_deployment", []) or []
             values = events_deploy[0].get("values", []) if events_deploy else []
             has_ardoise = any(
                 str(ev.get("value", "")).lower() in ("ardoise", "slate")
                 for ev in values
             )
-            if not has_ardoise:
-                missing.append(item.text())
-
-        if missing:
-            names = "\n".join(f"  • {n}" for n in missing)
-            self._ardoise_warning.setText(
-                f"⚠ Ardoise manquante pour :\n{names}"
-            )
-            self._ardoise_warning.setVisible(True)
-        else:
+            if ardoise_missing and not has_ardoise:
+                self._ardoise_warning.setText("⚠ Ardoise manquante pour cette vidéo")
+                self._ardoise_warning.setVisible(True)
+            else:
+                self._ardoise_warning.setVisible(False)
+        except Exception:
             self._ardoise_warning.setVisible(False)
 
     # Couleurs par valeur d'exploitabilité (bg_checked, color_checked, border_checked, hint_bg)
@@ -522,7 +507,27 @@ class ValidationController:
             self.player.btn_telemetry.setEnabled(False)
             self.player.btn_telemetry.setChecked(False)
 
+        # Reset ardoise buttons, puis applique l'état réel depuis le JSON
+        self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
+        self.player.btn_ardoise_manquante.setEnabled(True)
+        self.player.set_ardoise_missing_overlay(False)
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as _f:
+                _jdata = json.load(_f)
+            _vob = _jdata.get("video_observation", {})
+            _deploy = _vob.get("events_deployment", []) or []
+            _vals = _deploy[0].get("values", []) if _deploy else []
+            _ardoise_missing = bool(_vob.get("ardoise_missing", {}).get("value"))
+            if _ardoise_missing:
+                # Ardoise manquante déclarée : bouton "SAISIR ARDOISE" actif, overlay visible
+                self.player.btn_ardoise_manquante.setEnabled(False)
+                self.player.set_ardoise_missing_overlay(True)
+            elif any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals):
+                # Ardoise saisie, pas de flag manquante : "MODIFIER ARDOISE"
+                self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
+        except Exception:
+            pass
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
 
     def refresh_combobox_values(self):
@@ -646,27 +651,20 @@ class ValidationController:
 
         vob_tmp = data.get("video_observation", {})
 
-        # Vérifie qu'aucune ardoise n'a déjà été saisie pour cette vidéo
+        # Détecte si une ardoise existe déjà (mode modification)
         _deploy = vob_tmp.get("events_deployment", []) or []
         _vals = _deploy[0].get("values", []) if _deploy else []
-        if any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals):
-            QtWidgets.QMessageBox.warning(
-                self.page,
-                self.translate("Ardoise déjà saisie", "Slate already recorded"),
-                self.translate(
-                    "Une ardoise a déjà été enregistrée pour cette vidéo.",
-                    "A slate has already been recorded for this video.",
-                ),
-            )
-            return
+        _is_modify = any(str(ev.get("value", "")).lower() in ("ardoise", "slate") for ev in _vals)
 
         existing_num = (vob_tmp.get("point_name", {}).get("value")
                         or vob_tmp.get("station_number", {}).get("value") or "")
 
         # Dialog numéro du point
+        dialog_title = (self.translate("Modifier l'ardoise", "Modify slate")
+                        if _is_modify else self.translate("N° du point", "Point number"))
         num_str, ok = QtWidgets.QInputDialog.getText(
             self.page,
-            self.translate("N° du point", "Point number"),
+            dialog_title,
             self.translate("Numéro du point :", "Point number:"),
             text=str(existing_num),
         )
@@ -674,8 +672,8 @@ class ValidationController:
         if not ok:
             return
 
-        # Ajoute visuellement dans la timeline
-        if hasattr(self.player, 'timeline'):
+        # Ajoute visuellement dans la timeline (saisie initiale uniquement)
+        if not _is_modify and hasattr(self.player, 'timeline'):
             new_evt = {
                 "start": pos_ms, "end": pos_ms,
                 "title": f"Pic: {value}",
@@ -689,40 +687,40 @@ class ValidationController:
             self.player.timeline.events.append(new_evt)
             self.player.timeline.update()
 
-        # Écriture JSON unique : ardoise + station_number si saisi
+        # Écriture JSON
         try:
             obs = data.setdefault("video_observation", {})
 
-            # Événement ardoise
-            deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
-            if not deploy:
-                deploy.append({"authorized_values_fr": [], "values": []})
-            # Calcul du numéro de frame depuis la position courante
-            frame_num = None
-            if self.current_video_path and os.path.exists(self.current_video_path):
-                try:
-                    import cv2 as _cv2
-                    _cap = _cv2.VideoCapture(self.current_video_path)
-                    _fps = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
-                    _cap.release()
-                    frame_num = int(pos_ms * _fps / 1000)
-                except Exception:
-                    pass
+            if not _is_modify:
+                # Ajout de l'événement ardoise (première saisie seulement)
+                deploy = obs.setdefault("events_deployment", [{"authorized_values_fr": [], "values": []}])
+                if not deploy:
+                    deploy.append({"authorized_values_fr": [], "values": []})
+                frame_num = None
+                if self.current_video_path and os.path.exists(self.current_video_path):
+                    try:
+                        import cv2 as _cv2
+                        _cap = _cv2.VideoCapture(self.current_video_path)
+                        _fps = _cap.get(_cv2.CAP_PROP_FPS) or 25.0
+                        _cap.release()
+                        frame_num = int(pos_ms * _fps / 1000)
+                    except Exception:
+                        pass
+                deploy[0].setdefault("values", []).append({
+                    "event_id": event_uid,
+                    "time_code_start": time_str,
+                    "time_code_end": time_str,
+                    "frame_number_start": frame_num,
+                    "frame_number_end": frame_num,
+                    "description_fr": None,
+                    "description_en": None,
+                    "value": value,
+                    "comment": "",
+                })
 
-            deploy[0].setdefault("values", []).append({
-                "event_id": event_uid,
-                "time_code_start": time_str,
-                "time_code_end": time_str,
-                "frame_number_start": frame_num,
-                "frame_number_end": frame_num,
-                "description_fr": None,
-                "description_en": None,
-                "value": value,
-                "comment": "",
-            })
-
-            # N° du point → 4 chiffres zero-padded, écrit dans point_name (+ compat station_number)
-            if ok and num_str.strip():
+            # N° du point → 4 chiffres zero-padded (saisie et modification)
+            station_num = ""
+            if num_str.strip():
                 raw = num_str.strip()
                 try:
                     station_num = f"{int(raw):04d}"
@@ -731,14 +729,36 @@ class ValidationController:
                 obs.setdefault("point_name", {})["value"] = station_num
                 obs.setdefault("station_number", {})["value"] = station_num
 
+            # Une vraie ardoise efface le flag "ardoise manquante"
+            _had_missing = bool(obs.get("ardoise_missing", {}).get("value"))
+            if _had_missing:
+                obs["ardoise_missing"] = {"value": False}
+
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
-            # Feedback visuel bref + flash ardoise
-            label = f"✓ N°{station_num}" if (ok and num_str.strip()) else "✓ Ardoise"
-            self.player.btn_ardoise.setText(label)
-            QtCore.QTimer.singleShot(2000, lambda: self.player.btn_ardoise.setText("SAISIR ARDOISE"))
-            self._flash_ardoise()
+            # Masque l'overlay et réactive le bouton si ardoise_missing était actif
+            if _had_missing:
+                self.player.set_ardoise_missing_overlay(False)
+                self.player.btn_ardoise_manquante.setEnabled(True)
+                if self.video_tree:
+                    self.video_tree.viewport().update()
+
+            # Feedback visuel : label temporaire puis "MODIFIER ARDOISE"
+            if _is_modify:
+                tmp_label = f"✓ Modifié N°{station_num}" if station_num else "✓ Modifié"
+            else:
+                tmp_label = f"✓ N°{station_num}" if station_num else "✓ Ardoise"
+                self._flash_ardoise()
+
+            self.player.btn_ardoise.setText(tmp_label)
+            self.player.btn_ardoise.setEnabled(False)
+            QtCore.QTimer.singleShot(2000, lambda: (
+                self.player.btn_ardoise.setText(
+                    self.translate("MODIFIER ARDOISE", "MODIFY SLATE")
+                ),
+                self.player.btn_ardoise.setEnabled(True),
+            ))
 
             if self._on_qualification_changed:
                 self._on_qualification_changed()
@@ -765,3 +785,74 @@ class ValidationController:
         anim.setEasingCurve(QtCore.QEasingCurve.Type.OutQuad)
         anim.finished.connect(flash.deleteLater)
         anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _saisir_ardoise_manquante(self):
+        """Marque la vidéo comme n'ayant pas d'ardoise et affiche un logo d'avertissement."""
+        if not hasattr(self, 'player') or self.player is None:
+            return
+        if not self.current_json_path or not os.path.exists(self.current_json_path):
+            return
+
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[VALIDATION] Lecture JSON échouée : {e}")
+            return
+
+        vob = data.get("video_observation", {})
+
+        # Déjà marqué comme manquante — rien à faire
+        if vob.get("ardoise_missing", {}).get("value"):
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self.page,
+            self.translate("Confirmer", "Confirm"),
+            self.translate(
+                "Confirmer l'absence d'ardoise pour cette vidéo ?",
+                "Confirm no slate available for this video?",
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            vob = data.setdefault("video_observation", {})
+
+            # Efface l'événement ardoise existant si présent
+            _deploy = vob.get("events_deployment", []) or []
+            if _deploy and _deploy[0].get("values"):
+                _deploy[0]["values"] = [
+                    ev for ev in _deploy[0]["values"]
+                    if str(ev.get("value", "")).lower() not in ("ardoise", "slate")
+                ]
+
+            vob["ardoise_missing"] = {"value": True}
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+
+            # Supprime les événements ardoise de la timeline
+            if hasattr(self.player, 'timeline'):
+                self.player.timeline.events = [
+                    e for e in self.player.timeline.events
+                    if e.get("_json_key") != "events_deployment"
+                ]
+                self.player.timeline.update()
+
+            self.player.set_ardoise_missing_overlay(True)
+            self.player.btn_ardoise_manquante.setEnabled(False)
+            # Remet btn_ardoise à "SAISIR ARDOISE" pour permettre une saisie ultérieure
+            self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
+            self.player.btn_ardoise.setEnabled(True)
+
+            if self.video_tree:
+                self.video_tree.viewport().update()
+
+            if self._on_qualification_changed:
+                self._on_qualification_changed()
+            self.refresh_ardoise_warning()
+        except Exception as e:
+            print(f"[VALIDATION] Erreur sauvegarde ardoise_missing : {e}")
