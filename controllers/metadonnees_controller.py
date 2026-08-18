@@ -1279,7 +1279,7 @@ class MetadonneesController:
                 val = stem
 
             elif field_key == "video_number" and not val:
-                val = self._v(obs, "station_number")
+                val = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
 
             elif field_key == "latitude":
                 val = val.replace('.', ',') if val else lat_gps
@@ -1307,10 +1307,10 @@ class MetadonneesController:
                 if zone_v and year_2d and station_idx:
                     val = f"{zone_v}{year_2d}{station_idx}"
                 else:
-                    val = codestat  # fallback stem si infos insuffisantes
+                    val = "A saisir"
 
             elif field_key == "point_name" and not val:
-                val = self._v(obs, "station_number") or codestat
+                val = self._v(obs, "station_number") or "A saisir"
 
             elif field_key == "boatgps_waypoint" and not val:
                 val = self._v(obs, "gps_boat_point")
