@@ -43,6 +43,7 @@ class AppController:
             on_before_delete=self._release_file_in_all_players,
             on_qualification_changed=self._on_qualification_changed,
         )
+        self.qualif_ctrl.on_qualification_resumed = self._reset_qualification_completed
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
@@ -125,6 +126,7 @@ class AppController:
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
         self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
+        self._btn_finir_qualif_original_text = self.btn_finir_qualif.text() if self.btn_finir_qualif else "QUALIFIER"
         if self.btn_finir_qualif:
             self.btn_finir_qualif.clicked.connect(self.complete_qualification)
 
@@ -619,6 +621,15 @@ class AppController:
         QtCore.QTimer.singleShot(200, self.qualif_ctrl.initialize_tree_indicators)
 
     # --- Qualification / Validation completion ---
+
+    def _reset_qualification_completed(self):
+        """Réactive le bouton 'Qualification terminée' quand GARDER/JETER est cliqué après la fin."""
+        if not self.qualification_completed:
+            return
+        self.qualification_completed = False
+        if self.btn_finir_qualif:
+            self.btn_finir_qualif.setText(self._btn_finir_qualif_original_text)
+            self.btn_finir_qualif.setEnabled(True)
 
     def complete_qualification(self):
         self.qualification_completed = True

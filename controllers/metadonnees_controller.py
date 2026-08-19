@@ -18,6 +18,7 @@ from services.campaign_service import (
     get_temp_json_path,
 )
 from views.dialogs.weather_dialog import WeatherWebDialog
+from models.video_model import VideoFilterProxyModel
 
 # ── Chargement dynamique du schéma depuis template.json ─────────────────
 _TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.json')
@@ -182,6 +183,10 @@ class MetadonneesController:
         self.widget = widget
         self.video_model = video_model
         self.trash_model = trash_model
+        self.proxy_model = VideoFilterProxyModel(widget)
+        self.proxy_model.setSourceModel(video_model)
+        self.proxy_model.setSortRole(QtCore.Qt.ItemDataRole.UserRole + 2)
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
         self._on_metadata_saved = on_metadata_saved
         self._on_video_selected = on_video_selected
         self._json_data = {}
@@ -237,7 +242,7 @@ class MetadonneesController:
     def _setup_ui(self):
         """Configure le mode de sélection de l'arbre vidéo."""
         if self.tree_videos:
-            self.tree_videos.setModel(self.video_model)
+            self.tree_videos.setModel(self.proxy_model)
             self.tree_videos.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.tree_videos.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.tree_videos.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
@@ -751,7 +756,9 @@ class MetadonneesController:
                     old_sel.selectionChanged.disconnect(self.on_selection_changed)
                 except RuntimeError:
                     pass
-            self.tree_videos.setModel(self.video_model)
+            self.proxy_model.setSourceModel(model)
+            self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
+            self.tree_videos.setModel(self.proxy_model)
             # setModel() crée un nouveau selectionModel — on se connecte à celui-ci
             self.tree_videos.selectionModel().selectionChanged.connect(self.on_selection_changed)
 
@@ -762,13 +769,14 @@ class MetadonneesController:
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item and item.text() == video_name:
-                index = self.video_model.indexFromItem(item)
+                source_index = self.video_model.indexFromItem(item)
+                proxy_index = self.proxy_model.mapFromSource(source_index)
                 self.tree_videos.selectionModel().setCurrentIndex(
-                    index,
+                    proxy_index,
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
                     QtCore.QItemSelectionModel.SelectionFlag.Rows
                 )
-                self.tree_videos.scrollTo(index)
+                self.tree_videos.scrollTo(proxy_index)
                 # selectionChanged se déclenche automatiquement → on_selection_changed chargera les données
                 break
 
@@ -783,7 +791,8 @@ class MetadonneesController:
         if not indexes:
             return
         col0_index = indexes[0].sibling(indexes[0].row(), 0)
-        item = self.video_model.itemFromIndex(col0_index)
+        source_index = self.proxy_model.mapToSource(col0_index)
+        item = self.video_model.itemFromIndex(source_index)
         if not item:
             return
         video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)

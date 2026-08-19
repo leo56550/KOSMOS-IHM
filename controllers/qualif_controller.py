@@ -129,6 +129,7 @@ class QualifController:
         self.parent = parent
         self._on_before_delete = on_before_delete
         self._on_qualification_changed = on_qualification_changed
+        self.on_qualification_resumed = None  # callback → appelé quand GARDER/JETER après qualif terminée
         self.current_language = 'en'
         self.system_data = None
         self.video_model = QtGui.QStandardItemModel()
@@ -648,6 +649,8 @@ class QualifController:
 
     def _move_to_trash_by_path(self, video_path: str):
         """Déplace une vidéo vers la corbeille depuis son chemin."""
+        if self.on_qualification_resumed:
+            self.on_qualification_resumed()
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:
@@ -656,6 +659,8 @@ class QualifController:
 
     def _restore_from_trash_by_path(self, video_path: str):
         """Restaure une vidéo depuis la corbeille."""
+        if self.on_qualification_resumed:
+            self.on_qualification_resumed()
         for row in range(self.trash_model.rowCount()):
             item = self.trash_model.item(row, 0)
             if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == video_path:

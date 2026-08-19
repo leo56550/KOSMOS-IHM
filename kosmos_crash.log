@@ -871,3 +871,11 @@ Traceback (most recent call last):
     def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 15:15:39.095330
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
