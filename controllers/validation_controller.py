@@ -12,6 +12,7 @@ from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
 
+
 class _ToggleFrame(QtWidgets.QFrame):
     """Bouton toggle QFrame+QLabel — texte toujours rendu correctement sous Windows 11/Qt6."""
 
@@ -111,8 +112,14 @@ class ValidationController:
             self.video_tree.header().setSectionResizeMode(
                 0, QtWidgets.QHeaderView.ResizeMode.Stretch
             )
+            self.video_tree.header().setSectionResizeMode(
+                3, QtWidgets.QHeaderView.ResizeMode.Fixed
+            )
+            self.video_tree.setColumnWidth(3, 0)
+            self.video_tree.setColumnHidden(3, True)
             self.video_tree.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.video_tree)
+            self._bar_delegate.show_point_number = True
             self.video_tree.setItemDelegateForColumn(0, self._bar_delegate)
 
         if self.player_container:
@@ -499,6 +506,19 @@ class ValidationController:
 
         self.current_video_path = selected_video_path
         self.current_json_path = resolve_video_json_path(self._working_dir, selected_video_path)
+        # Rafraîchit le numéro du point dans l'item (peut avoir été renseigné depuis le chargement)
+        try:
+            with open(self.current_json_path, "r", encoding="utf-8") as _jf:
+                _jd = json.load(_jf)
+            _pn = _jd.get("video_observation", {}).get("point_name", {})
+            _pn_raw = str(_pn.get("value") if isinstance(_pn, dict) else _pn or "") if _pn else ""
+            try:
+                _pn_val = str(int(_pn_raw)) if _pn_raw else ""
+            except ValueError:
+                _pn_val = _pn_raw
+            item.setData(_pn_val, QtCore.Qt.ItemDataRole.UserRole + 3)
+        except Exception:
+            pass
         self.refresh_combobox_values()
         if self._on_video_focused:
             self._on_video_focused(item.text())
@@ -775,6 +795,19 @@ class ValidationController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
             print(f"[VALIDATION] timecode_ardoise='{time_str}' écrit dans {self.current_json_path}")
+
+            # Mise à jour immédiate du numéro de point dans la liste vidéo
+            if station_num and self.video_tree and self.video_model:
+                try:
+                    display_pt = str(int(station_num))  # supprime les zéros de tête pour l'affichage
+                except ValueError:
+                    display_pt = station_num
+                for row in range(self.video_model.rowCount()):
+                    it = self.video_model.item(row, 0)
+                    if it and it.data(QtCore.Qt.ItemDataRole.UserRole) == self.current_video_path:
+                        it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
+                        break
+                self.video_tree.viewport().update()
 
             # Masque l'overlay et réactive le bouton si ardoise_missing était actif
             if _had_missing:

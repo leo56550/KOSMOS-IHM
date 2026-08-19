@@ -66,6 +66,29 @@ def _get_station_time(video_path: str, cache: dict) -> str:
     return result
 
 
+def _get_point_name(video_path: str, working_dir: str) -> str:
+    """Retourne le numéro du point depuis le JSON de la vidéo, '' si absent."""
+    try:
+        json_path = resolve_video_json_path(working_dir, video_path)
+        if not os.path.exists(json_path):
+            return ""
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        val = data.get("video_observation", {}).get("point_name", {})
+        if isinstance(val, dict):
+            v = val.get("value")
+        else:
+            v = val
+        if v is None:
+            return ""
+        try:
+            return str(int(str(v)))  # supprime les zéros de tête pour l'affichage
+        except ValueError:
+            return str(v)
+    except Exception:
+        return ""
+
+
 class _CameraFrameWorker(QtCore.QThread):
     """Extrait les frames de rotation moteur en parallèle via un pool de threads."""
     frame_ready = QtCore.pyqtSignal(int, object)   # (slot_id, ndarray or None)
@@ -745,6 +768,7 @@ class QualifController:
             col_date = QtGui.QStandardItem(video["date"])
             col_name.setData(video["path"], QtCore.Qt.ItemDataRole.UserRole)
             col_name.setData(_get_station_time(video["path"], _time_cache), QtCore.Qt.ItemDataRole.UserRole + 2)
+            col_name.setData(_get_point_name(video["path"], self._working_dir), QtCore.Qt.ItemDataRole.UserRole + 3)
             sys_name = get_system_name(video["path"])
             is_stereo_video, _ = check_stereo_status(video["path"])
             segs = get_sequential_segments(video["path"])
@@ -1707,6 +1731,10 @@ class QualifController:
             name_item.data(QtCore.Qt.ItemDataRole.UserRole + 2),
             QtCore.Qt.ItemDataRole.UserRole + 2,
         )
+        col_name.setData(
+            name_item.data(QtCore.Qt.ItemDataRole.UserRole + 3),
+            QtCore.Qt.ItemDataRole.UserRole + 3,
+        )
         self.trash_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
         )
@@ -1735,6 +1763,10 @@ class QualifController:
         col_name.setData(
             item_name.data(QtCore.Qt.ItemDataRole.UserRole + 2),
             QtCore.Qt.ItemDataRole.UserRole + 2,
+        )
+        col_name.setData(
+            item_name.data(QtCore.Qt.ItemDataRole.UserRole + 3),
+            QtCore.Qt.ItemDataRole.UserRole + 3,
         )
         self.video_model.appendRow(
             [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]

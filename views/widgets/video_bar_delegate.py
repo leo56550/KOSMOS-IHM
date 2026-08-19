@@ -21,6 +21,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._working_dir = ""
+        self.show_point_number = False
 
     def set_working_dir(self, path: str):
         self._working_dir = path
@@ -208,23 +209,48 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
             name_text,
         )
-        # Sous-titre — moitié basse
+        point_number = (index.data(QtCore.Qt.ItemDataRole.UserRole + 3) or "") if self.show_point_number else ""
+
+        # Sous-titre — moitié basse (heure + durée)
+        sub_font = QtGui.QFont(painter.font())
+        sub_font.setBold(False)
+        sub_font.setPointSize(8)
+        sub_rect = QtCore.QRect(text_left, rect.top() + half_h, text_w, half_h - 4)
         if station_time or duration:
             parts = []
             if station_time:
                 parts.append(f"Heure de prise : {station_time}")
             if duration:
                 parts.append(f"Durée : {duration}")
-            sub_font = QtGui.QFont(painter.font())
-            sub_font.setBold(False)
-            sub_font.setPointSize(8)
             painter.setFont(sub_font)
             painter.setPen(QtGui.QColor("#90b8d0"))
-            sub_rect = QtCore.QRect(text_left, rect.top() + half_h, text_w, half_h - 4)
+            # Calcule la largeur du texte info pour positionner le numéro après
+            info_text = "    ".join(parts)
+            fm = QtGui.QFontMetrics(sub_font)
+            info_w = fm.horizontalAdvance(info_text) + 12  # +12 d'espace
             painter.drawText(
                 sub_rect,
                 QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                "    ".join(parts),
+                info_text,
+            )
+        else:
+            info_w = 0
+
+        # Numéro de point — plus grand, couleur distincte
+        if point_number:
+            pt_font = QtGui.QFont(painter.font())
+            pt_font.setBold(True)
+            pt_font.setPointSize(10)
+            painter.setFont(pt_font)
+            painter.setPen(QtGui.QColor("#f0a030"))
+            pt_rect = QtCore.QRect(
+                text_left + info_w, rect.top() + half_h,
+                text_w - info_w, half_h - 4
+            )
+            painter.drawText(
+                pt_rect,
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                f"Pt {point_number}",
             )
         painter.restore()
 
