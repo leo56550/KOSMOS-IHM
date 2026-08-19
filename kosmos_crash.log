@@ -895,3 +895,27 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 15:45:51.661586
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 728, in eventFilter
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 15:51:51.696807
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 15:54:33.729683
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt

@@ -799,6 +799,20 @@ class MetadonneesController:
                             if isinstance(v, dict) and v.get("value") is not None:
                                 merged_survey[k] = v
                         self._json_data["survey"] = merged_survey
+                    # latitude/longitude : depuis le JSON brut si nuls dans le temp
+                    temp_vo = self._json_data.get("video_observation", {})
+                    raw_vo = _raw_data.get("video_observation", {})
+                    raw_gps = _raw_data.get("video", {}).get("gpsDict", {})  # format legacy
+                    for _coord in ("latitude", "longitude"):
+                        temp_val = (temp_vo.get(_coord) or {}).get("value")
+                        if not temp_val:
+                            # Essaie d'abord le format nouveau, puis legacy
+                            raw_entry = raw_vo.get(_coord)
+                            raw_val = raw_entry.get("value") if isinstance(raw_entry, dict) else raw_entry
+                            if not raw_val:
+                                raw_val = raw_gps.get(_coord)
+                            if raw_val and raw_val != 0:
+                                temp_vo[_coord] = {"value": raw_val}
                 except Exception as e:
                     print(f"[META] Fusion JSON brut impossible : {e}")
 
@@ -2288,14 +2302,69 @@ class MetadonneesController:
         self.weather_worker.start()
 
     def _open_web_weather_popup(self, fetched_api_data, relevant_date):
-        """Ouvre WeatherWebDialog avec les données API récupérées par WeatherWorker."""
+        """Ouvre WeatherWebDialog (non-bloquant) avec les données API récupérées par WeatherWorker."""
         if not fetched_api_data:
             QtWidgets.QMessageBox.critical(self.widget,
                 self.translate("Erreur de connexion", "Connection Error"),
                 self.translate("Impossible de récupérer les données.", "Unable to retrieve data."))
             return
-        dialog = WeatherWebDialog(web_data=fetched_api_data, lang=self.current_language, parent=self.widget)
-        dialog.exec()
+        self._weather_dialog = WeatherWebDialog(
+            web_data=fetched_api_data,
+            lang=self.current_language,
+            display_date=relevant_date,
+            on_apply=self._apply_web_weather_to_json,
+            parent=self.widget,
+        )
+        self._weather_dialog.show()
+        self._weather_dialog.raise_()
+        self._weather_dialog.activateWindow()
+
+    # Mapping clé API → clé JSON video_observation
+    _WEATHER_API_TO_JSON = {
+        "airTemp":          "airTemp",
+        "wind":             "wind",
+        "wind_direction":   "wind_direction",
+        "weather":          "weather",
+        "seaState":         "seaState",
+        "water_temperature": "water_temperature",
+        "swell_height":     "swell_height",
+        "swell_direction":  "swell_direction",
+        "moon":             "moon",
+        "tide":             "tide",
+        "coefficient":      "coefficient",
+    }
+
+    def _apply_web_weather_to_json(self, api_data: dict):
+        """Écrit les valeurs météo web dans le _temp.json de la vidéo courante."""
+        json_path = resolve_video_json_path(self._working_dir, self.current_video_path) \
+            if self.current_video_path else None
+        if not json_path or not os.path.isfile(json_path):
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Aucune vidéo", "No video"),
+                self.translate("Sélectionnez une vidéo d'abord.", "Select a video first."),
+            )
+            return
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            for api_key, json_key in self._WEATHER_API_TO_JSON.items():
+                val = api_data.get(api_key)
+                if val is None:
+                    continue
+                if json_key in obs and isinstance(obs[json_key], dict):
+                    obs[json_key]["value"] = val
+                else:
+                    obs[json_key] = {"value": val}
+                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.{json_key} = {val!r}")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            # Recharge les panneaux et reconstruit le tableau des colonnes
+            self.load_all_data(json_path)
+            self._rebuild_ft_table()
+        except Exception as e:
+            print(f"[WEATHER APPLY] Erreur : {e}")
 
     # ── Slate compare ─────────────────────────────────────────────────────
 

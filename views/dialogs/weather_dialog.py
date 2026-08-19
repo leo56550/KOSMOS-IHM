@@ -4,13 +4,20 @@ from PyQt6 import QtWidgets, QtCore
 class WeatherWebDialog(QtWidgets.QDialog):
     """Dialogue de comparaison des données météo web (Open-Meteo)."""
 
-    def __init__(self, web_data: dict, lang: str = "fr", display_date: str = None, parent=None):
+    def __init__(self, web_data: dict, lang: str = "fr", display_date: str = None,
+                 on_apply=None, parent=None):
         """Initialise le dialogue avec les données météo web et la langue d'affichage."""
         super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.Window |
+            QtCore.Qt.WindowType.WindowMaximizeButtonHint |
+            QtCore.Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.web_data = web_data
         self.lang = lang
         self.display_date = display_date
+        self._on_apply = on_apply
 
         self.setWindowTitle(
             "Comparaison des Données Météo Web" if lang == "fr" else "Web Weather Data Comparison"
@@ -96,7 +103,22 @@ class WeatherWebDialog(QtWidgets.QDialog):
 
         btn_layout = QtWidgets.QHBoxLayout()
         btn_layout.addStretch()
+
+        if self._on_apply:
+            btn_apply = QtWidgets.QPushButton("Appliquer" if self.lang == "fr" else "Apply")
+            btn_apply.setStyleSheet(
+                "QPushButton{background:#1a5c2a;color:#c8f0d0;border:1px solid #2ea84a;"
+                "border-radius:4px;padding:6px 14px;font-family:'Segoe UI',sans-serif;}"
+                "QPushButton:hover{background:#2ea84a;}"
+            )
+            btn_apply.clicked.connect(self._apply)
+            btn_layout.addWidget(btn_apply)
+
         btn_close = QtWidgets.QPushButton("Fermer" if self.lang == "fr" else "Close")
-        btn_close.clicked.connect(self.accept)
+        btn_close.clicked.connect(self.close)
         btn_layout.addWidget(btn_close)
         main_layout.addLayout(btn_layout)
+
+    def _apply(self):
+        if self._on_apply:
+            self._on_apply(self.web_data)
