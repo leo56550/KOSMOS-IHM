@@ -799,3 +799,27 @@ Traceback (most recent call last):
     def paintEvent(self, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 09:33:26.908538
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 09:33:27.056902
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 09:33:27.188630
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

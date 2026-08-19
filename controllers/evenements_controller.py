@@ -163,6 +163,7 @@ class EvenementsController:
             layout.addWidget(self.event_player)
 
             self.event_player.btn_ardoise.setVisible(False)
+            self.event_player.btn_ardoise_manquante.setVisible(False)
             self.event_player.btn_debut_annotation.clicked.connect(self._saisir_debut_annotation)
             self.event_player.btn_fin_annotation.clicked.connect(self._saisir_fin_annotation)
             self.event_player.btn_debut_annotation.setVisible(True)
@@ -241,10 +242,9 @@ class EvenementsController:
         if hasattr(self, 'input_commentaire_event'):
             self.input_commentaire_event.setPlaceholderText(
                 self.translate("Écrivez un commentaire...", "Write a comment here..."))
-        if hasattr(self, 'btn_capturer') and self.capture_start_time is None:
-            self._update_capture_mode()
         if hasattr(self, 'btn_finir') and self.capture_start_time is None:
-            self.btn_finir.setText(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
+            self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
+        self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
             self.export_button.setText(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"))
 
@@ -480,91 +480,260 @@ class EvenementsController:
             return 2
         return 0
 
-    # --- Dropdown menus ---
+    # --- Event button panel ---
+
+    _ZONE_STYLES = [
+        {  # 0 — Déploiement (bleu)
+            "header_bg": "#0d1825", "header_fg": "#7ec8e3",
+            "btn_bg": "#0f1e2e", "btn_border": "#2778A2", "btn_fg": "#a0c8e8",
+            "btn_hover": "#1a3a5a", "btn_active_bg": "#2778A2",
+        },
+        {  # 1 — Faune / Animal (vert)
+            "header_bg": "#0d1a0d", "header_fg": "#80e880",
+            "btn_bg": "#0f1e10", "btn_border": "#4CAF50", "btn_fg": "#90c890",
+            "btn_hover": "#1a3a1e", "btn_active_bg": "#3a7a40",
+        },
+        {  # 2 — Image intéressante (rouge)
+            "header_bg": "#1a0d0d", "header_fg": "#ff9090",
+            "btn_bg": "#1e0f0f", "btn_border": "#D94F38", "btn_fg": "#e89090",
+            "btn_hover": "#3a1a1a", "btn_active_bg": "#9a2a1a",
+        },
+    ]
 
     def _initialize_event_dropdown_menus(self):
-        """Crée les combos de type/valeur, le champ commentaire et les boutons Capturer/Finir."""
+        """Crée le panneau de sélection d'événements par boutons colorés par catégorie."""
         if not self.choose_event_container:
             return
         if self.choose_event_container.layout() is None:
             menu_layout = QtWidgets.QVBoxLayout(self.choose_event_container)
         else:
             menu_layout = self.choose_event_container.layout()
-
         menu_layout.setContentsMargins(8, 8, 8, 8)
         menu_layout.setSpacing(6)
         self.choose_event_container.setStyleSheet(
             "QFrame { background-color: #181c24; border: 1px solid #2778a2; border-radius: 14px; }"
         )
 
-        combo_style = """
-            QComboBox { background-color: #212a35; color: white; border: 1px solid #2778a2;
-                        border-radius: 6px; padding: 4px 6px; }
-            QComboBox QAbstractItemView { background-color: #212a35; color: white;
-                                          selection-background-color: #2778a2; }"""
-        btn_style = """
-            QPushButton { background-color: #e68c14; color: white; font-weight: bold;
-                          border: 1px solid #f09624; border-radius: 6px; padding: 5px 8px; }
-            QPushButton:hover { background-color: #f09624; }
-            QPushButton:disabled { background-color: #454545; color: #888888; border: 1px solid #555555; }"""
-        label_style = "color: white; font-weight: bold; font-size: 11px;"
-        title_style = "font-size: 12px; font-weight: bold; color: #ffffff;"
+        if hasattr(self, 'combo_type_event') and self.combo_type_event is not None:
+            return  # Déjà initialisé
 
-        if not hasattr(self, 'combo_type_event') or self.combo_type_event is None:
-            self.lbl_title_event = QtWidgets.QLabel(self.translate("Sélection d'événement", "Event Selection"))
-            self.lbl_title_event.setStyleSheet(title_style)
-            self.lbl_title_event.setMaximumHeight(75)
+        # ── Combos cachés pour compat charger_evenements_du_json ────────
+        self.combo_type_event = QtWidgets.QComboBox()
+        self.combo_valeur_event = QtWidgets.QComboBox()
+        self.combo_type_event.setVisible(False)
+        self.combo_valeur_event.setVisible(False)
+        self.combo_type_event.currentTextChanged.connect(self.on_event_type_changed)
+        self.combo_valeur_event.currentTextChanged.connect(self.on_event_value_changed)
 
-            self.lbl_type_event = QtWidgets.QLabel(self.translate("Type d'événement", "Event Type"))
-            self.lbl_type_event.setStyleSheet(label_style)
-            self.combo_type_event = QtWidgets.QComboBox()
-            self.combo_type_event.setStyleSheet(combo_style)
-            self.combo_type_event.setMinimumWidth(220)
+        # ── Bouton CAPTURER caché pour compat _update_capture_mode ──────
+        self.btn_capturer = QtWidgets.QPushButton()
+        self.btn_capturer.setVisible(False)
+        self.btn_capturer.clicked.connect(self.on_capturer_clicked)
 
-            self.lbl_valeur_event = QtWidgets.QLabel(self.translate("Caractéristiques", "Characteristics"))
-            self.lbl_valeur_event.setStyleSheet(label_style)
-            self.combo_valeur_event = QtWidgets.QComboBox()
-            self.combo_valeur_event.setStyleSheet(combo_style)
-            self.combo_valeur_event.setMinimumWidth(220)
+        # ── État interne ─────────────────────────────────────────────────
+        self._selected_type: str = ""
+        self._selected_value: str = ""
+        self._active_event_btn = None
+        self._event_buttons_all: list = []
 
-            self.lbl_commentaire_input = QtWidgets.QLabel(self.translate("Commentaire rapide", "Quick Comment"))
-            self.lbl_commentaire_input.setStyleSheet(label_style)
-            self.input_commentaire_event = QtWidgets.QLineEdit()
-            self.input_commentaire_event.setPlaceholderText(
-                self.translate("Écrivez un commentaire...", "Write a comment here..."))
-            self.input_commentaire_event.setStyleSheet("""
-                QLineEdit { background-color: #212a35; color: white; border: 1px solid #2778a2;
-                            border-radius: 5px; padding: 3px 6px; }""")
+        # ── Titre ────────────────────────────────────────────────────────
+        self.lbl_title_event = QtWidgets.QLabel(
+            self.translate("Sélection d'événement", "Event Selection"))
+        self.lbl_title_event.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #7ec8e3; border: none;")
+        menu_layout.addWidget(self.lbl_title_event)
 
-            self.btn_capturer = QtWidgets.QPushButton(self.translate("CAPTURER L'ÉVÉNEMENT", "CAPTURE EVENT"))
-            self.btn_capturer.setStyleSheet(btn_style)
-            self.btn_capturer.setMinimumHeight(28)
-            self.btn_finir = QtWidgets.QPushButton(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
-            self.btn_finir.setStyleSheet(btn_style)
-            self.btn_finir.setMinimumHeight(28)
-            self.btn_finir.setEnabled(False)
+        # ── Zone de boutons (scroll) ─────────────────────────────────────
+        self._event_btn_scroll = QtWidgets.QScrollArea()
+        self._event_btn_scroll.setWidgetResizable(True)
+        self._event_btn_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._event_btn_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { background: #111820; width: 5px; border-radius: 2px; }"
+            "QScrollBar::handle:vertical { background: #2a4a62; border-radius: 2px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        )
+        self._event_btn_container = QtWidgets.QWidget()
+        self._event_btn_container.setStyleSheet("background: transparent;")
+        self._event_btn_layout = QtWidgets.QVBoxLayout(self._event_btn_container)
+        self._event_btn_layout.setContentsMargins(2, 2, 2, 2)
+        self._event_btn_layout.setSpacing(4)
+        self._event_btn_layout.addStretch()
+        self._event_btn_scroll.setWidget(self._event_btn_container)
+        menu_layout.addWidget(self._event_btn_scroll, stretch=1)
 
-            menu_layout.addWidget(self.lbl_title_event)
-            form_layout = QtWidgets.QFormLayout()
-            form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
-            form_layout.setFormAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-            form_layout.setSpacing(5)
-            form_layout.setContentsMargins(0, 0, 0, 0)
-            form_layout.addRow(self.lbl_type_event, self.combo_type_event)
-            form_layout.addRow(self.lbl_valeur_event, self.combo_valeur_event)
-            form_layout.addRow(self.lbl_commentaire_input, self.input_commentaire_event)
-            menu_layout.addLayout(form_layout)
+        # ── Séparateur ───────────────────────────────────────────────────
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        sep.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
+        menu_layout.addWidget(sep)
 
-            btn_layout = QtWidgets.QHBoxLayout()
-            btn_layout.setSpacing(10)
-            btn_layout.addWidget(self.btn_capturer)
-            btn_layout.addWidget(self.btn_finir)
-            menu_layout.addLayout(btn_layout)
+        # ── Commentaire ──────────────────────────────────────────────────
+        self.lbl_commentaire_input = QtWidgets.QLabel(
+            self.translate("Commentaire rapide", "Quick Comment"))
+        self.lbl_commentaire_input.setStyleSheet(
+            "color: #a0b8c8; font-size: 10px; font-weight: bold; border: none;")
+        menu_layout.addWidget(self.lbl_commentaire_input)
 
-            self.combo_type_event.currentTextChanged.connect(self.on_event_type_changed)
-            self.combo_valeur_event.currentTextChanged.connect(self.on_event_value_changed)
-            self.btn_capturer.clicked.connect(self.on_capturer_clicked)
-            self.btn_finir.clicked.connect(self.on_finir_clicked)
+        self.input_commentaire_event = QtWidgets.QLineEdit()
+        self.input_commentaire_event.setPlaceholderText(
+            self.translate("Écrivez un commentaire...", "Write a comment here..."))
+        self.input_commentaire_event.setStyleSheet(
+            "QLineEdit { background-color: #212a35; color: white; border: 1px solid #2778a2;"
+            " border-radius: 5px; padding: 3px 6px; font-size: 10px; }"
+        )
+        menu_layout.addWidget(self.input_commentaire_event)
+
+        # ── Bouton FIN (visible seulement pendant capture durée) ─────────
+        self.btn_finir = QtWidgets.QPushButton(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
+        self.btn_finir.setStyleSheet(
+            "QPushButton { background-color: #7a1e1e; color: white; font-weight: bold;"
+            " border: 2px solid #D94F38; border-radius: 6px; padding: 7px 8px; font-size: 10px; }"
+            "QPushButton:hover { background-color: #D94F38; }"
+        )
+        self.btn_finir.setMinimumHeight(34)
+        self.btn_finir.setVisible(False)
+        self.btn_finir.clicked.connect(self.on_finir_clicked)
+        menu_layout.addWidget(self.btn_finir)
+
+    def _apply_evt_btn_style(self, btn: QtWidgets.QPushButton, s: dict, state: str):
+        """Applique le style visuel d'un bouton d'événement (normal / selected / active)."""
+        if state == "active":
+            style = (
+                f"QPushButton {{ background-color: {s['btn_active_bg']}; color: white;"
+                f" border: 2px solid white; border-radius: 5px;"
+                f" padding: 5px 6px; font-size: 10px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background-color: {s['btn_hover']}; }}"
+            )
+        elif state == "selected":
+            style = (
+                f"QPushButton {{ background-color: {s['btn_hover']}; color: white;"
+                f" border: 2px solid {s['btn_border']}; border-radius: 5px;"
+                f" padding: 5px 6px; font-size: 10px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background-color: {s['btn_active_bg']}; }}"
+            )
+        else:
+            style = (
+                f"QPushButton {{ background-color: {s['btn_bg']}; color: {s['btn_fg']};"
+                f" border: 1px solid {s['btn_border']}; border-radius: 5px;"
+                f" padding: 5px 6px; font-size: 10px; font-weight: bold; }}"
+                f"QPushButton:hover {{ background-color: {s['btn_hover']}; color: white; }}"
+            )
+        btn.setStyleSheet(style)
+
+    def _rebuild_event_buttons(self):
+        """Reconstruit les boutons colorés de sélection d'événements depuis event_dictionary."""
+        if not hasattr(self, '_event_btn_layout'):
+            return
+
+        layout = self._event_btn_layout
+        # Vider tout sauf le stretch final
+        while layout.count() > 1:
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        self._event_buttons_all = []
+        self._active_event_btn = None
+
+        if not self.event_dictionary:
+            placeholder = QtWidgets.QLabel(
+                self.translate("Aucune catégorie d'événement disponible.",
+                               "No event categories available."))
+            placeholder.setStyleSheet(
+                "color: #3a5568; font-size: 10px; border: none; padding: 8px;")
+            placeholder.setWordWrap(True)
+            layout.insertWidget(0, placeholder)
+            return
+
+        for cat_label, values in self.event_dictionary.items():
+            if not values:
+                continue
+            zone_idx = self._zone_index_for_event_type(cat_label)
+            s = self._ZONE_STYLES[zone_idx] if zone_idx < len(self._ZONE_STYLES) else self._ZONE_STYLES[0]
+
+            # En-tête de catégorie
+            lbl = QtWidgets.QLabel(f"  {cat_label.upper()}")
+            lbl.setStyleSheet(
+                f"background-color: {s['header_bg']}; color: {s['header_fg']};"
+                f" font-size: 9px; font-weight: bold; border-radius: 3px;"
+                f" border: 1px solid {s['btn_border']}; padding: 2px 6px;"
+            )
+            layout.insertWidget(layout.count() - 1, lbl)
+
+            # Grille de boutons (2 par ligne)
+            COLS = 2
+            row_w = None
+            row_l = None
+            for i, value in enumerate(values):
+                if i % COLS == 0:
+                    row_w = QtWidgets.QWidget()
+                    row_w.setStyleSheet("background: transparent;")
+                    row_l = QtWidgets.QHBoxLayout(row_w)
+                    row_l.setContentsMargins(0, 0, 0, 0)
+                    row_l.setSpacing(4)
+                    layout.insertWidget(layout.count() - 1, row_w)
+
+                btn = QtWidgets.QPushButton(str(value).capitalize())
+                btn.setProperty("_zone_s", s)
+                btn.setProperty("_cat", cat_label)
+                btn.setProperty("_val", str(value))
+                btn.setSizePolicy(
+                    QtWidgets.QSizePolicy.Policy.Expanding,
+                    QtWidgets.QSizePolicy.Policy.Fixed,
+                )
+                self._apply_evt_btn_style(btn, s, "normal")
+                btn.clicked.connect(
+                    lambda _=False, tl=cat_label, v=str(value), b=btn:
+                    self._on_event_btn_clicked(tl, v, b)
+                )
+                row_l.addWidget(btn)
+                self._event_buttons_all.append(btn)
+
+            if row_l and len(values) % COLS != 0:
+                row_l.addStretch()
+
+            # Espace entre catégories
+            gap = QtWidgets.QWidget()
+            gap.setFixedHeight(6)
+            gap.setStyleSheet("background: transparent;")
+            layout.insertWidget(layout.count() - 1, gap)
+
+    def _on_event_btn_clicked(self, type_label: str, value: str, btn: QtWidgets.QPushButton):
+        """Gère le clic sur un bouton d'événement : capture immédiate ou armer une durée."""
+        self._selected_type = type_label
+        self._selected_value = value
+
+        # Réinitialiser le style de tous les boutons
+        for b in self._event_buttons_all:
+            s = b.property("_zone_s") or self._ZONE_STYLES[0]
+            self._apply_evt_btn_style(b, s, "normal")
+
+        s = btn.property("_zone_s") or self._ZONE_STYLES[0]
+
+        if self._is_single_frame_event(type_label, value):
+            # Flash visuel puis capture
+            self._apply_evt_btn_style(btn, s, "active")
+            QtCore.QTimer.singleShot(
+                500,
+                lambda b=btn: self._apply_evt_btn_style(
+                    b, b.property("_zone_s") or self._ZONE_STYLES[0], "normal"
+                ) if b else None
+            )
+            self.on_capturer_clicked()
+        else:
+            if self.capture_start_time is not None:
+                # Annule la capture en cours avant d'en démarrer une nouvelle
+                self.capture_start_time = None
+                if self._active_event_btn:
+                    sb = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
+                    self._apply_evt_btn_style(self._active_event_btn, sb, "normal")
+
+            # Armer la capture de durée
+            self._active_event_btn = btn
+            self._apply_evt_btn_style(btn, s, "selected")
+            self.on_capturer_clicked()  # positionne capture_start_time et affiche btn_finir
 
     # --- Export UI ---
 
@@ -953,19 +1122,8 @@ class EvenementsController:
         return None
 
     def _update_capture_mode(self):
-        """Adapte le libellé et l'état des boutons Capturer/Finir selon le type d'événement sélectionné."""
-        current_type = self.combo_type_event.currentText()
-        current_value = self.combo_valeur_event.currentText() if hasattr(self, 'combo_valeur_event') else ""
-        if self._is_single_frame_event(current_type, current_value):
-            self.btn_capturer.setText(self.translate("CAPTURER", "CAPTURE"))
-            self.btn_finir.setVisible(False)
-            self.btn_finir.setEnabled(False)
-            if self.capture_start_time is not None:
-                self.capture_start_time = None
-        else:
-            self.btn_capturer.setText(self.translate("CAPTURER L'ÉVÉNEMENT", "CAPTURE EVENT"))
-            self.btn_finir.setVisible(True)
-            self.btn_finir.setEnabled(False)
+        """Aucune action requise : la gestion du mode est assurée par _on_event_btn_clicked."""
+        pass
 
     # --- Capture button handlers ---
 
@@ -973,8 +1131,8 @@ class EvenementsController:
         """Enregistre un événement ponctuel ou démarre la capture d'un événement avec durée."""
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
-        current_type = self.combo_type_event.currentText()
-        current_value = self.combo_valeur_event.currentText()
+        current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
+        current_value = getattr(self, '_selected_value', '') or self.combo_valeur_event.currentText()
         quick_comment = self.input_commentaire_event.text().strip() if hasattr(self, 'input_commentaire_event') else ""
         pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
         time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
@@ -1018,16 +1176,22 @@ class EvenementsController:
         else:
             self.capture_start_time = pos_ms
             self._current_comment = quick_comment
-            self.btn_capturer.setEnabled(False)
-            self.btn_finir.setEnabled(True)
-            self.btn_finir.setText(self.translate(f"FIN D'ÉVÉNEMENT (Début : {time_str})", f"END EVENT (Start: {time_str})"))
+            # Marquer le bouton actif en "active" et afficher FIN
+            if hasattr(self, '_active_event_btn') and self._active_event_btn:
+                s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
+                self._apply_evt_btn_style(self._active_event_btn, s, "active")
+            if hasattr(self, 'btn_finir'):
+                self.btn_finir.setText(
+                    self.translate(f"⏹ FIN  (début {time_str})", f"⏹ END  (start {time_str})")
+                )
+                self.btn_finir.setVisible(True)
 
     def on_finir_clicked(self):
         """Clôture la capture en cours et enregistre l'événement avec sa durée start→end."""
         if not hasattr(self, 'event_player') or self.capture_start_time is None:
             return
-        current_type = self.combo_type_event.currentText()
-        current_value = self.combo_valeur_event.currentText()
+        current_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
+        current_value = getattr(self, '_selected_value', '') or self.combo_valeur_event.currentText()
         saved_comment = getattr(self, '_current_comment', "")
         t_start = self.capture_start_time
         t_end = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
@@ -1064,9 +1228,14 @@ class EvenementsController:
         self._current_comment = ""
         if hasattr(self, 'input_commentaire_event'):
             self.input_commentaire_event.clear()
-        self.btn_capturer.setEnabled(True)
-        self.btn_finir.setEnabled(False)
-        self.btn_finir.setText(self.translate("FIN D'ÉVÉNEMENT", "END EVENT"))
+        # Réinitialiser le bouton actif et cacher FIN
+        if hasattr(self, '_active_event_btn') and self._active_event_btn:
+            s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
+            self._apply_evt_btn_style(self._active_event_btn, s, "normal")
+            self._active_event_btn = None
+        if hasattr(self, 'btn_finir'):
+            self.btn_finir.setVisible(False)
+            self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
 
     def _saisir_ardoise(self):
         """Capture un événement ardoise ponctuel à la position courante du lecteur."""
@@ -1168,8 +1337,14 @@ class EvenementsController:
             self.tree_captures.clear()
 
         self.capture_start_time = None
-        if hasattr(self, 'btn_capturer'):
-            self.btn_capturer.setEnabled(True)
+        self._selected_type = ""
+        self._selected_value = ""
+        if hasattr(self, '_active_event_btn') and self._active_event_btn:
+            s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
+            self._apply_evt_btn_style(self._active_event_btn, s, "normal")
+            self._active_event_btn = None
+        if hasattr(self, 'btn_finir'):
+            self.btn_finir.setVisible(False)
         if hasattr(self, 'event_player') and self.event_player:
             self.event_player.btn_debut_annotation.setEnabled(True)
             self.event_player.btn_fin_annotation.setEnabled(True)
@@ -1282,7 +1457,7 @@ class EvenementsController:
             QtCore.QTimer.singleShot(400, self._update_histogram)
 
     def charger_evenements_du_json(self):
-        """Lit le JSON vidéo courant et peuple les combos de type/valeur avec les catégories disponibles."""
+        """Lit le JSON vidéo courant, construit event_dictionary et reconstruit les boutons."""
         self.event_dictionary.clear()
         self.combo_type_event.blockSignals(True)
         self.combo_type_event.clear()
@@ -1297,6 +1472,7 @@ class EvenementsController:
             except Exception as e:
                 print(f"[ERROR] Failed to read JSON event schema: {e}")
         self.combo_type_event.blockSignals(False)
+        self._rebuild_event_buttons()
 
     # --- JSON persistence ---
 
@@ -1416,7 +1592,7 @@ class EvenementsController:
         self.tree_captures.blockSignals(False)
         self.tree_captures.viewport().update()
 
-        display_type = self.combo_type_event.currentText()
+        display_type = getattr(self, '_selected_type', '') or self.combo_type_event.currentText()
         if "_json_key" in modified_event:
             display_type = self._get_label_from_json_key(modified_event["_json_key"])
         self.save_event_to_json(modified_event, display_type)
