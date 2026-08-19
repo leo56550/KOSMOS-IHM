@@ -207,6 +207,33 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         survey["datawork_folder"] = {"value": campaign_folder}
         survey["video_subfolder"] = {"value": system_folder}
 
+        # ── Champs system depuis le JSON brut <stem>.json ─────────────────
+        raw_json_path = os.path.join(folder, f"{stem}.json")
+        if os.path.isfile(raw_json_path):
+            try:
+                with open(raw_json_path, "r", encoding="utf-8") as f_raw:
+                    raw = json.load(f_raw)
+                raw_sys = raw.get("system", {})
+                sys_block = data.setdefault("system", {})
+                _RAW_TO_TEMPLATE = {
+                    "camera":  "camera",
+                    "model":   "model_mcu",
+                    "system":  "type_system",
+                    "version": "system_version",
+                }
+                mapped = []
+                for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
+                    val = raw_sys.get(raw_key)
+                    if val is not None and tmpl_key in sys_block:
+                        sys_block[tmpl_key]["value"] = val
+                        mapped.append(f"system.{tmpl_key} = {val!r}")
+                if mapped:
+                    print(f"[TEMP_JSON] {stem}_temp.json ← system (depuis {stem}.json) :")
+                    for entry in mapped:
+                        print(f"            {entry}")
+            except Exception as e_raw:
+                print(f"[INIT] Impossible de lire {stem}.json pour system : {e_raw}")
+
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         print(f"[INIT] {stem}_temp.json créé"
@@ -265,6 +292,36 @@ def update_temp_json_paths(video_path: str) -> None:
             if entry.get("value") != value:
                 survey[field] = {"value": value}
                 modified = True
+
+        # Champs system depuis le JSON brut (seulement si vides dans le temp)
+        raw_json_path = os.path.join(folder, f"{stem}.json")
+        if os.path.isfile(raw_json_path):
+            try:
+                with open(raw_json_path, "r", encoding="utf-8") as f_raw:
+                    raw = json.load(f_raw)
+                raw_sys = raw.get("system", {})
+                sys_block = data.get("system", {})
+                _RAW_TO_TEMPLATE = {
+                    "camera":  "camera",
+                    "model":   "model_mcu",
+                    "system":  "type_system",
+                    "version": "system_version",
+                }
+                mapped = []
+                for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
+                    val = raw_sys.get(raw_key)
+                    if val is not None and tmpl_key in sys_block:
+                        entry = sys_block[tmpl_key]
+                        if isinstance(entry, dict) and not entry.get("value"):
+                            entry["value"] = val
+                            modified = True
+                            mapped.append(f"system.{tmpl_key} = {val!r}")
+                if mapped:
+                    print(f"[TEMP_JSON] {stem}_temp.json ← system (depuis {stem}.json) :")
+                    for entry in mapped:
+                        print(f"            {entry}")
+            except Exception:
+                pass
 
         if modified:
             with open(temp_path, "w", encoding="utf-8") as f:
