@@ -1036,6 +1036,11 @@ class QualifController:
             if key not in merged:
                 merged[key] = meta
 
+        _HIDDEN_SURVEY_KEYS = {"campagne", "site", "protectionStatus1", "protectionStatus2",
+                               "campaign", "campaign_code", "campaign_name", "mission"}
+        _HIDDEN_SURVEY_LABELS = {"campagne", "site", "statut de protection 1",
+                                  "statut de protection 2", "campaign"}
+
         if merged:
             form_layout = QtWidgets.QFormLayout(self.dynamic_form_container)
             form_layout.setContentsMargins(6, 4, 6, 4)
@@ -1045,7 +1050,11 @@ class QualifController:
             form_layout.setFieldGrowthPolicy(
                 QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             for key, meta in merged.items():
+                if key in _HIDDEN_SURVEY_KEYS:
+                    continue
                 display_name = meta.get("name_fr", key).capitalize()
+                if display_name.lower() in _HIDDEN_SURVEY_LABELS:
+                    continue
                 value_str = str(meta.get("value") or "")
                 input_field = QtWidgets.QLineEdit()
                 input_field.setText(value_str)
