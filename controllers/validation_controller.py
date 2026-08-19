@@ -10,6 +10,7 @@ from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
+from views.style import BTN_PRIMARY
 
 
 
@@ -134,8 +135,9 @@ class ValidationController:
             self.player.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
             )
-            self.player.btn_ardoise.clicked.connect(self._saisir_ardoise)
-            self.player.btn_ardoise_manquante.clicked.connect(self._saisir_ardoise_manquante)
+            # Cacher les boutons ardoise originaux du player
+            self.player.btn_ardoise.setVisible(False)
+            self.player.btn_ardoise_manquante.setVisible(False)
 
         main_splitter = self.page.findChild(QtWidgets.QSplitter, "splitter_3")
         if main_splitter:
@@ -160,6 +162,49 @@ class ValidationController:
                 QtWidgets.QSizePolicy.Policy.Preferred,
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
+
+        # ── Boutons ardoise sous la liste vidéo ──────────────────────────────
+        _STYLE_MANQUANTE = """
+            QPushButton { background-color:#2e1800; color:#f0a030; font-weight:bold;
+                border:1px solid #8b5e10; border-radius:4px; padding:5px 10px;
+                font-size:11px; font-family:"Segoe UI",sans-serif; }
+            QPushButton:hover { background-color:#4a2a00; color:#ffc050; border-color:#c07820; }
+            QPushButton:disabled { background-color:#181818; color:#484848; border-color:#282828; }
+        """
+        ardoise_bar = QtWidgets.QWidget()
+        ardoise_bar.setFixedHeight(38)
+        ab_layout = QtWidgets.QHBoxLayout(ardoise_bar)
+        ab_layout.setContentsMargins(4, 3, 4, 3)
+        ab_layout.setSpacing(6)
+
+        btn_ard = QtWidgets.QPushButton(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
+        btn_ard.setStyleSheet(BTN_PRIMARY)
+        btn_ard.setEnabled(False)
+        btn_ard.setToolTip(self.translate("Saisir l'ardoise à la position courante",
+                                          "Record slate at current position"))
+        btn_ard_manq = QtWidgets.QPushButton("⚠ " + self.translate("ARDOISE MANQUANTE", "MISSING SLATE"))
+        btn_ard_manq.setStyleSheet(_STYLE_MANQUANTE)
+        btn_ard_manq.setEnabled(False)
+        btn_ard_manq.setToolTip(self.translate("Signaler l'absence d'ardoise dans cette vidéo",
+                                               "Flag missing slate for this video"))
+        ab_layout.addWidget(btn_ard)
+        ab_layout.addWidget(btn_ard_manq)
+
+        # Insérer juste après sp4 dans son layout parent
+        if sp4:
+            parent_w = sp4.parentWidget()
+            parent_l = parent_w.layout() if parent_w else None
+            if parent_l:
+                idx = parent_l.indexOf(sp4)
+                parent_l.insertWidget(idx + 1, ardoise_bar)
+
+        # Remplacer les attributs du player par les nouveaux boutons
+        # → tout le code existant (setText, setEnabled…) opère sur les vrais boutons
+        if hasattr(self, 'player') and self.player:
+            self.player.btn_ardoise = btn_ard
+            self.player.btn_ardoise_manquante = btn_ard_manq
+            self.player.btn_ardoise.clicked.connect(self._saisir_ardoise)
+            self.player.btn_ardoise_manquante.clicked.connect(self._saisir_ardoise_manquante)
 
         self._exploitable_btns: list[_ToggleFrame] = []
         self._exploitable_choices: list[str] = []
