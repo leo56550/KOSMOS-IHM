@@ -39,7 +39,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 'Validation': 'Validation', 'Événements': 'Events',
                 'Métadonnées': 'Metadata', 'À propos': 'About',
                 'Finir qualification': 'Finish qualification',
-                'Finir validation': 'VALIDER',
+                'Finir validation': 'VALIDATE',
                 'Qualification Terminée ✓': 'Qualification completed ✓',
                 'Validation Terminée ✓': 'Validation completed ✓',
                 'derusher_active': '{} is currently derushing',
@@ -326,16 +326,26 @@ class MainWindow(QtWidgets.QMainWindow):
         s = total_seconds % 60
         dur_str = f"{h}h {m:02d}m {s:02d}s" if h > 0 else f"{m}m {s:02d}s"
         pct = int(100 * qualified_count / video_count) if video_count > 0 else 0
+        lang = getattr(self, 'current_language', 'fr')
 
-        self._sb_videos.setText(f"{video_count} vidéo{'s' if video_count != 1 else ''}")
-        self._sb_duration.setText(f"Durée totale : {dur_str}")
+        if lang == 'fr':
+            video_lbl = f"{video_count} vidéo{'s' if video_count != 1 else ''}"
+            dur_lbl = f"Durée totale : {dur_str}"
+            qual_lbl = f"Validées : {qualified_count}/{video_count}  ({pct} %)"
+        else:
+            video_lbl = f"{video_count} video{'s' if video_count != 1 else ''}"
+            dur_lbl = f"Total duration: {dur_str}"
+            qual_lbl = f"Validated: {qualified_count}/{video_count}  ({pct} %)"
+
+        self._sb_videos.setText(video_lbl)
+        self._sb_duration.setText(dur_lbl)
 
         color = "#4CAF50" if pct == 100 else "#f0c040" if pct > 0 else "#a0b8c8"
         self._sb_qualified.setStyleSheet(
             f"color: {color}; font-family: 'Segoe UI', sans-serif;"
             " font-size: 13px; padding: 0 14px;"
         )
-        self._sb_qualified.setText(f"Validées : {qualified_count}/{video_count}  ({pct} %)")
+        self._sb_qualified.setText(qual_lbl)
 
     def _load_flag_icon(self, filename: str) -> QtGui.QIcon:
         """Charge l'icône drapeau depuis img/filename, retourne une icône vide si absent."""
@@ -357,6 +367,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_language_buttons(self, language: str):
         """Met à jour l'état des boutons langue et traduit les textes des actions de navigation."""
+        self.current_language = language
         self.btn_lang_fr.setChecked(language == 'fr')
         self.btn_lang_en.setChecked(language == 'en')
         trans = self.translations.get(language, {})
@@ -371,3 +382,34 @@ class MainWindow(QtWidgets.QMainWindow):
             action = getattr(self, attr, None)
             if action:
                 action.setText(trans.get(key, action.text()))
+        self._retranslate_action_toolbar(language)
+
+    _ACTION_TOOLBAR_TEXTS = {
+        'fr': {
+            'btn_recent_campaigns': ("Campagnes récentes", "Ouvrir une campagne récente"),
+            'btn_open_video':       ("Ouvrir vidéo",       "Ouvrir un fichier MP4 sans charger de campagne"),
+            'btn_sftp':             ("KOSMOS Connexion",   "Connexion SFTP / Planification déploiement"),
+            'btn_notes':            ("Notes",              "Notes de session — mémo libre de la campagne"),
+            'btn_rapport_pdf':      ("Rapport PDF",        "Générer un rapport PDF de la campagne"),
+            'btn_vue_globale':      ("Vue globale",        "Vision globale de la campagne sur une timeline"),
+            'btn_load_history':     ("Données historiques","Charger les données historiques depuis le serveur"),
+        },
+        'en': {
+            'btn_recent_campaigns': ("Recent campaigns",   "Open a recent campaign"),
+            'btn_open_video':       ("Open video",         "Open an MP4 file without loading a campaign"),
+            'btn_sftp':             ("KOSMOS Connection",  "SFTP connection / Deployment planning"),
+            'btn_notes':            ("Notes",              "Session notes — free memo for the campaign"),
+            'btn_rapport_pdf':      ("PDF Report",         "Generate a PDF report of the campaign"),
+            'btn_vue_globale':      ("Global view",        "Global campaign view on a timeline"),
+            'btn_load_history':     ("Historical data",    "Load historical data from the server"),
+        },
+    }
+
+    def _retranslate_action_toolbar(self, language: str):
+        """Traduit les boutons de la toolbar d'actions secondaires."""
+        texts = self._ACTION_TOOLBAR_TEXTS.get(language, self._ACTION_TOOLBAR_TEXTS['fr'])
+        for name, (label, tip) in texts.items():
+            btn = getattr(self, name, None)
+            if btn:
+                btn.setText(label)
+                btn.setToolTip(tip)

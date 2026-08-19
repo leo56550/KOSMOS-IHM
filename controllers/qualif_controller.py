@@ -198,6 +198,10 @@ class QualifController:
         ]
         self.video_model.setHorizontalHeaderLabels(header_labels)
         self.trash_model.setHorizontalHeaderLabels(header_labels)
+        if hasattr(self, 'btn_save_campaign'):
+            self.btn_save_campaign.setText(self.translate("Sauvegarder", "Save"))
+        if hasattr(self, '_video_row_widgets'):
+            self._rebuild_video_rows()
 
     # --- Init helpers ---
 
@@ -502,8 +506,10 @@ class QualifController:
         lbl_name.setToolTip(video_name)
         lbl_name.setWordWrap(False)
 
-        time_part = f"Heure de prise : {station_time}    " if station_time else ""
-        lbl_info = QtWidgets.QLabel(f"{time_part}Durée : {duration}    {size}")
+        time_label = self.translate("Heure de prise", "Recording time")
+        dur_label = self.translate("Durée", "Duration")
+        time_part = f"{time_label} : {station_time}    " if station_time else ""
+        lbl_info = QtWidgets.QLabel(f"{time_part}{dur_label} : {duration}    {size}")
         lbl_info.setStyleSheet("color: #90b8d0; font-size: 10px; background: transparent;")
 
         info_layout.addWidget(lbl_name)
@@ -511,7 +517,7 @@ class QualifController:
         hlayout.addWidget(info_col)
 
         # Bouton GARDER
-        btn_garder = QtWidgets.QPushButton("GARDER")
+        btn_garder = QtWidgets.QPushButton(self.translate("GARDER", "KEEP"))
         btn_garder.setFixedSize(68, 28)
         if not is_trash:
             btn_garder.setStyleSheet(
@@ -529,7 +535,7 @@ class QualifController:
             )
 
         # Bouton JETER
-        btn_jeter = QtWidgets.QPushButton("JETER")
+        btn_jeter = QtWidgets.QPushButton(self.translate("JETER", "DISCARD"))
         btn_jeter.setFixedSize(68, 28)
         if is_trash:
             btn_jeter.setStyleSheet(
@@ -1091,6 +1097,18 @@ class QualifController:
             self.btn_save_campaign.setText(self.translate("✓ Sauvegardé", "✓ Saved"))
             QtCore.QTimer.singleShot(2000, lambda: self.btn_save_campaign.setText(
                 self.translate("Sauvegarder", "Save")))
+
+        if self.frame_campaign:
+            self.frame_campaign.setStyleSheet(
+                "background-color: rgb(32, 65, 93);"
+                "border-radius: 10px;"
+                "border: 2px solid #5bb8f5;"
+            )
+            QtCore.QTimer.singleShot(2000, lambda: self.frame_campaign.setStyleSheet(
+                "background-color: rgb(32, 65, 93);"
+                "border-radius: 10px;"
+                "border: 1px solid #152d42;"
+            ))
 
     def synchronize_campaign_field(self, key: str, value: str):
         """Écrit value dans le champ key de la section survey de chaque _temp.json vidéo."""

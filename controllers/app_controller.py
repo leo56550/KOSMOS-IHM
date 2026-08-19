@@ -145,6 +145,8 @@ class AppController:
 
         self.lock_navigation(True)
         self.switch_page(window.page_accueil)
+        # Synchronise la langue initiale (fenêtre démarre en FR, controllers en EN par défaut)
+        self.set_language(window.current_language)
 
     def _on_meta_video_selected(self, video_name: str, _video_path: str):  # noqa: ARG002
         """Ouvre le player détaché et focus la carte depuis la page Métadonnées."""
@@ -351,8 +353,11 @@ class AppController:
         if not campaign_folder or not os.path.isdir(campaign_folder):
             QtWidgets.QMessageBox.warning(
                 self.window,
-                "Dossier introuvable",
-                f"Le dossier de campagne n'existe plus :\n{campaign_folder}",
+                self.translate("Dossier introuvable", "Folder not found"),
+                self.translate(
+                    f"Le dossier de campagne n'existe plus :\n{campaign_folder}",
+                    f"The campaign folder no longer exists:\n{campaign_folder}",
+                ),
             )
             return
         self.handle_campaign_opening(
@@ -366,8 +371,11 @@ class AppController:
         # TODO: implémenter la logique de chargement historique
         QtWidgets.QMessageBox.information(
             self.window,
-            "Données historiques",
-            "Chargement des données historiques — fonctionnalité à venir."
+            self.translate("Données historiques", "Historical data"),
+            self.translate(
+                "Chargement des données historiques — fonctionnalité à venir.",
+                "Loading historical data — feature coming soon."
+            )
         )
 
     def _open_vue_globale(self):
@@ -397,6 +405,11 @@ class AppController:
 
     # --- Language ---
 
+    def translate(self, fr: str, en: str) -> str:
+        """Retourne fr ou en selon la langue courante de la fenêtre."""
+        lang = getattr(self.window, 'current_language', 'fr')
+        return fr if lang == 'fr' else en
+
     def set_language(self, language: str):
         """Propage la langue à tous les controllers et met à jour les boutons workflow."""
         w = self.window
@@ -409,6 +422,7 @@ class AppController:
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
+        self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):
         """Rafraîchit les labels dérusher et campagne de la toolbar avec les traductions actuelles."""
@@ -664,9 +678,14 @@ class AppController:
         if missing:
             names = "\n".join(f"  • {n}" for n in missing)
             QtWidgets.QMessageBox.warning(
-                self.window, "Ardoises manquantes",
-                f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
-                "Veuillez saisir les ardoises avant de valider."
+                self.window,
+                self.translate("Ardoises manquantes", "Missing slates"),
+                self.translate(
+                    f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
+                    "Veuillez saisir les ardoises avant de valider.",
+                    f"The following videos are usable but have no slate entered:\n\n{names}\n\n"
+                    "Please enter the slates before validating."
+                )
             )
             return
         self.validation_completed = True
@@ -731,25 +750,37 @@ class AppController:
 
         if page == w.page_validation and not self.qualification_completed:
             QtWidgets.QMessageBox.warning(
-                w, "Qualification requise",
-                "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
-                "avant d'accéder à cette page."
+                w,
+                self.translate("Qualification requise", "Qualification required"),
+                self.translate(
+                    "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
+                    "avant d'accéder à cette page.",
+                    "Please click QUALIFY on the Qualification page\nbefore accessing this page."
+                )
             )
             return
 
         if page in (w.page_metadonnees, w.page_evenements):
             if not self.qualification_completed:
                 QtWidgets.QMessageBox.warning(
-                    w, "Qualification requise",
-                    "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
-                    "avant d'accéder à cette page."
+                    w,
+                    self.translate("Qualification requise", "Qualification required"),
+                    self.translate(
+                        "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
+                        "avant d'accéder à cette page.",
+                        "Please click QUALIFY on the Qualification page\nbefore accessing this page."
+                    )
                 )
                 return
             if not self.validation_completed:
                 QtWidgets.QMessageBox.warning(
-                    w, "Validation requise",
-                    "Veuillez cliquer sur VALIDER dans la page Validation\n"
-                    "avant d'accéder à cette page."
+                    w,
+                    self.translate("Validation requise", "Validation required"),
+                    self.translate(
+                        "Veuillez cliquer sur VALIDER dans la page Validation\n"
+                        "avant d'accéder à cette page.",
+                        "Please click VALIDATE on the Validation page\nbefore accessing this page."
+                    )
                 )
                 return
 
@@ -758,9 +789,14 @@ class AppController:
             if missing:
                 names = "\n".join(f"  • {n}" for n in missing)
                 QtWidgets.QMessageBox.warning(
-                    w, "Ardoises manquantes",
-                    f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
-                    "Veuillez saisir les ardoises avant d'accéder aux métadonnées."
+                    w,
+                    self.translate("Ardoises manquantes", "Missing slates"),
+                    self.translate(
+                        f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
+                        "Veuillez saisir les ardoises avant d'accéder aux métadonnées.",
+                        f"The following videos are usable but have no slate entered:\n\n{names}\n\n"
+                        "Please enter the slates before accessing metadata."
+                    )
                 )
                 return
 

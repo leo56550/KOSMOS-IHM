@@ -104,6 +104,13 @@ class ValidationController:
             self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
+            self.video_tree.setHeaderHidden(True)
+            self.video_tree.setColumnHidden(1, True)
+            self.video_tree.setColumnHidden(2, True)
+            self.video_tree.header().setStretchLastSection(False)
+            self.video_tree.header().setSectionResizeMode(
+                0, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
             self.video_tree.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.video_tree)
             self.video_tree.setItemDelegateForColumn(0, self._bar_delegate)
@@ -242,12 +249,12 @@ class ValidationController:
         sep2.setStyleSheet("background-color: #1e3448; border: none; max-height: 1px;")
         layout.addWidget(sep2)
 
-        lbl_comment = QtWidgets.QLabel(self.translate("Commentaires vidéo", "Video comments"))
-        lbl_comment.setStyleSheet(
+        self.lbl_comment = QtWidgets.QLabel(self.translate("Commentaires vidéo", "Video comments"))
+        self.lbl_comment.setStyleSheet(
             "color: #F2BFB4; font-size: 11px; font-weight: bold;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
         )
-        layout.addWidget(lbl_comment)
+        layout.addWidget(self.lbl_comment)
 
         self._comment_edit = QtWidgets.QPlainTextEdit()
         self._comment_edit.setPlaceholderText(
@@ -278,7 +285,9 @@ class ValidationController:
             ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
             has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
             if ardoise_missing and not has_ardoise:
-                self._ardoise_warning.setText("⚠ Ardoise manquante pour cette vidéo")
+                self._ardoise_warning.setText(
+                    self.translate("⚠ Ardoise manquante pour cette vidéo", "⚠ Slate missing for this video")
+                )
                 self._ardoise_warning.setVisible(True)
             else:
                 self._ardoise_warning.setVisible(False)
@@ -428,12 +437,25 @@ class ValidationController:
         self.current_language = language
         if hasattr(self, 'player'):
             self.player.set_language(language)
-        if hasattr(self, 'lbl_exploitable'):
-            self.lbl_exploitable.setText(
-                self.translate("Exploitabilité vidéo", "Video Exploitability")
-            )
+        self._retranslate_ui()
         if self.current_json_path and os.path.exists(self.current_json_path):
             self.refresh_combobox_values()
+        self.refresh_ardoise_warning()
+
+    def _retranslate_ui(self):
+        """Met à jour tous les libellés statiques selon la langue active."""
+        if hasattr(self, 'lbl_exploitable'):
+            self.lbl_exploitable.setText(self.translate("Exploitabilité vidéo", "Video Exploitability"))
+        if hasattr(self, 'lbl_comment'):
+            self.lbl_comment.setText(self.translate("Commentaires vidéo", "Video comments"))
+        if hasattr(self, '_comment_edit'):
+            self._comment_edit.setPlaceholderText(
+                self.translate("Observations sur la vidéo…", "Video observations…")
+            )
+        if hasattr(self, '_status_badge'):
+            current = self._status_badge.text()
+            if current in ("Aucune sélection", "No selection"):
+                self._status_badge.setText(self.translate("Aucune sélection", "No selection"))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle source du proxy après un changement de campagne."""
@@ -762,9 +784,11 @@ class ValidationController:
 
             # Feedback visuel : label temporaire puis "MODIFIER ARDOISE"
             if _is_modify:
-                tmp_label = f"✓ Modifié N°{station_num}" if station_num else "✓ Modifié"
+                tmp_label = (f"✓ {self.translate('Modifié', 'Modified')} N°{station_num}"
+                             if station_num else f"✓ {self.translate('Modifié', 'Modified')}")
             else:
-                tmp_label = f"✓ N°{station_num}" if station_num else "✓ Ardoise"
+                tmp_label = (f"✓ N°{station_num}"
+                             if station_num else f"✓ {self.translate('Ardoise', 'Slate')}")
                 self._flash_ardoise()
 
             self.player.btn_ardoise.setText(tmp_label)

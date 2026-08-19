@@ -791,3 +791,11 @@ Traceback (most recent call last):
     def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 09:14:08.499300
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 148, in paintEvent
+    def paintEvent(self, event):
+    
+KeyboardInterrupt

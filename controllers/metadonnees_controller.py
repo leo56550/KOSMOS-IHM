@@ -346,35 +346,37 @@ class MetadonneesController:
         self._btn_web.clicked.connect(self.action_compare_weather_web)
         tb_row.addWidget(self._btn_web)
 
-        btn_gpx = QtWidgets.QPushButton("IMPORT GPX")
-        btn_gpx.setStyleSheet(
+        self._btn_gpx = QtWidgets.QPushButton(self.translate("IMPORT GPX", "IMPORT GPX"))
+        self._btn_gpx.setStyleSheet(
             "QPushButton{background:#1a3a4a;color:#7ec8e3;border:1px solid #2778a2;"
             "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#2778a2;color:white;}"
         )
-        btn_gpx.clicked.connect(self._import_gpx)
-        tb_row.addWidget(btn_gpx)
+        self._btn_gpx.clicked.connect(self._import_gpx)
+        tb_row.addWidget(self._btn_gpx)
 
-        btn_terrain = QtWidgets.QPushButton("FEUILLE TERRAIN")
-        btn_terrain.setStyleSheet(
+        self._btn_terrain = QtWidgets.QPushButton(
+            self.translate("FEUILLE TERRAIN", "FIELD SHEET"))
+        self._btn_terrain.setStyleSheet(
             "QPushButton{background:#2a1a3a;color:#c8a0e3;border:1px solid #7a3ab0;"
             "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#7a3ab0;color:white;}"
         )
-        btn_terrain.clicked.connect(self._open_feuille_terrain)
-        tb_row.addWidget(btn_terrain)
+        self._btn_terrain.clicked.connect(self._open_feuille_terrain)
+        tb_row.addWidget(self._btn_terrain)
 
-        btn_save = QtWidgets.QPushButton("GENERER INFOSTATION")
-        btn_save.setStyleSheet(
+        self._btn_generer = QtWidgets.QPushButton(
+            self.translate("GENERER INFOSTATION", "GENERATE INFOSTATION"))
+        self._btn_generer.setStyleSheet(
             "QPushButton{background:#1a3a1a;color:#80e880;border:1px solid #2a8a2a;"
             "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
             "font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#2a8a2a;color:white;}"
         )
-        btn_save.clicked.connect(self._export_infostation_action)
-        tb_row.addWidget(btn_save)
+        self._btn_generer.clicked.connect(self._export_infostation_action)
+        tb_row.addWidget(self._btn_generer)
         outer.addWidget(title_bar)
 
         # ── En-tête campagne ─────────────────────────────────────────────
@@ -458,15 +460,15 @@ class MetadonneesController:
         row4.addWidget(_hi("ft_sous_dossier", "0128", 60))
         row4.addStretch()
 
-        btn_apply_all = QtWidgets.QPushButton(
+        self._btn_apply_all = QtWidgets.QPushButton(
             self.translate("Appliquer à toutes les vidéos", "Apply to all videos"))
-        btn_apply_all.setStyleSheet(
+        self._btn_apply_all.setStyleSheet(
             "QPushButton{background:#20415d;color:#F2BFB4;border:1px solid #2778a2;"
             "border-radius:4px;padding:2px 10px;font-size:10px;font-family:'Segoe UI',sans-serif;}"
             "QPushButton:hover{background:#2778a2;}"
         )
-        btn_apply_all.clicked.connect(self._apply_survey_to_all)
-        row4.addWidget(btn_apply_all)
+        self._btn_apply_all.clicked.connect(self._apply_survey_to_all)
+        row4.addWidget(self._btn_apply_all)
         cp.addLayout(row4)
 
         outer.addWidget(campaign_panel)
@@ -719,9 +721,23 @@ class MetadonneesController:
     def set_language(self, language: str):
         """Change la langue et recharge l'affichage des données si un JSON est actif."""
         self.current_language = language
+        self._retranslate_ui()
         self.refresh_statistics()
         if self.current_template_json and os.path.exists(self.current_template_json):
             self.load_all_data(self.current_template_json)
+
+    def _retranslate_ui(self):
+        """Met à jour les textes des boutons du panneau infostation."""
+        if hasattr(self, '_btn_generer'):
+            self._btn_generer.setText(self.translate("GENERER INFOSTATION", "GENERATE INFOSTATION"))
+        if hasattr(self, '_btn_terrain'):
+            self._btn_terrain.setText(self.translate("FEUILLE TERRAIN", "FIELD SHEET"))
+        if hasattr(self, '_btn_apply_all'):
+            self._btn_apply_all.setText(self.translate("Appliquer à toutes les vidéos", "Apply to all videos"))
+        if hasattr(self, '_btn_ardoise'):
+            self._btn_ardoise.setText(self.translate("Comparer avec l'ardoise", "Compare with slate"))
+        if hasattr(self, '_btn_web'):
+            self._btn_web.setText(self.translate("Comparer données web", "Compare web data"))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle vidéo et reconnecte le signal de sélection au nouveau selectionModel."""
@@ -1253,25 +1269,45 @@ class MetadonneesController:
         stem = os.path.splitext(os.path.basename(video_path))[0]
         codestat, heure_stem = self._extract_stem_parts(stem)
 
-        # Données brutes d'acquisition (system, survey) depuis le JSON d'origine
-        raw_path = get_video_json_path(video_path)
-        jdata = {}
-        if os.path.isfile(raw_path):
-            try:
-                with open(raw_path, 'r', encoding='utf-8') as f:
-                    jdata = json.load(f)
-            except Exception:
-                pass
-        # Données IHM (video_observation) depuis _temp.json — remplace la section brute
+        # Source primaire : _temp.json (données IHM)
+        # Fallback : JSON brut d'acquisition pour les champs encore null
         temp_path = get_temp_json_path(video_path)
+        raw_path  = get_video_json_path(video_path)
+
+        temp_data = {}
         if os.path.isfile(temp_path):
             try:
                 with open(temp_path, 'r', encoding='utf-8') as f:
                     temp_data = json.load(f)
-                if "video_observation" in temp_data:
-                    jdata["video_observation"] = temp_data["video_observation"]
             except Exception:
                 pass
+
+        raw_data = {}
+        if os.path.isfile(raw_path):
+            try:
+                with open(raw_path, 'r', encoding='utf-8') as f:
+                    raw_data = json.load(f)
+            except Exception:
+                pass
+
+        def _merge_section(section: str) -> dict:
+            """Retourne la section fusionnée : _temp.json prioritaire, brut en fallback."""
+            tmp = dict(temp_data.get(section, {}))
+            raw = raw_data.get(section, {})
+            for k, v in raw.items():
+                if k not in tmp:
+                    tmp[k] = v
+                else:
+                    cur_val = tmp[k].get("value") if isinstance(tmp[k], dict) else tmp[k]
+                    if cur_val is None or str(cur_val).strip() == "":
+                        tmp[k] = v
+            return tmp
+
+        jdata = {
+            "system":            _merge_section("system"),
+            "survey":            _merge_section("survey"),
+            "video_observation": _merge_section("video_observation"),
+        }
         surv = jdata.get("survey", {})
         obs  = jdata.get("video_observation", {})
 

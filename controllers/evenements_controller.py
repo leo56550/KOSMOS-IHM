@@ -191,7 +191,16 @@ class EvenementsController:
         self.tree_view_events = self.page.findChild(QtWidgets.QTreeView, "treeView")
         if self.tree_view_events:
             self.tree_view_events.setModel(self.proxy_model)
+            self.tree_view_events.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+            self.tree_view_events.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.tree_view_events.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
+            self.tree_view_events.setHeaderHidden(True)
+            self.tree_view_events.setColumnHidden(1, True)
+            self.tree_view_events.setColumnHidden(2, True)
+            self.tree_view_events.header().setStretchLastSection(False)
+            self.tree_view_events.header().setSectionResizeMode(
+                0, QtWidgets.QHeaderView.ResizeMode.Stretch
+            )
             self.tree_view_events.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.tree_view_events)
             self.tree_view_events.setItemDelegateForColumn(0, self._bar_delegate)
