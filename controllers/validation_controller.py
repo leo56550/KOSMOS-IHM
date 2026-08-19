@@ -726,12 +726,97 @@ class ValidationController:
                 if path:
                     self.refresh_item_indicator(item, path)
 
+    def _saisir_point_number_only(self):
+        """Saisit uniquement le numéro de point, sans enregistrer de timecode ardoise."""
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return
+        vob = data.get("video_observation", {})
+        existing_num = (vob.get("point_name", {}).get("value")
+                        or vob.get("station_number", {}).get("value") or "")
+        current_input = str(existing_num)
+        station_num = ""
+        while True:
+            num_str, ok = QtWidgets.QInputDialog.getText(
+                self.page,
+                self.translate("N° du point", "Point number"),
+                self.translate("Numéro du point (laisser vide pour passer) :",
+                               "Point number (leave empty to skip):"),
+                text=current_input,
+            )
+            if not ok:
+                return
+            station_num = ""
+            if num_str.strip():
+                raw = num_str.strip()
+                try:
+                    station_num = f"{int(raw):04d}"
+                except ValueError:
+                    station_num = raw.zfill(4)[:4]
+            # Vérification doublon
+            existing_norm = ""
+            if existing_num:
+                try:
+                    existing_norm = f"{int(existing_num):04d}"
+                except ValueError:
+                    existing_norm = existing_num
+            if station_num and station_num != existing_norm:
+                dup = self._find_point_name_duplicate(station_num)
+                if dup:
+                    QtWidgets.QMessageBox.critical(
+                        self.page,
+                        self.translate("Doublon de point", "Duplicate point"),
+                        self.translate(
+                            f"⛔  Le point « {station_num} » est déjà attribué à :\n  •  {dup}\n\n"
+                            "Saisissez un numéro différent.",
+                            f"⛔  Point « {station_num} » already assigned to:\n  •  {dup}"
+                        )
+                    )
+                    current_input = num_str
+                    continue
+            break
+
+        try:
+            obs = data.setdefault("video_observation", {})
+            if station_num:
+                obs.setdefault("point_name", {})["value"] = station_num
+                obs.setdefault("station_number", {})["value"] = station_num
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
+            # Mise à jour immédiate dans la liste
+            if station_num and self.video_tree and self.video_model:
+                try:
+                    display_pt = str(int(station_num))
+                except ValueError:
+                    display_pt = station_num
+                for row in range(self.video_model.rowCount()):
+                    it = self.video_model.item(row, 0)
+                    if it and it.data(QtCore.Qt.ItemDataRole.UserRole) == self.current_video_path:
+                        it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
+                        break
+                self.video_tree.viewport().update()
+        except Exception as e:
+            print(f"[VALIDATION] Erreur saisie point_name : {e}")
+
     def _saisir_ardoise(self):
         """Capture le timecode ardoise et ouvre un champ pour saisir le code station."""
         if not hasattr(self, 'player') or self.player is None:
             return
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
+
+        # Si ardoise marquée manquante : proposer uniquement la saisie du numéro de point
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as _f:
+                _chk = json.load(_f)
+            if _chk.get("video_observation", {}).get("ardoise_missing", {}).get("value"):
+                self._saisir_point_number_only()
+                return
+        except Exception:
+            pass
 
         # Met en pause avant d'ouvrir le dialog pour figer la position
         self.player.pause()
@@ -968,18 +1053,57 @@ class ValidationController:
         if vob.get("ardoise_missing", {}).get("value"):
             return
 
-        reply = QtWidgets.QMessageBox.question(
-            self.page,
-            self.translate("Confirmer", "Confirm"),
-            self.translate(
-                "Confirmer l'absence d'ardoise pour cette vidéo ?",
-                "Confirm no slate available for this video?",
-            ),
-            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-            QtWidgets.QMessageBox.StandardButton.No,
-        )
-        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
-            return
+        # Dialog : saisie optionnelle du numéro de point avant de confirmer l'ardoise manquante
+        existing_num = (vob.get("point_name", {}).get("value")
+                        or vob.get("station_number", {}).get("value") or "")
+        dlg = QtWidgets.QDialog(self.page)
+        dlg.setWindowTitle(self.translate("Ardoise manquante", "Missing slate"))
+        dlg.setFixedWidth(300)
+        dlg.setStyleSheet("background:#1a1a2e; color:#d4e8f5;")
+        dlg_layout = QtWidgets.QVBoxLayout(dlg)
+        dlg_layout.setSpacing(10)
+        dlg_layout.setContentsMargins(14, 12, 14, 12)
+
+        lbl = QtWidgets.QLabel(self.translate("Numéro du point :", "Point number:"))
+        lbl.setStyleSheet("font-size:12px; font-weight:bold;")
+        dlg_layout.addWidget(lbl)
+
+        pt_edit = QtWidgets.QLineEdit()
+        pt_edit.setText(str(existing_num))
+        pt_edit.setPlaceholderText("—")
+        pt_edit.setStyleSheet(
+            "QLineEdit { background:#0d1825; color:#ffffff; border:1px solid #2778A2;"
+            " border-radius:4px; padding:4px 8px; font-size:13px; }")
+        dlg_layout.addWidget(pt_edit)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_saisir = QtWidgets.QPushButton(
+            self.translate("Saisir point tout de même", "Enter point anyway"))
+        btn_saisir.setStyleSheet(BTN_PRIMARY)
+        btn_skip = QtWidgets.QPushButton(self.translate("Skip", "Skip"))
+        btn_skip.setStyleSheet(
+            "QPushButton { background:#222; color:#aaa; border:1px solid #555;"
+            " border-radius:4px; padding:5px 14px; font-size:11px; }"
+            "QPushButton:hover { background:#333; }")
+        btn_row.addWidget(btn_skip)
+        btn_row.addWidget(btn_saisir)
+        dlg_layout.addLayout(btn_row)
+
+        btn_saisir.clicked.connect(dlg.accept)
+        btn_skip.clicked.connect(dlg.reject)
+        pt_edit.returnPressed.connect(dlg.accept)
+
+        accepted = dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted
+
+        # Récupère le numéro de point saisi (seulement si "Saisir" cliqué et champ rempli)
+        station_num = ""
+        if accepted:
+            raw_pt = pt_edit.text().strip()
+            if raw_pt:
+                try:
+                    station_num = f"{int(raw_pt):04d}"
+                except ValueError:
+                    station_num = raw_pt.zfill(4)[:4]
 
         try:
             vob = data.setdefault("video_observation", {})
@@ -990,8 +1114,23 @@ class ValidationController:
 
             vob["ardoise_missing"] = {"value": True}
             print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.ardoise_missing = True")
+            if station_num:
+                vob.setdefault("point_name", {})["value"] = station_num
+                vob.setdefault("station_number", {})["value"] = station_num
+                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+            # Mise à jour immédiate du numéro de point dans la liste
+            if station_num and self.video_tree and self.video_model:
+                try:
+                    display_pt = str(int(station_num))
+                except ValueError:
+                    display_pt = station_num
+                for row in range(self.video_model.rowCount()):
+                    it = self.video_model.item(row, 0)
+                    if it and it.data(QtCore.Qt.ItemDataRole.UserRole) == self.current_video_path:
+                        it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
+                        break
 
             # Supprime le marker ardoise de la timeline
             if hasattr(self.player, 'timeline'):
