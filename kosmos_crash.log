@@ -823,3 +823,43 @@ Traceback (most recent call last):
     def eventFilter(self, source, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 10:14:39.940561
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\qualif_controller.py", line 1617, in _key
+    def _key(event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 11:40:19.997924
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 11:40:20.247580
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 947, in on_player_position_changed
+    def on_player_position_changed(self, position_ms: int):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 11:40:20.388033
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-19 14:20:41.913869
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\matplotlib\backends\backend_qt.py", line 265, in eventFilter
+    def eventFilter(self, source, event):
+    
+KeyboardInterrupt

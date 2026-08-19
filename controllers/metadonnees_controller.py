@@ -651,6 +651,7 @@ class MetadonneesController:
                 block[json_key]["value"] = new_value or None
             else:
                 block[json_key] = {"value": new_value or None}
+            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {new_value!r}")
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             if self._on_metadata_saved:
@@ -1109,6 +1110,7 @@ class MetadonneesController:
                     block[json_key]["value"] = value or None
                 else:
                     block[json_key] = {"value": value or None}
+                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {value!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
             except Exception as e:
@@ -1671,6 +1673,7 @@ class MetadonneesController:
                 lon_str = str(lon).replace(".", ",")
                 obs["latitude"] = {"value": lat_str}
                 obs["longitude"] = {"value": lon_str}
+                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.latitude={lat_str!r}, longitude={lon_str!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 matched += 1
@@ -2122,6 +2125,7 @@ class MetadonneesController:
                         block[json_key]["value"] = val or None
                     else:
                         block[json_key] = {"value": val or None}
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {val!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 n += 1
@@ -2271,6 +2275,7 @@ class MetadonneesController:
                         data = json.load(f)
                     if block_key in data and field_id in data[block_key]:
                         data[block_key][field_id]["value"] = new_value
+                        print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_key}.{field_id} = {new_value!r}")
                         with open(json_path, 'w', encoding='utf-8') as f:
                             json.dump(data, f, indent=4, ensure_ascii=False)
                 except Exception as e:
@@ -2282,6 +2287,7 @@ class MetadonneesController:
         """Persiste _json_data dans current_template_json (appelé via timer debounce)."""
         if self.current_template_json:
             try:
+                print(f"[TEMP_JSON] {os.path.basename(self.current_template_json)} ← video_observation (sauvegarde complète)")
                 with open(self.current_template_json, 'w', encoding='utf-8') as f:
                     json.dump(self._json_data, f, indent=4, ensure_ascii=False)
                 if self._on_metadata_saved:

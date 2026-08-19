@@ -140,9 +140,9 @@ class VideoTimeline(QtWidgets.QWidget):
 
     # Per-zone: (zone_bg, event_fill_top, event_fill_bot, event_border)
     ZONE_STYLES = [
-        (QtGui.QColor(16, 36, 52, 200),  QtGui.QColor(36, 80, 120),  QtGui.QColor(20, 55, 90),  QtGui.QColor("#2778A2")),
-        (QtGui.QColor(20, 44, 68, 200),  QtGui.QColor(30, 100, 155), QtGui.QColor(20, 70, 115), QtGui.QColor("#3498db")),
-        (QtGui.QColor(48, 14, 18, 200),  QtGui.QColor(130, 40, 35),  QtGui.QColor(90, 25, 20),  QtGui.QColor("#D94F38")),
+        (QtGui.QColor(16, 36, 52, 200),  QtGui.QColor(36, 80, 120),  QtGui.QColor(20, 55, 90),  QtGui.QColor("#2778A2")),  # bleu  — déploiement
+        (QtGui.QColor(48, 14, 18, 200),  QtGui.QColor(130, 40, 35),  QtGui.QColor(90, 25, 20),  QtGui.QColor("#D94F38")),  # rouge — faune
+        (QtGui.QColor(26, 16,  0, 200),  QtGui.QColor(140, 90,  0),  QtGui.QColor(100, 60,  0), QtGui.QColor("#E68C14")),  # orange — images
     ]
 
     def paintEvent(self, event):
@@ -226,6 +226,23 @@ class VideoTimeline(QtWidgets.QWidget):
             title    = evt.get("title", "")
             evt_type = evt.get("type", "")
             x_start  = self._clamp_int((start_ms / total_duration) * width)
+
+            if evt_type == "timecode_marker":
+                # Marqueur atterrissage / décollage : ligne bleue pleine + label
+                c_blue = QtGui.QColor("#2778A2")
+                solid_pen = QtGui.QPen(c_blue, 2)
+                painter.setPen(solid_pen)
+                painter.drawLine(x_start, RH, x_start, H)
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.setBrush(c_blue)
+                painter.drawEllipse(QtCore.QPoint(x_start, RH + 6), 4, 4)
+                # Label court (ATT / DEC)
+                short_lbl = title[:3].upper()
+                f_lbl = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
+                painter.setFont(f_lbl)
+                painter.setPen(c_blue)
+                painter.drawText(x_start + 4, RH + 15, short_lbl)
+                continue
 
             if evt_type != "custom_event":
                 is_360 = "360" in str(evt_type).lower()
@@ -650,6 +667,16 @@ class VideoTimeline(QtWidgets.QWidget):
 
     def get_event_at_position(self, pos: QtCore.QPoint) -> dict | None:
         """Retourne le dict d'événement sous pos, ou None si aucun ne contient ce point."""
+        # Marqueurs verticaux (timecode_marker) : détection par proximité en x
+        total_duration = self.total_duration if self.total_duration > 0 else 1
+        width = self.min_zoomed_width()
+        TOLERANCE_PX = 6
+        for evt in self.events:
+            if evt.get("type") == "timecode_marker":
+                x = int((evt.get("start", 0) / total_duration) * width)
+                if abs(pos.x() - x) <= TOLERANCE_PX:
+                    return evt
+        # Événements rectangulaires (custom_event)
         if not hasattr(self, 'rects_evenements') or not self.rects_evenements:
             return None
         for idx, (evt, rect) in self.rects_evenements.items():

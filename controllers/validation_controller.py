@@ -418,6 +418,7 @@ class ValidationController:
                 vob["derush_comment"]["value"] = text or None
             else:
                 vob["derush_comment"] = {"value": text or None}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.derush_comment = {text!r}")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
@@ -910,6 +911,7 @@ class ValidationController:
                 vob["timecode_ardoise"]["value"] = None
 
             vob["ardoise_missing"] = {"value": True}
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.ardoise_missing = True")
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 

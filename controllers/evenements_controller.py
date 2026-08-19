@@ -155,9 +155,9 @@ class EvenementsController:
             layout = self.player_container_events.layout() or QtWidgets.QVBoxLayout(self.player_container_events)
             layout.setContentsMargins(10, 10, 10, 10)
             zones = [
-                {"label": "Deployment", "color": QtGui.QColor(32, 65, 93, 100)},
-                {"label": "Fauna / Animal", "color": QtGui.QColor(39, 120, 162, 100)},
-                {"label": "Images", "color": QtGui.QColor(217, 79, 56, 100)},
+                {"label": "Deployment",     "color": QtGui.QColor(39, 120, 162, 180)},  # bleu
+                {"label": "Fauna / Animal", "color": QtGui.QColor(217, 79,  56, 180)},  # rouge
+                {"label": "Images",         "color": QtGui.QColor(230, 140,  20, 180)}, # orange
             ]
             self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
             layout.addWidget(self.event_player)
@@ -378,7 +378,7 @@ class EvenementsController:
             return self.event_key_by_label[display_label]
         lower = display_label.lower()
         if "deployment" in lower or "déploiement" in lower:
-            return "events_deployment"
+            return "events_motor"
         if "animal" in lower or "faune" in lower:
             return "events_animal"
         if "image" in lower:
@@ -391,13 +391,13 @@ class EvenementsController:
             return self.event_category_labels[json_key]
         if self.current_language == 'en':
             mapping = {
-                "events_deployment": "Deployment",
+                "events_motor": "Deployment",
                 "events_animal": "Fauna / Animal",
                 "events_interesting_images": "Interesting Image"
             }
         else:
             mapping = {
-                "events_deployment": "Déploiement",
+                "events_motor": "Déploiement",
                 "events_animal": "Faune / Animal",
                 "events_interesting_images": "Image Intéressante"
             }
@@ -423,9 +423,11 @@ class EvenementsController:
         video_obs = data.get("video_observation", {})
         if not isinstance(video_obs, dict):
             return
-        for json_key, value in video_obs.items():
-            if not isinstance(json_key, str) or not json_key.startswith("events_"):
+        for json_key_raw, value in video_obs.items():
+            if not isinstance(json_key_raw, str) or not json_key_raw.startswith("events_"):
                 continue
+            # Rétro-compat : events_deployment → events_motor
+            json_key = "events_motor" if json_key_raw == "events_deployment" else json_key_raw
             if not isinstance(value, list) or not value:
                 continue
             first_object = value[0]
@@ -439,6 +441,12 @@ class EvenementsController:
             else:
                 authorized_values = (first_object.get("authorized_values_fr")
                                      or first_object.get("authorized_values_en") or [])
+            # events_motor n'a pas de authorized_values dans le template : valeurs fixes
+            if json_key == "events_motor" and not authorized_values:
+                if self.current_language == 'en':
+                    authorized_values = ["landing", "takeoff", "analysis_start", "analysis_end"]
+                else:
+                    authorized_values = ["atterrissage", "décollage", "debut_analyse", "fin_analyse"]
             if not isinstance(authorized_values, list):
                 continue
             label = self._get_label_from_json_key(json_key)
@@ -452,6 +460,78 @@ class EvenementsController:
                 if final.lower() not in _ARDOISE_VALS:
                     renamed.append(final)
             self.event_dictionary[label] = renamed
+
+    def _capture_timecode_field(self, field_key: str, btn: QtWidgets.QPushButton):
+        """Capture le timecode courant et l'écrit dans video_observation.<field_key> du _temp.json."""
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        if not hasattr(self, 'event_player') or not self.event_player:
+            return
+        # Vérifier unicité : demander confirmation si déjà posé
+        if hasattr(self.event_player, 'timeline'):
+            already = any(e.get("_json_key") == field_key for e in self.event_player.timeline.events)
+            if already:
+                field_label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
+                              else self.translate("Décollage", "Takeoff")
+                reply = QtWidgets.QMessageBox.question(
+                    self.page,
+                    self.translate("Écraser ?", "Overwrite?"),
+                    self.translate(
+                        f"Un {field_label} est déjà enregistré. Voulez-vous le remplacer ?",
+                        f"A {field_label} is already set. Replace it?"
+                    ),
+                    QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                )
+                if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+                    return
+        pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
+        h = int(pos_ms // 3600000)
+        m = int((pos_ms % 3600000) // 60000)
+        s = int((pos_ms % 60000) // 1000)
+        timecode = f"{h:02d}:{m:02d}:{s:02d}"
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs.setdefault(field_key, {})["value"] = timecode
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{field_key} = {timecode!r}")
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            # Ajout / mise à jour du marqueur sur la timeline
+            if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+                label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
+                        else self.translate("Décollage", "Takeoff")
+                tl = self.event_player.timeline
+                # Remplace l'ancien marqueur du même champ (unicité)
+                tl.events = [e for e in tl.events if e.get("_json_key") != field_key]
+                tl.events.append({
+                    "start": pos_ms, "end": pos_ms,
+                    "title": label,
+                    "type": "timecode_marker",
+                    "zone": 0,
+                    "_json_key": field_key,
+                })
+                tl.update()
+            # Arbre : supprimer ancienne ligne puis ajouter la nouvelle
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                for i in range(self.tree_captures.topLevelItemCount() - 1, -1, -1):
+                    it = self.tree_captures.topLevelItem(i)
+                    if it.text(3) == label:
+                        self.tree_captures.takeTopLevelItem(i)
+                txt_tc = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else timecode
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, "", ""])
+                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                self.tree_captures.addTopLevelItem(tree_item)
+                self.add_tree_thumbnail(tree_item, pos_ms)
+            # Flash visuel de confirmation
+            s_dep = self._ZONE_STYLES[0]
+            self._apply_evt_btn_style(btn, s_dep, "selected")
+            QtCore.QTimer.singleShot(600, lambda: self._apply_evt_btn_style(btn, s_dep, "normal"))
+            if self._on_events_changed:
+                self._on_events_changed()
+        except Exception as e:
+            print(f"[EVENTS] Erreur capture {field_key} : {e}")
 
     def _get_video_fps(self) -> float:
         """Retourne le FPS du lecteur actif, ou 25.0 par défaut."""
@@ -488,15 +568,15 @@ class EvenementsController:
             "btn_bg": "#0f1e2e", "btn_border": "#2778A2", "btn_fg": "#a0c8e8",
             "btn_hover": "#1a3a5a", "btn_active_bg": "#2778A2",
         },
-        {  # 1 — Faune / Animal (vert)
-            "header_bg": "#0d1a0d", "header_fg": "#80e880",
-            "btn_bg": "#0f1e10", "btn_border": "#4CAF50", "btn_fg": "#90c890",
-            "btn_hover": "#1a3a1e", "btn_active_bg": "#3a7a40",
-        },
-        {  # 2 — Image intéressante (rouge)
+        {  # 1 — Faune / Animal (rouge)
             "header_bg": "#1a0d0d", "header_fg": "#ff9090",
             "btn_bg": "#1e0f0f", "btn_border": "#D94F38", "btn_fg": "#e89090",
             "btn_hover": "#3a1a1a", "btn_active_bg": "#9a2a1a",
+        },
+        {  # 2 — Image intéressante (orange)
+            "header_bg": "#1a1000", "header_fg": "#ffc97a",
+            "btn_bg": "#1e1400", "btn_border": "#E68C14", "btn_fg": "#e8c080",
+            "btn_hover": "#3a2800", "btn_active_bg": "#9a5a00",
         },
     ]
 
@@ -637,18 +717,64 @@ class EvenementsController:
         self._event_buttons_all = []
         self._active_event_btn = None
 
-        if not self.event_dictionary:
+        # --- Boutons dédiés Atterrissage / Décollage ---
+        s_dep = self._ZONE_STYLES[0]  # bleu déploiement
+        dep_header = QtWidgets.QLabel(f"  {self.translate('DÉPLOIEMENT', 'DEPLOYMENT').upper()}")
+        dep_header.setStyleSheet(
+            f"background-color: {s_dep['header_bg']}; color: {s_dep['header_fg']};"
+            f" font-size: 9px; font-weight: bold; border-radius: 3px;"
+            f" border: 1px solid {s_dep['btn_border']}; padding: 2px 6px;"
+        )
+        layout.insertWidget(layout.count() - 1, dep_header)
+
+        dep_row_w = QtWidgets.QWidget()
+        dep_row_w.setStyleSheet("background: transparent;")
+        dep_row_l = QtWidgets.QHBoxLayout(dep_row_w)
+        dep_row_l.setContentsMargins(0, 0, 0, 0)
+        dep_row_l.setSpacing(4)
+
+        btn_att = QtWidgets.QPushButton(self.translate("Atterrissage", "Landing"))
+        btn_att.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self._apply_evt_btn_style(btn_att, s_dep, "normal")
+        btn_att.clicked.connect(lambda: self._capture_timecode_field("timecode_landing", btn_att))
+        dep_row_l.addWidget(btn_att)
+
+        btn_dec = QtWidgets.QPushButton(self.translate("Décollage", "Takeoff"))
+        btn_dec.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self._apply_evt_btn_style(btn_dec, s_dep, "normal")
+        btn_dec.clicked.connect(lambda: self._capture_timecode_field("timecode_takeoff", btn_dec))
+        dep_row_l.addWidget(btn_dec)
+
+        layout.insertWidget(layout.count() - 1, dep_row_w)
+
+        self._btn_atterrissage = btn_att
+        self._btn_decollage = btn_dec
+
+        gap0 = QtWidgets.QWidget()
+        gap0.setFixedHeight(6)
+        gap0.setStyleSheet("background: transparent;")
+        layout.insertWidget(layout.count() - 1, gap0)
+
+        # --- Catégories depuis event_dictionary (sans Déploiement) ---
+        deployment_keys = {"déploiement", "deployment"}
+
+        if not self.event_dictionary or all(
+            k.lower() in deployment_keys for k in self.event_dictionary
+        ):
             placeholder = QtWidgets.QLabel(
                 self.translate("Aucune catégorie d'événement disponible.",
                                "No event categories available."))
             placeholder.setStyleSheet(
                 "color: #3a5568; font-size: 10px; border: none; padding: 8px;")
             placeholder.setWordWrap(True)
-            layout.insertWidget(0, placeholder)
+            layout.insertWidget(layout.count() - 1, placeholder)
             return
 
         for cat_label, values in self.event_dictionary.items():
             if not values:
+                continue
+            # Exclure la catégorie déploiement — gérée par les boutons dédiés ci-dessus
+            if cat_label.lower() in deployment_keys:
                 continue
             zone_idx = self._zone_index_for_event_type(cat_label)
             s = self._ZONE_STYLES[zone_idx] if zone_idx < len(self._ZONE_STYLES) else self._ZONE_STYLES[0]
@@ -1242,7 +1368,7 @@ class EvenementsController:
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
         value = "ardoise" if self.current_language == 'fr' else "slate"
-        deploy_label = self._get_label_from_json_key("events_deployment")
+        deploy_label = self._get_label_from_json_key("events_motor")
         pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
         time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
         new_evt = {
@@ -1252,7 +1378,7 @@ class EvenementsController:
             "zone": 0,
             "single_frame": True,
             "comment": "",
-            "_json_key": "events_deployment",
+            "_json_key": "events_motor",
             "_event_uid": self._generate_event_uid()
         }
         self.event_player.timeline.events.append(new_evt)
@@ -1287,7 +1413,7 @@ class EvenementsController:
         if not hasattr(self, 'event_player') or self.event_player is None:
             return
         value = value_fr if self.current_language == 'fr' else value_en
-        deploy_label = self._get_label_from_json_key("events_deployment")
+        deploy_label = self._get_label_from_json_key("events_motor")
         pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
         time_str = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else "00:00:00"
         new_evt = {
@@ -1297,7 +1423,7 @@ class EvenementsController:
             "zone": 0,
             "single_frame": True,
             "comment": "",
-            "_json_key": "events_deployment",
+            "_json_key": "events_motor",
             "_event_uid": self._generate_event_uid()
         }
         self.event_player.timeline.events.append(new_evt)
@@ -1388,17 +1514,42 @@ class EvenementsController:
                 fps = video_fps
                 frame_tolerance = max(1, int(fps * 0.25))
 
-                for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
-                    raw = video_obs.get(json_key)
+                for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
+                    # Rétro-compat : lire events_deployment si events_motor absent
+                    raw = video_obs.get(json_key) or (video_obs.get("events_deployment") if json_key == "events_motor" else None)
                     if not isinstance(raw, list) or not raw:
                         continue
-                    values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                    # events_motor : tableau plat (nouveau) ou wrapper values (ancien events_deployment)
+                    if json_key == "events_motor":
+                        first = raw[0] if raw else {}
+                        if isinstance(first, dict) and "values" in first:
+                            # ancien format events_deployment
+                            old_vals = first.get("values", [])
+                            values_list = [
+                                {"frame_number": v.get("frame_number_start", 0),
+                                 "description_fr": v.get("value", ""),
+                                 "event_id": v.get("event_id"),
+                                 "comment": v.get("comment", "")}
+                                for v in old_vals if isinstance(v, dict)
+                            ]
+                        else:
+                            values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+                    else:
+                        values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
                     category_name = self._get_label_from_json_key(json_key)
 
                     for val in values_list:
-                        frame_start = val.get("frame_number_start", 0)
-                        frame_end = val.get("frame_number_end", 0)
-                        value = val.get("value", "")
+                        if json_key == "events_motor":
+                            frame_start = val.get("frame_number", 0)
+                            frame_end = frame_start
+                        else:
+                            frame_start = val.get("frame_number_start", 0)
+                            frame_end = val.get("frame_number_end", 0)
+                        # events_motor utilise description_fr comme label
+                        if json_key == "events_motor":
+                            value = val.get("description_fr") or val.get("value", "rotation")
+                        else:
+                            value = val.get("value", "")
                         json_comment = val.get("comment", "")
                         start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
                         end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
@@ -1437,6 +1588,43 @@ class EvenementsController:
                                     tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778a2")))
                                 self.tree_captures.addTopLevelItem(tree_item)
                                 self.add_tree_thumbnail(tree_item, start_ms)
+                # --- Marqueurs timecode_landing / timecode_takeoff ---
+                _TC_MARKERS = {
+                    "timecode_landing":  self.translate("Atterrissage", "Landing"),
+                    "timecode_takeoff":  self.translate("Décollage",    "Takeoff"),
+                }
+                for tc_key, tc_label in _TC_MARKERS.items():
+                    tc_val = (video_obs.get(tc_key) or {}).get("value")
+                    if not tc_val:
+                        continue
+                    try:
+                        parts = str(tc_val).split(":")
+                        if len(parts) == 3:
+                            tc_ms = int(parts[0])*3600000 + int(parts[1])*60000 + int(parts[2])*1000
+                        elif len(parts) == 2:
+                            tc_ms = int(parts[0])*60000 + int(parts[1])*1000
+                        else:
+                            continue
+                        evt_dict = {
+                            "start": tc_ms, "end": tc_ms,
+                            "title": tc_label,
+                            "type": "timecode_marker",
+                            "zone": 0,
+                            "_json_key": tc_key,
+                        }
+                        timeline_events.append(evt_dict)
+                        if hasattr(self, 'tree_captures') and self.tree_captures:
+                            txt_tc = self.event_player.timeline._format_ms(tc_ms)
+                            tree_item = QtWidgets.QTreeWidgetItem(
+                                [txt_tc, "-", "Déploiement", tc_label, "", ""]
+                            )
+                            tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                            tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                            self.tree_captures.addTopLevelItem(tree_item)
+                            self.add_tree_thumbnail(tree_item, tc_ms)
+                    except Exception:
+                        pass
+
             except Exception as e:
                 print(f"[EVENTS] JSON Parsing failed: {e}")
 
@@ -1489,51 +1677,69 @@ class EvenementsController:
             json_key = event_dict.get("_json_key") or self._get_json_key_from_label(display_type)
             title_value = event_dict.get("title", "").replace("Pic: ", "").strip().lower()
             if any(kw in title_value for kw in ["atterrissage", "atterissage", "décollage", "decollage", "landing", "takeoff"]):
-                json_key = "events_deployment"
-                event_dict["_json_key"] = "events_deployment"
-
-            if json_key not in data["video_observation"] or not data["video_observation"][json_key]:
-                data["video_observation"][json_key] = [{"authorized_values_fr": [], "values": []}]
+                json_key = "events_motor"
+                event_dict["_json_key"] = "events_motor"
 
             fps = self._get_video_fps()
             frame_start = self._ms_to_frame(event_dict["start"], fps)
             frame_end = self._ms_to_frame(event_dict["end"], fps)
             event_uid = self._ensure_event_uid(event_dict)
+            label = event_dict["title"].replace("Pic: ", "")
 
-            saved_value = {
-                "event_id": event_uid,
-                "time_code_start": self.event_player.timeline._format_ms(event_dict["start"]),
-                "time_code_end": self.event_player.timeline._format_ms(event_dict["end"]),
-                "frame_number_start": frame_start,
-                "frame_number_end": frame_end,
-                "description_fr": None,
-                "description_en": None,
-                "value": event_dict["title"].replace("Pic: ", ""),
-                "comment": event_dict.get("comment", "")
-            }
-
-            values_list = data["video_observation"][json_key][0].get("values", [])
-            existing_index = -1
-            for idx, v in enumerate(values_list):
-                if v.get("event_id") == event_uid:
-                    existing_index = idx
-                    break
-
-            if existing_index != -1:
-                values_list[existing_index] = saved_value
+            if json_key == "events_motor":
+                # Structure plate : tableau direct d'événements instantanés
+                if json_key not in data["video_observation"] or not isinstance(data["video_observation"][json_key], list):
+                    data["video_observation"][json_key] = []
+                saved_value = {
+                    "event_id": event_uid,
+                    "time_code": self.event_player.timeline._format_ms(event_dict["start"]),
+                    "frame_number": frame_start,
+                    "description_fr": label,
+                    "description_en": label,
+                    "comment": event_dict.get("comment", "")
+                }
+                flat_list = data["video_observation"][json_key]
+                existing_index = next((i for i, v in enumerate(flat_list) if v.get("event_id") == event_uid), -1)
+                if existing_index == -1:
+                    tolerance = max(1, int(fps * 0.25))
+                    existing_index = next(
+                        (i for i, v in enumerate(flat_list)
+                         if v.get("description_fr") == label and abs(v.get("frame_number", 0) - frame_start) <= tolerance),
+                        -1
+                    )
+                if existing_index != -1:
+                    flat_list[existing_index] = saved_value
+                else:
+                    flat_list.append(saved_value)
             else:
-                tolerance = max(1, int(fps * 0.25))
-                for idx, v in enumerate(values_list):
-                    if (v.get("value") == saved_value["value"]
-                            and abs(v.get("frame_number_start", 0) - frame_start) <= tolerance):
-                        existing_index = idx
-                        break
+                if json_key not in data["video_observation"] or not data["video_observation"][json_key]:
+                    data["video_observation"][json_key] = [{"authorized_values_fr": [], "values": []}]
+                saved_value = {
+                    "event_id": event_uid,
+                    "time_code_start": self.event_player.timeline._format_ms(event_dict["start"]),
+                    "time_code_end": self.event_player.timeline._format_ms(event_dict["end"]),
+                    "frame_number_start": frame_start,
+                    "frame_number_end": frame_end,
+                    "description_fr": None,
+                    "description_en": None,
+                    "value": label,
+                    "comment": event_dict.get("comment", "")
+                }
+                values_list = data["video_observation"][json_key][0].get("values", [])
+                existing_index = next((i for i, v in enumerate(values_list) if v.get("event_id") == event_uid), -1)
+                if existing_index == -1:
+                    tolerance = max(1, int(fps * 0.25))
+                    existing_index = next(
+                        (i for i, v in enumerate(values_list)
+                         if v.get("value") == label and abs(v.get("frame_number_start", 0) - frame_start) <= tolerance),
+                        -1
+                    )
                 if existing_index != -1:
                     values_list[existing_index] = saved_value
                 else:
                     values_list.append(saved_value)
+                data["video_observation"][json_key][0]["values"] = values_list
 
-            data["video_observation"][json_key][0]["values"] = values_list
             event_dict["_json_key"] = json_key
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -1546,6 +1752,23 @@ class EvenementsController:
         """Supprime l'événement correspondant du JSON vidéo courant (tolérance d'un quart de seconde)."""
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
+        # Cas spécial : marqueurs timecode_landing / timecode_takeoff → remettre à null
+        json_key = event_dict.get("_json_key", "")
+        if json_key in ("timecode_landing", "timecode_takeoff"):
+            try:
+                with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                obs = data.get("video_observation", {})
+                if json_key in obs and isinstance(obs[json_key], dict):
+                    obs[json_key]["value"] = None
+                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.{json_key} = null")
+                with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                if self._on_events_changed:
+                    self._on_events_changed()
+            except Exception as e:
+                print(f"[BACKEND] Error clearing {json_key}: {e}")
+            return
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -1554,15 +1777,22 @@ class EvenementsController:
             fps = self._get_video_fps()
             target_frame_start = self._ms_to_frame(event_dict["start"], fps)
             tolerance = max(1, int(fps * 0.25))
-            for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
-                if json_key in video_obs and video_obs[json_key]:
+            for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
+                if json_key not in video_obs or not video_obs[json_key]:
+                    continue
+                if json_key == "events_motor":
+                    video_obs[json_key] = [
+                        v for v in video_obs[json_key]
+                        if not (v.get("description_fr") == target_value
+                                and abs(v.get("frame_number", 0) - target_frame_start) <= tolerance)
+                    ]
+                else:
                     values_list = video_obs[json_key][0].get("values", [])
-                    new_list = [
+                    video_obs[json_key][0]["values"] = [
                         v for v in values_list
                         if not (v.get("value") == target_value
                                 and abs(v.get("frame_number_start", 0) - target_frame_start) <= tolerance)
                     ]
-                    video_obs[json_key][0]["values"] = new_list
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             if self._on_events_changed:
@@ -1620,13 +1850,20 @@ class EvenementsController:
                 data = json.load(f)
             video_obs = data.get("video_observation", {})
             modified = False
-            for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
-                if json_key in video_obs and video_obs[json_key]:
-                    for val in video_obs[json_key][0].get("values", []):
-                        if val.get("value") == target_value:
-                            val["comment"] = new_comment
-                            modified = True
-                            break
+            for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
+                if json_key not in video_obs or not video_obs[json_key]:
+                    continue
+                if json_key == "events_motor":
+                    items = video_obs[json_key]
+                    key_field = "description_fr"
+                else:
+                    items = video_obs[json_key][0].get("values", [])
+                    key_field = "value"
+                for val in items:
+                    if val.get(key_field) == target_value:
+                        val["comment"] = new_comment
+                        modified = True
+                        break
                 if modified:
                     break
             if modified:
@@ -1656,7 +1893,7 @@ class EvenementsController:
             video_obs = data.get("video_observation", {})
 
             moved_entry = None
-            for json_key in ["events_deployment", "events_animal", "events_interesting_images"]:
+            for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
                 if json_key == new_json_key:
                     continue
                 cat = video_obs.get(json_key)
@@ -1766,7 +2003,7 @@ class EvenementsController:
                 data = json.load(f)
             video_obs = data.get("video_observation", {})
             modified = False
-            event_categories = [k for k in video_obs if isinstance(k, str) and k.startswith("events_") and k != "events_deployment"]
+            event_categories = [k for k in video_obs if isinstance(k, str) and k.startswith("events_") and k != "events_motor"]
             for json_key in event_categories:
                 if json_key not in video_obs or not video_obs[json_key]:
                     continue
@@ -1782,9 +2019,9 @@ class EvenementsController:
                         other_events.append(event)
                 if deployment_events:
                     video_obs[json_key][0]["values"] = other_events
-                    if "events_deployment" not in video_obs or not video_obs["events_deployment"]:
-                        video_obs["events_deployment"] = [{"authorized_values_fr": [], "values": []}]
-                    existing_deploy = video_obs["events_deployment"][0].get("values", [])
+                    if "events_motor" not in video_obs or not video_obs["events_motor"]:
+                        video_obs["events_motor"] = [{"authorized_values_fr": [], "values": []}]
+                    existing_deploy = video_obs["events_motor"][0].get("values", [])
                     for evt in deployment_events:
                         if not any(
                             e.get("value") == evt.get("value")
@@ -1792,7 +2029,7 @@ class EvenementsController:
                             for e in existing_deploy
                         ):
                             existing_deploy.append(evt)
-                    video_obs["events_deployment"][0]["values"] = existing_deploy
+                    video_obs["events_motor"][0]["values"] = existing_deploy
             if modified:
                 data["video_observation"] = video_obs
                 with open(self.current_json_path, 'w', encoding='utf-8') as f:
@@ -1815,23 +2052,21 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_deployment = json_data.get('video_observation', {}).get('events_deployment', [])
-            if not isinstance(events_deployment, list) or not events_deployment:
+            events_motor = json_data.get('video_observation', {}).get('events_motor', [])
+            if not isinstance(events_motor, list) or not events_motor:
                 return None
-            # Chercher dans tous les groupes d'événements deployment
             landing_frame = takeoff_frame = None
-            for group in events_deployment:
-                for item in group.get('values', []):
-                    val = str(item.get('value', '')).strip()
-                    fn = item.get('frame_number_start')
-                    if fn is None:
-                        continue
-                    if self._is_landing_event(val) and landing_frame is None:
-                        landing_frame = fn
-                    elif self._is_takeoff_event(val) and takeoff_frame is None:
-                        takeoff_frame = fn
-                if landing_frame is not None and takeoff_frame is not None:
-                    break
+            for item in events_motor:
+                if not isinstance(item, dict):
+                    continue
+                val = str(item.get('description_fr') or item.get('value', '')).strip()
+                fn = item.get('frame_number')
+                if fn is None:
+                    continue
+                if self._is_landing_event(val) and landing_frame is None:
+                    landing_frame = fn
+                elif self._is_takeoff_event(val) and takeoff_frame is None:
+                    takeoff_frame = fn
             if landing_frame is None or takeoff_frame is None:
                 return None
             landing_frame = int(landing_frame)
@@ -1856,22 +2091,21 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_deployment = json_data.get('video_observation', {}).get('events_deployment', [])
-            if not isinstance(events_deployment, list) or not events_deployment:
+            events_motor = json_data.get('video_observation', {}).get('events_motor', [])
+            if not isinstance(events_motor, list) or not events_motor:
                 return None
             start_frame = end_frame = None
-            for group in events_deployment:
-                for item in group.get('values', []):
-                    val = str(item.get('value', '')).strip()
-                    fn = item.get('frame_number_start')
-                    if fn is None:
-                        continue
-                    if self._is_annotation_start_event(val) and start_frame is None:
-                        start_frame = fn
-                    elif self._is_annotation_end_event(val) and end_frame is None:
-                        end_frame = fn
-                if start_frame is not None and end_frame is not None:
-                    break
+            for item in events_motor:
+                if not isinstance(item, dict):
+                    continue
+                val = str(item.get('description_fr') or item.get('value', '')).strip()
+                fn = item.get('frame_number')
+                if fn is None:
+                    continue
+                if self._is_annotation_start_event(val) and start_frame is None:
+                    start_frame = fn
+                elif self._is_annotation_end_event(val) and end_frame is None:
+                    end_frame = fn
             if start_frame is None or end_frame is None:
                 return None
             cap = cv2.VideoCapture(self.current_video_path)
@@ -1932,7 +2166,7 @@ class EvenementsController:
         is_water = options.get("is_water", False)
         apply_rectify = options.get("apply_rectify", False)
         include_images = options.get("include_images", True)
-        event_categories = options.get("event_categories", ["events_deployment", "events_animal", "events_interesting_images"])
+        event_categories = options.get("event_categories", ["events_motor", "events_animal", "events_interesting_images"])
 
         if apply_rectify and not os.path.exists(json_path):
             QtWidgets.QMessageBox.critical(
@@ -2005,7 +2239,7 @@ class EvenementsController:
         """Affiche le résultat de l'export et génère le CSV d'événements."""
         self._copy_companion_files(self.current_video_path)
         message = self.translate(f"Export terminé : {saved_count} images sauvegardées.", f"Export complete: {saved_count} images saved.")
-        categories = getattr(self, '_export_event_categories', ["events_deployment", "events_animal", "events_interesting_images"])
+        categories = getattr(self, '_export_event_categories', ["events_motor", "events_animal", "events_interesting_images"])
         if self._generate_events_csv(self.current_video_path, self.export_start_ms, self.export_end_ms, categories):
             message += self.translate("\nCSV d'événements généré.", "\nEvents CSV generated.")
         if hasattr(self, 'export_status_label') and self.export_status_label:
@@ -2041,7 +2275,7 @@ class EvenementsController:
     def _generate_events_csv_no_images(self, video_path, start_ms, end_ms, event_categories=None):
         """Génère events_VIAME.csv avec références vidéo+frame, sans lot d'images."""
         if event_categories is None:
-            event_categories = ['events_deployment', 'events_animal', 'events_interesting_images']
+            event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
         events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
@@ -2063,15 +2297,28 @@ class EvenementsController:
             events_list = []
             track_id = 0
             for category in event_categories:
-                for item in video_obs.get(category, [{}])[0].get('values', []) if video_obs.get(category) else []:
-                    f_start = item.get('frame_number_start')
-                    f_end = item.get('frame_number_end')
-                    name = str(item.get('value', 'unknown')).strip()
-                    if f_start is not None:
-                        f_start = int(f_start)
-                        f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
-                        events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
-                        track_id += 1
+                raw = video_obs.get(category)
+                if not raw:
+                    continue
+                if category == "events_motor":
+                    items = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+                    for item in items:
+                        f = item.get('frame_number')
+                        name = str(item.get('description_fr', 'rotation')).strip()
+                        if f is not None:
+                            f = int(f)
+                            events_list.append({'id': track_id, 'start': f, 'end': f, 'name': name})
+                            track_id += 1
+                else:
+                    for item in raw[0].get('values', []) if isinstance(raw[0], dict) else []:
+                        f_start = item.get('frame_number_start')
+                        f_end = item.get('frame_number_end')
+                        name = str(item.get('value', 'unknown')).strip()
+                        if f_start is not None:
+                            f_start = int(f_start)
+                            f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
+                            events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
+                            track_id += 1
 
             motor_events = []
             system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))
@@ -2109,7 +2356,7 @@ class EvenementsController:
     def _generate_events_csv(self, video_path, start_ms, end_ms, event_categories=None):
         """Génère events_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""
         if event_categories is None:
-            event_categories = ['events_deployment', 'events_animal', 'events_interesting_images']
+            event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
@@ -2155,8 +2402,18 @@ class EvenementsController:
             track_id = 0
             for category in event_categories:
                 cat_data = video_obs.get(category, [])
-                if isinstance(cat_data, list) and len(cat_data) > 0:
-                    for item in cat_data[0].get('values', []):
+                if not isinstance(cat_data, list) or not cat_data:
+                    continue
+                if category == "events_motor":
+                    for item in [v for v in cat_data if isinstance(v, dict) and "frame_number" in v]:
+                        f = item.get('frame_number')
+                        name = str(item.get('description_fr', 'rotation')).strip()
+                        if f is not None:
+                            f = int(f)
+                            events_list.append({'id': track_id, 'start': f, 'end': f, 'name': name})
+                            track_id += 1
+                else:
+                    for item in cat_data[0].get('values', []) if isinstance(cat_data[0], dict) else []:
                         f_start = item.get('frame_number_start')
                         f_end = item.get('frame_number_end')
                         name = str(item.get('value', 'unknown')).strip()
