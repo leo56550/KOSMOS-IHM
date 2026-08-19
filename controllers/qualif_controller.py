@@ -821,6 +821,7 @@ class QualifController:
                 print(f"[ERROR] Could not read system data: {e}")
             self.load_and_display_campaign_json(first_loaded_json)
 
+        self._restore_qualifiable_state()
         self._reset_left_splitter_sizes()
         self.refresh_completion_colors()
         self._rebuild_video_rows()
@@ -1680,6 +1681,49 @@ class QualifController:
         clicked_action = menu.exec(self.video_tree.viewport().mapToGlobal(position))
         if clicked_action == trash_action:
             self.delete_video_by_index(index.siblingAtColumn(0))
+
+    def _restore_qualifiable_state(self):
+        """Remet en corbeille les vidéos dont qualifiable='no' dans leur _temp.json (après chargement)."""
+        rows_to_trash = []
+        for row in range(self.video_model.rowCount()):
+            name_item = self.video_model.item(row, 0)
+            if not name_item:
+                continue
+            video_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not video_path:
+                continue
+            json_path = resolve_video_json_path(self._working_dir, str(video_path))
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, "r", encoding="utf-8") as _f:
+                    data = json.load(_f)
+                val = (data.get("video_observation", {}).get("qualifiable") or {}).get("value")
+                if str(val).lower() == "no":
+                    rows_to_trash.append(row)
+            except Exception:
+                pass
+
+        for row in reversed(rows_to_trash):
+            name_item = self.video_model.item(row, 0)
+            video_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+            video_name = name_item.text()
+            col_name = QtGui.QStandardItem(video_name)
+            col_name.setData(video_path, QtCore.Qt.ItemDataRole.UserRole)
+            col_name.setData(
+                name_item.data(QtCore.Qt.ItemDataRole.UserRole + 2),
+                QtCore.Qt.ItemDataRole.UserRole + 2,
+            )
+            col_name.setData(
+                name_item.data(QtCore.Qt.ItemDataRole.UserRole + 3),
+                QtCore.Qt.ItemDataRole.UserRole + 3,
+            )
+            items = [self.video_model.item(row, c) for c in range(5)]
+            self.trash_model.appendRow(
+                [col_name] + [QtGui.QStandardItem(items[c].text() if items[c] else "") for c in range(1, 5)]
+            )
+            self.video_model.removeRow(row)
+            print(f"[QUALIF] Restauré en corbeille : {video_name}")
 
     def _set_qualifiable(self, video_path: str, value: str):
         """Écrit video_observation.qualifiable dans le JSON de travail ('yes' ou 'no')."""

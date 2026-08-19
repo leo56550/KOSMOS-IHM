@@ -887,3 +887,11 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-19 15:39:24.881706
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt
