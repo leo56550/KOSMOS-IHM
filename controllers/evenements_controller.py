@@ -3,13 +3,7 @@ import json
 import shutil
 import uuid
 import cv2
-import numpy as np
-import matplotlib.image as mpimg
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
-
 from PyQt6 import QtCore, QtGui, QtWidgets
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
 from services.motor_service import get_motor_stable_timestamps
 from services.campaign_service import (
@@ -24,48 +18,6 @@ from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
-
-
-class _HistWorker(QtCore.QThread):
-    """Extrait la frame courante et calcule les histogrammes R/G/B hors du thread principal."""
-
-    result_ready = QtCore.pyqtSignal(object, int, str)  # (hists dict, mean_luma, dominant)
-
-    def __init__(self, video_path: str, position_ms: int, apply_fn=None, parent=None):
-        super().__init__(parent)
-        self._path = video_path
-        self._pos_ms = position_ms
-        self._apply_fn = apply_fn
-
-    def run(self):
-        cap = cv2.VideoCapture(self._path)
-        if not cap.isOpened():
-            return
-        cap.set(cv2.CAP_PROP_POS_MSEC, self._pos_ms)
-        ret, frame = cap.read()
-        cap.release()
-        if not ret or frame is None:
-            return
-        if self.isInterruptionRequested():
-            return
-        if self._apply_fn is not None:
-            try:
-                frame = self._apply_fn(frame)
-            except Exception:
-                pass
-
-        channel_cfg = [('#D94F38', 2, 'R'), ('#4CAF50', 1, 'G'), ('#2778A2', 0, 'B')]
-        hists = {}
-        for _color, idx, name in channel_cfg:
-            hists[name] = cv2.calcHist([frame], [idx], None, [256], [0, 256]).flatten()
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        mean_luma = int(np.mean(gray))
-        means = {name: float(np.mean(frame[:, :, idx])) for _c, idx, name in channel_cfg}
-        dominant = max(means, key=means.get)
-
-        if not self.isInterruptionRequested():
-            self.result_ready.emit(hists, mean_luma, dominant)
 
 
 class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
@@ -182,12 +134,6 @@ class EvenementsController:
             )
             self._initialize_event_dropdown_menus()
 
-            # Histogramme : démarrage/arrêt du timer selon l'état de lecture
-            self.event_player.player.playbackStateChanged.connect(self._on_hist_playback_state)
-            # Mise à jour immédiate sur seek en pause
-            self.event_player.player.positionChanged.connect(self._on_hist_position_changed)
-            # Mise à jour quand une correction image change
-            self.event_player.corrections_changed.connect(self._update_histogram)
 
         self.tree_view_events = self.page.findChild(QtWidgets.QTreeView, "treeView")
         if self.tree_view_events:
@@ -993,65 +939,6 @@ class EvenementsController:
 
         layout.addWidget(analyse_grid)
 
-        # ── Histogramme ──────────────────────────────────────────────────
-        sep = QtWidgets.QFrame()
-        sep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        sep.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
-        layout.addWidget(sep)
-
-        lbl_hist = QtWidgets.QLabel(self.translate("Histogramme frame courante", "Current frame histogram"))
-        lbl_hist.setStyleSheet(
-            "color: #7ec8e3; font-size: 11px; font-weight: bold; border: none;"
-        )
-        layout.addWidget(lbl_hist)
-
-        fig = Figure(facecolor='#111820')
-        self._hist_ax = fig.add_subplot(111)
-        self._hist_ax.set_facecolor('#111820')
-        fig.subplots_adjust(left=0.06, right=0.99, top=0.96, bottom=0.18)
-        self._hist_canvas = FigureCanvas(fig)
-        self._hist_canvas.setMinimumHeight(120)
-        self._hist_canvas.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        self._hist_canvas.setStyleSheet("background: #111820; border: none;")
-        layout.addWidget(self._hist_canvas, stretch=1)
-
-        # Logo watermark — pré-redimensionné à hauteur fixe pour OffsetImage
-        self._hist_logo = None
-        _logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'img', 'logo_kosmos.png')
-        try:
-            raw = cv2.imread(_logo_path, cv2.IMREAD_UNCHANGED)
-            if raw is not None:
-                lh, lw = raw.shape[:2]
-                target_h = 80
-                target_w = max(1, int(lw * target_h / lh))
-                small = cv2.resize(raw, (target_w, target_h), interpolation=cv2.INTER_AREA)
-                # cv2 charge en BGR(A) → convertir en RGB(A) pour matplotlib
-                if small.ndim == 3 and small.shape[2] == 4:
-                    small = small[:, :, [2, 1, 0, 3]]
-                elif small.ndim == 3:
-                    small = small[:, :, [2, 1, 0]]
-                self._hist_logo = small.astype(np.float32) / 255.0
-        except Exception:
-            self._hist_logo = None
-
-        self._draw_empty_histogram()
-
-        # Timer répétitif pendant la lecture (2s pour ne pas bloquer le player)
-        self._hist_timer = QtCore.QTimer()
-        self._hist_timer.setInterval(2000)
-        self._hist_timer.timeout.connect(self._update_histogram)
-
-        # Debounce pour les seeks (évite de lancer un calcul à chaque pixel de déplacement)
-        self._hist_debounce = QtCore.QTimer()
-        self._hist_debounce.setSingleShot(True)
-        self._hist_debounce.setInterval(300)
-        self._hist_debounce.timeout.connect(self._update_histogram)
-
-        self._hist_worker: _HistWorker | None = None
-
         self.export_button.clicked.connect(self.on_export_segment_clicked)
         self.export_worker = None
 
@@ -1060,123 +947,6 @@ class EvenementsController:
         has_video = bool(self.current_video_path)
         if hasattr(self, 'export_button') and self.export_button:
             self.export_button.setEnabled(has_video)
-
-    def _on_hist_playback_state(self, state):
-        """Démarre le timer répétitif en lecture, l'arrête en pause."""
-        from PyQt6.QtMultimedia import QMediaPlayer
-        if state == QMediaPlayer.PlaybackState.PlayingState:
-            self._hist_timer.start()
-        else:
-            self._hist_timer.stop()
-            # Mise à jour immédiate quand on met en pause
-            self._update_histogram()
-
-    def _on_hist_position_changed(self, _pos):
-        """Lance un debounce de 300ms sur l'histogramme lors d'un seek en pause."""
-        from PyQt6.QtMultimedia import QMediaPlayer
-        if not hasattr(self, 'event_player'):
-            return
-        if self.event_player.player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
-            self._hist_debounce.start()
-
-    def _hist_apply_style(self, ax):
-        """Applique le style sombre commun et le logo watermark sur les axes."""
-        ax.set_facecolor('#111820')
-        for spine in ax.spines.values():
-            spine.set_color('#1e3448')
-        ax.tick_params(colors='#56789a', labelsize=6, length=2)
-        if hasattr(self, '_hist_logo') and self._hist_logo is not None:
-            oi = OffsetImage(self._hist_logo, zoom=1.0, alpha=0.10)
-            ab = AnnotationBbox(
-                oi, (0.5, 0.5),
-                xycoords='axes fraction',
-                box_alignment=(0.5, 0.5),
-                frameon=False,
-                zorder=0,
-            )
-            ax.add_artist(ab)
-
-    def _draw_empty_histogram(self):
-        """Affiche un histogramme vide avec watermark en attente de vidéo."""
-        if not hasattr(self, '_hist_ax'):
-            return
-        ax = self._hist_ax
-        ax.clear()
-        self._hist_apply_style(ax)
-        ax.text(0.5, 0.5, "Aucune vidéo", transform=ax.transAxes,
-                ha='center', va='center', color='#2a4a62', fontsize=9)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        self._hist_canvas.draw()
-
-    def _update_histogram(self):
-        """Lance le worker d'extraction de frame dans un thread séparé."""
-        if not hasattr(self, '_hist_ax') or not hasattr(self, 'event_player'):
-            return
-        video_path = getattr(self.event_player, 'current_video_path', None)
-        if not video_path or not os.path.exists(video_path):
-            return
-
-        # Stoppe proprement l'ancien worker : déconnexion d'abord, puis attente
-        old = self._hist_worker
-        self._hist_worker = None
-        if old is not None:
-            try:
-                old.result_ready.disconnect()
-            except RuntimeError:
-                pass
-            try:
-                if old.isRunning():
-                    old.requestInterruption()
-                    old.wait(300)
-            except RuntimeError:
-                pass  # C++ object déjà détruit — on ignore
-
-        position_ms = self.event_player.player.position()
-        apply_fn = None
-        if self.event_player._has_active_corrections():
-            apply_fn = self.event_player._apply_corrections
-        worker = _HistWorker(video_path, position_ms, apply_fn=apply_fn)
-        worker.result_ready.connect(self._on_hist_ready)
-        # Pas de deleteLater : on garde la référence Python sur self._hist_worker
-        # pour éviter que Qt détruise l'objet C++ pendant que Python le référence encore
-        self._hist_worker = worker
-        worker.start()
-
-    def _on_hist_ready(self, hists: dict, mean_luma: int, dominant: str):
-        """Reçu depuis le worker — dessine l'histogramme sur le thread principal."""
-        if not hasattr(self, '_hist_ax') or not hasattr(self, '_hist_canvas'):
-            return
-
-        channel_cfg = [('#D94F38', 'R'), ('#4CAF50', 'G'), ('#2778A2', 'B')]
-        ax = self._hist_ax
-        ax.clear()
-        self._hist_apply_style(ax)
-
-        for color, name in channel_cfg:
-            h = hists[name]
-            ax.fill_between(range(256), h, alpha=0.28, color=color, zorder=2)
-            ax.plot(h, color=color, linewidth=0.9, alpha=0.9, zorder=3)
-
-        y_max = max(h.max() for h in hists.values()) or 1
-
-        ax.axvspan(0, 5,     alpha=0.22, color='#5555ff', zorder=1)
-        ax.axvspan(250, 255, alpha=0.22, color='#D94F38', zorder=1)
-        ax.axvline(mean_luma, color='#ffffff', linewidth=0.9,
-                   alpha=0.55, linestyle='--', zorder=4)
-
-        dom_color = {'R': '#D94F38', 'G': '#4CAF50', 'B': '#2778A2'}[dominant]
-        ax.text(0.02, 0.97, f"Lum. : {mean_luma}",
-                transform=ax.transAxes, color='#a0b8c8',
-                fontsize=6.5, va='top', ha='left', zorder=5)
-        ax.text(0.98, 0.97, f"Dom. {dominant}",
-                transform=ax.transAxes, color=dom_color,
-                fontsize=6.5, va='top', ha='right', fontweight='bold', zorder=5)
-
-        ax.set_xlim(0, 255)
-        ax.set_ylim(0, y_max * 1.08)
-        ax.set_xlabel('Intensité', color='#56789a', fontsize=7)
-        self._hist_canvas.draw()
 
     # --- Capture mode helpers ---
 
@@ -1640,9 +1410,6 @@ class EvenementsController:
                 self.event_player.btn_telemetry.setEnabled(False)
                 self.event_player.btn_telemetry.setChecked(False)
             self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
-            self._draw_empty_histogram()
-            self._hist_timer.start()
-            QtCore.QTimer.singleShot(400, self._update_histogram)
 
     def charger_evenements_du_json(self):
         """Lit le JSON vidéo courant, construit event_dictionary et reconstruit les boutons."""
