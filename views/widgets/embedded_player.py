@@ -84,11 +84,11 @@ class _FullscreenWindow(QtWidgets.QWidget):
         layout.setSpacing(4)
 
         self.video_L = QVideoWidget()
-        self.video_L.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_L.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
         layout.addWidget(self.video_L)
 
         self.video_R = QVideoWidget()
-        self.video_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
         self.video_R.setVisible(False)
         layout.addWidget(self.video_R)
 
@@ -198,7 +198,7 @@ class _VideoLabel(QtWidgets.QWidget):
         if self._image is not None and not self._image.isNull():
             if self._zoom <= 1.0:
                 scaled = self._image.size().scaled(
-                    self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                    self.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
                 x = (self.width() - scaled.width()) // 2
                 y = (self.height() - scaled.height()) // 2
                 painter.drawImage(QtCore.QRect(x, y, scaled.width(), scaled.height()), self._image)
@@ -309,7 +309,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         # Caméra gauche : QVideoWidget (rendu hardware) + overlay corrections (_VideoLabel)
         self.video_widget = QVideoWidget()
-        self.video_widget.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_widget.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
         self.correction_overlay = _VideoLabel()
         self.left_display = QtWidgets.QStackedWidget()
         self.left_display.addWidget(self.video_widget)      # index 0 → lecture hardware
@@ -318,7 +318,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         # Caméra droite (stéréo uniquement)
         self.video_widget_R = QVideoWidget()
-        self.video_widget_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_widget_R.setAspectRatioMode(QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding)
         self.video_widget_R.setVisible(False)
 
         vc_layout.addWidget(self.left_display)
