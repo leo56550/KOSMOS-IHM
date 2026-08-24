@@ -935,3 +935,11 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-24 10:13:26.020998
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 148, in paintEvent
+    def paintEvent(self, event):
+    
+KeyboardInterrupt
