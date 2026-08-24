@@ -531,7 +531,19 @@ class MetadonneesController:
                              if k == "type_system"), None)
         _system_color_map: dict[str, str] = {}
 
-        for model_row in range(self.video_model.rowCount()):
+        # Trie les lignes par heure de prise (UserRole+2, déjà posée par la page Qualification) ;
+        # les vidéos sans heure connue ("99:99") se retrouvent en fin de tableau.
+        _STATION_TIME_SORT_MISSING = "99:99"
+        _model_rows = sorted(
+            range(self.video_model.rowCount()),
+            key=lambda r: (
+                (self.video_model.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole + 2)
+                 or _STATION_TIME_SORT_MISSING)
+                if self.video_model.item(r, 0) else _STATION_TIME_SORT_MISSING
+            )
+        )
+
+        for model_row in _model_rows:
             item = self.video_model.item(model_row, 0)
             if not item:
                 continue
