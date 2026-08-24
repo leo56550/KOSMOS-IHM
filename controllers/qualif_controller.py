@@ -1080,7 +1080,12 @@ class QualifController:
                 merged[key] = meta
 
         _HIDDEN_SURVEY_KEYS = {"campagne", "site", "protectionStatus1", "protectionStatus2",
-                               "campaign", "campaign_code", "campaign_name", "mission"}
+                               "campaign", "campaign_code", "campaign_name", "mission",
+                               # Gérés ailleurs : datawork_folder/video_subfolder sont
+                               # recalculés automatiquement depuis le chemin (jamais saisis
+                               # à la main) ; survey_name est le champ "Nom de campagne" de
+                               # la page Métadonnées, pas un champ de cette page.
+                               "datawork_folder", "video_subfolder", "survey_name"}
         _HIDDEN_SURVEY_LABELS = {"campagne", "site", "statut de protection 1",
                                   "statut de protection 2", "campaign"}
 

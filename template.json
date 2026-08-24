@@ -231,7 +231,7 @@
       "name_fr": "Qualifiable",
       "type": "str",
       "format": "yes/no",
-      "value": null,
+      "value": "yes",
       "description": "Whether the video has been selected for qualification (no = rejected via JETER)",
       "description_fr": "Indique si la vidéo a été retenue pour qualification (no = rejetée via JETER)",
       "acquisition_mode": "IHM qualification",

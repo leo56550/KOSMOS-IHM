@@ -25,6 +25,10 @@ class AppController:
         """Instancie tous les controllers de page, connecte les signaux de navigation et les boutons workflow."""
         self.window = window
         self.qualification_completed = False
+        # Reste True tant que la campagne est ouverte, même si un jeter/garder après coup
+        # remet qualification_completed à False (bouton) — la navigation ne doit pas se
+        # reverrouiller pour autant, seule la toute première qualification doit être bloquante.
+        self.qualification_ever_completed = False
         self.validation_completed = False
         self._current_campaign_name: str = ""
         self._current_derusher_name: str = ""
@@ -465,6 +469,7 @@ class AppController:
         """Charge la campagne, propage le répertoire de travail et déverrouille la navigation."""
         w = self.window
         self.qualification_completed = False
+        self.qualification_ever_completed = False
         self.validation_completed = False
         self._current_campaign_mode = ""
         self._current_derusher_name = nom_derusher
@@ -623,7 +628,12 @@ class AppController:
     # --- Qualification / Validation completion ---
 
     def _reset_qualification_completed(self):
-        """Réactive le bouton 'Qualification terminée' quand GARDER/JETER est cliqué après la fin."""
+        """Réactive le bouton 'Qualifier' quand GARDER/JETER est cliqué après la fin.
+
+        Ne touche pas qualification_ever_completed : la navigation vers Validation/
+        Métadonnées/Événements reste débloquée, seul le bouton rappelle qu'il faudrait
+        recliquer sur QUALIFIER.
+        """
         if not self.qualification_completed:
             return
         self.qualification_completed = False
@@ -633,6 +643,7 @@ class AppController:
 
     def complete_qualification(self):
         self.qualification_completed = True
+        self.qualification_ever_completed = True
 
         # Sauvegarder les champs de campagne dans tous les _temp.json
         if hasattr(self.qualif_ctrl, 'save_all_campaign_fields'):
@@ -720,9 +731,9 @@ class AppController:
             w.actionEvenements.setEnabled(False)
             w.actionMetadonnees.setEnabled(False)
         else:
-            w.actionValidation.setEnabled(self.qualification_completed)
-            w.actionEvenements.setEnabled(self.qualification_completed and self.validation_completed)
-            w.actionMetadonnees.setEnabled(self.qualification_completed and self.validation_completed)
+            w.actionValidation.setEnabled(self.qualification_ever_completed)
+            w.actionEvenements.setEnabled(self.qualification_ever_completed and self.validation_completed)
+            w.actionMetadonnees.setEnabled(self.qualification_ever_completed and self.validation_completed)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
@@ -759,7 +770,7 @@ class AppController:
         if not w.actionQualification.isEnabled():
             return
 
-        if page == w.page_validation and not self.qualification_completed:
+        if page == w.page_validation and not self.qualification_ever_completed:
             QtWidgets.QMessageBox.warning(
                 w,
                 self.translate("Qualification requise", "Qualification required"),
@@ -772,7 +783,7 @@ class AppController:
             return
 
         if page in (w.page_metadonnees, w.page_evenements):
-            if not self.qualification_completed:
+            if not self.qualification_ever_completed:
                 QtWidgets.QMessageBox.warning(
                     w,
                     self.translate("Qualification requise", "Qualification required"),

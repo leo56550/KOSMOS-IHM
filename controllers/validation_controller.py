@@ -119,7 +119,7 @@ class ValidationController:
             self.video_tree.setColumnWidth(3, 0)
             self.video_tree.setColumnHidden(3, True)
             self.video_tree.clicked.connect(self.on_video_selected)
-            self._bar_delegate = VideoBarDelegate(self.video_tree)
+            self._bar_delegate = VideoBarDelegate(self.video_tree, highlight_short_light=True)
             self._bar_delegate.show_point_number = True
             self.video_tree.setItemDelegateForColumn(0, self._bar_delegate)
 

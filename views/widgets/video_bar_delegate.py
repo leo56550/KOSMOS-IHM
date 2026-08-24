@@ -18,10 +18,13 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     BAR_W = 4
     BAR_X = 2   # décalage depuis le bord gauche du rect
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, highlight_short_light: bool = False):
         super().__init__(parent)
         self._working_dir = ""
         self.show_point_number = False
+        # Page Validation uniquement : signale en rouge vif les vidéos courtes (<9 min)
+        # et légères (<500 Mo), souvent révélatrices d'un problème d'acquisition.
+        self.highlight_short_light = highlight_short_light
 
     def set_working_dir(self, path: str):
         self._working_dir = path
@@ -61,6 +64,25 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             color = QtGui.QColor("#D94F38")
 
         return color, ardoise_missing
+
+    # ── Seuils durée/taille ──────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_duration_minutes(text: str):
+        """Convertit 'MM:SS' en minutes (float). None si non parsable."""
+        try:
+            mm, ss = text.strip().split(":")
+            return int(mm) + int(ss) / 60.0
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_size_mb(text: str):
+        """Extrait la valeur numérique en MB depuis 'XXX.XX MB'. None si non parsable."""
+        try:
+            return float(text.strip().split()[0].replace(",", "."))
+        except Exception:
+            return None
 
     # ── Détection liaison séquentielle ────────────────────────────────────
 
@@ -194,6 +216,17 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             station_time = ""
         dur_idx = index.sibling(index.row(), 1)
         duration = (dur_idx.data(QtCore.Qt.ItemDataRole.DisplayRole) or "") if dur_idx.isValid() else ""
+        size_idx = index.sibling(index.row(), 2)
+        size_text = (size_idx.data(QtCore.Qt.ItemDataRole.DisplayRole) or "") if size_idx.isValid() else ""
+
+        is_short_and_light = False
+        if self.highlight_short_light:
+            duration_min = self._parse_duration_minutes(duration)
+            size_mb = self._parse_size_mb(size_text)
+            is_short_and_light = (
+                duration_min is not None and size_mb is not None
+                and duration_min < 9 and size_mb < 500
+            )
 
         painter.save()
         # Nom — moitié haute
@@ -216,23 +249,35 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         sub_font.setBold(False)
         sub_font.setPointSize(8)
         sub_rect = QtCore.QRect(text_left, rect.top() + half_h, text_w, half_h - 4)
-        if station_time or duration:
-            parts = []
-            if station_time:
-                parts.append(f"Heure de prise : {station_time}")
-            if duration:
-                parts.append(f"Durée : {duration}")
+
+        _NORMAL_COLOR = QtGui.QColor("#90b8d0")
+        _WARNING_COLOR = QtGui.QColor("#FF3B30")  # rouge vif : vidéo courte (<9 min) ET légère (<500 Mo)
+
+        segments = []
+        if station_time:
+            segments.append((f"Heure de prise : {station_time}", _NORMAL_COLOR))
+        if duration:
+            segments.append((f"Durée : {duration}",
+                              _WARNING_COLOR if is_short_and_light else _NORMAL_COLOR))
+        if size_text:
+            segments.append((f"Taille : {size_text}",
+                              _WARNING_COLOR if is_short_and_light else _NORMAL_COLOR))
+
+        if segments:
             painter.setFont(sub_font)
-            painter.setPen(QtGui.QColor("#90b8d0"))
-            # Calcule la largeur du texte info pour positionner le numéro après
-            info_text = "    ".join(parts)
             fm = QtGui.QFontMetrics(sub_font)
-            info_w = fm.horizontalAdvance(info_text) + 12  # +12 d'espace
-            painter.drawText(
-                sub_rect,
-                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                info_text,
-            )
+            gap = fm.horizontalAdvance("    ")
+            x = sub_rect.left()
+            for seg_text, seg_color in segments:
+                seg_rect = QtCore.QRect(x, sub_rect.top(), sub_rect.right() - x, sub_rect.height())
+                painter.setPen(seg_color)
+                painter.drawText(
+                    seg_rect,
+                    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                    seg_text,
+                )
+                x += fm.horizontalAdvance(seg_text) + gap
+            info_w = (x - sub_rect.left()) + 12  # +12 d'espace avant le numéro de point
         else:
             info_w = 0
 
