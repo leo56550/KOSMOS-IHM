@@ -943,3 +943,11 @@ Traceback (most recent call last):
     def paintEvent(self, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-24 10:23:01.593610
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 350, in _open_recent_campaigns
+    def _open_recent_campaigns(self):
+    
+KeyboardInterrupt

@@ -689,8 +689,10 @@ class AppController:
                 print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r} → ignoré")
                 continue
             has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
-            print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r}, has_ardoise={has_ardoise}")
-            if not has_ardoise:
+            ardoise_missing = bool((obs.get("ardoise_missing") or {}).get("value"))
+            print(f"[ARDOISE_CHECK]   {item.text()} → exploitable={val!r}, has_ardoise={has_ardoise}, "
+                  f"ardoise_missing={ardoise_missing}")
+            if not has_ardoise and not ardoise_missing:
                 missing.append(item.text())
         print(f"[ARDOISE_CHECK] → missing={missing}")
         return missing

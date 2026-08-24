@@ -323,28 +323,12 @@ class ValidationController:
         layout.addStretch()
 
     def refresh_ardoise_warning(self):
-        """Affiche un bandeau si la vidéo courante a été marquée 'ardoise manquante'
-        sans qu'une vraie ardoise ait été saisie par la suite."""
+        """Bandeau désactivé : marquer 'ardoise manquante' est une déclaration volontaire
+        et résolue, pas un oubli — inutile d'avertir sur un état que l'utilisateur a
+        lui-même explicitement renseigné."""
         if not hasattr(self, '_ardoise_warning'):
             return
-        if not self.current_json_path or not os.path.isfile(self.current_json_path):
-            self._ardoise_warning.setVisible(False)
-            return
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            obs = data.get("video_observation", {})
-            ardoise_missing = bool(obs.get("ardoise_missing", {}).get("value"))
-            has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
-            if ardoise_missing and not has_ardoise:
-                self._ardoise_warning.setText(
-                    self.translate("⚠ Ardoise manquante pour cette vidéo", "⚠ Slate missing for this video")
-                )
-                self._ardoise_warning.setVisible(True)
-            else:
-                self._ardoise_warning.setVisible(False)
-        except Exception:
-            self._ardoise_warning.setVisible(False)
+        self._ardoise_warning.setVisible(False)
 
     # Couleurs par valeur d'exploitabilité (bg_checked, color_checked, border_checked, hint_bg)
     _EXPLOITABLE_COLORS = {

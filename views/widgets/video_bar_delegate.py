@@ -140,7 +140,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         if not vp:
             return
 
-        color, ardoise_missing = self._get_video_status(str(vp))
+        color, _ = self._get_video_status(str(vp))
         ext_top, ext_bot = self._link_info(index)
         rect = option.rect
 
@@ -186,16 +186,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             painter.drawRoundedRect(bar, 2, 2)
         painter.restore()
 
-        # ── Point amber (ardoise manquante) ───────────────────────────────────
-        if ardoise_missing:
-            painter.save()
-            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QtGui.QBrush(QtGui.QColor("#E8A838")))
-            painter.setPen(QtCore.Qt.PenStyle.NoPen)
-            dot_x = rect.left() + self.BAR_X + self.BAR_W + 2
-            dot_y = rect.top() + (rect.height() - 5) // 2
-            painter.drawEllipse(dot_x, dot_y, 5, 5)
-            painter.restore()
+        # Pas de point ambre séparé pour "ardoise manquante" : c'est une déclaration
+        # volontaire et résolue (la barre de complétion orange/verte suffit déjà).
 
         # ── Icône (miniature) ─────────────────────────────────────────────────
         icon = index.data(QtCore.Qt.ItemDataRole.DecorationRole)
