@@ -1856,6 +1856,23 @@ class EvenementsController:
 
     # --- Export ---
 
+    def _read_events_motor(self, video_obs: dict) -> list:
+        """Retourne la liste normalisée des événements 'events_motor' (frame_number, description_fr),
+        avec repli sur l'ancien format 'events_deployment' (wrapper {"values": [...]})
+        pour les JSON pas encore migrés vers le nouveau format à plat."""
+        raw = video_obs.get("events_motor") or video_obs.get("events_deployment")
+        if not isinstance(raw, list) or not raw:
+            return []
+        first = raw[0] if raw else {}
+        if isinstance(first, dict) and "values" in first:
+            old_vals = first.get("values", [])
+            return [
+                {"frame_number": v.get("frame_number_start", 0),
+                 "description_fr": v.get("value", "")}
+                for v in old_vals if isinstance(v, dict)
+            ]
+        return [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+
     def _get_export_segment_bounds(self):
         """Lit les frames atterrissage et décollage du JSON et retourne (start_ms, end_ms), ou None."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -1867,8 +1884,8 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_motor = json_data.get('video_observation', {}).get('events_motor', [])
-            if not isinstance(events_motor, list) or not events_motor:
+            events_motor = self._read_events_motor(json_data.get('video_observation', {}))
+            if not events_motor:
                 return None
             landing_frame = takeoff_frame = None
             for item in events_motor:
@@ -1906,8 +1923,8 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_motor = json_data.get('video_observation', {}).get('events_motor', [])
-            if not isinstance(events_motor, list) or not events_motor:
+            events_motor = self._read_events_motor(json_data.get('video_observation', {}))
+            if not events_motor:
                 return None
             start_frame = end_frame = None
             for item in events_motor:

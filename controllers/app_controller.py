@@ -24,12 +24,6 @@ class AppController:
     def __init__(self, window):
         """Instancie tous les controllers de page, connecte les signaux de navigation et les boutons workflow."""
         self.window = window
-        self.qualification_completed = False
-        # Reste True tant que la campagne est ouverte, même si un jeter/garder après coup
-        # remet qualification_completed à False (bouton) — la navigation ne doit pas se
-        # reverrouiller pour autant, seule la toute première qualification doit être bloquante.
-        self.qualification_ever_completed = False
-        self.validation_completed = False
         self._current_campaign_name: str = ""
         self._current_derusher_name: str = ""
         self._current_campaign_mode: str = ""  # "MONO" | "STEREO" | ""
@@ -47,7 +41,6 @@ class AppController:
             on_before_delete=self._release_file_in_all_players,
             on_qualification_changed=self._on_qualification_changed,
         )
-        self.qualif_ctrl.on_qualification_resumed = self._reset_qualification_completed
         self.validation_ctrl = ValidationController(
             window.page_validation, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
@@ -130,14 +123,14 @@ class AppController:
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
-        self.btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
-        self._btn_finir_qualif_original_text = self.btn_finir_qualif.text() if self.btn_finir_qualif else "QUALIFIER"
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.clicked.connect(self.complete_qualification)
-
-        self.btn_finir_validation = window.findChild(QtWidgets.QPushButton, "btn_finir_validation")
-        if self.btn_finir_validation:
-            self.btn_finir_validation.clicked.connect(self.complete_validation)
+        # Boutons QUALIFIER / VALIDER retirés : la navigation entre pages n'est plus
+        # conditionnée à un clic explicite, seule une campagne chargée est nécessaire.
+        btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
+        if btn_finir_qualif:
+            btn_finir_qualif.setVisible(False)
+        btn_finir_validation = window.findChild(QtWidgets.QPushButton, "btn_finir_validation")
+        if btn_finir_validation:
+            btn_finir_validation.setVisible(False)
 
         # Button mapping for navigation highlight
         window.button_mapping = {
@@ -469,9 +462,6 @@ class AppController:
                                campaign_folder: str = "", working_dir: str = ""):
         """Charge la campagne, propage le répertoire de travail et déverrouille la navigation."""
         w = self.window
-        self.qualification_completed = False
-        self.qualification_ever_completed = False
-        self.validation_completed = False
         self._current_campaign_mode = ""
         self._current_derusher_name = nom_derusher
         self.lock_navigation(False)  # remet actionValidation/Metadonnees/Evenements à disabled
@@ -525,8 +515,6 @@ class AppController:
         self._sync_all_to_working_dir()
 
         if data_systeme:
-            # qualification_completed et validation_completed restent False
-            # l'utilisateur doit toujours cliquer QUALIFIER puis VALIDER
             if self.working_dir:
                 self.lock_navigation(False)
             self.metadonnees_ctrl.load_global_campaign_metadata(dossier)
@@ -626,39 +614,7 @@ class AppController:
                 getattr(ctrl, method)(updated_model)
         QtCore.QTimer.singleShot(200, self.qualif_ctrl.initialize_tree_indicators)
 
-    # --- Qualification / Validation completion ---
-
-    def _reset_qualification_completed(self):
-        """Réactive le bouton 'Qualifier' quand GARDER/JETER est cliqué après la fin.
-
-        Ne touche pas qualification_ever_completed : la navigation vers Validation/
-        Métadonnées/Événements reste débloquée, seul le bouton rappelle qu'il faudrait
-        recliquer sur QUALIFIER.
-        """
-        if not self.qualification_completed:
-            return
-        self.qualification_completed = False
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.setText(self._btn_finir_qualif_original_text)
-            self.btn_finir_qualif.setEnabled(True)
-
-    def complete_qualification(self):
-        self.qualification_completed = True
-        self.qualification_ever_completed = True
-
-        # Sauvegarder les champs de campagne dans tous les _temp.json
-        if hasattr(self.qualif_ctrl, 'save_all_campaign_fields'):
-            self.qualif_ctrl.save_all_campaign_fields()
-
-        self.lock_navigation(False)  # débloque validation + métadonnées maintenant que qualification_completed=True
-
-        w = self.window
-        if self.btn_finir_qualif:
-            self.btn_finir_qualif.setEnabled(False)
-            trans = w.translations[w.current_language]
-            self.btn_finir_qualif.setText(trans.get('Qualification Terminée ✓', 'Qualification Terminée ✓'))
-
-        self.switch_page(w.page_validation)
+    # --- Vérifications de contenu ---
 
     def _check_ardoises_for_exploitable_videos(self) -> list[str]:
         """Retourne les noms de vidéos exploitables (oui/yes) sans ardoise saisie."""
@@ -698,45 +654,17 @@ class AppController:
         print(f"[ARDOISE_CHECK] → missing={missing}")
         return missing
 
-    def complete_validation(self):
-        missing = self._check_ardoises_for_exploitable_videos()
-        if missing:
-            names = "\n".join(f"  • {n}" for n in missing)
-            QtWidgets.QMessageBox.warning(
-                self.window,
-                self.translate("Ardoises manquantes", "Missing slates"),
-                self.translate(
-                    f"Les vidéos suivantes sont exploitables mais sans ardoise saisie :\n\n{names}\n\n"
-                    "Veuillez saisir les ardoises avant de valider.",
-                    f"The following videos are usable but have no slate entered:\n\n{names}\n\n"
-                    "Please enter the slates before validating."
-                )
-            )
-            return
-        self.validation_completed = True
-        self.lock_navigation(False)  # débloque métadonnées et événements
-        w = self.window
-        if self.btn_finir_validation:
-            self.btn_finir_validation.setEnabled(False)
-            trans = w.translations[w.current_language]
-            self.btn_finir_validation.setText(trans.get('Validation Terminée ✓', 'Validation Terminée ✓'))
-        self.switch_page(w.page_metadonnees)
 
     # --- Navigation ---
 
     def lock_navigation(self, locked: bool):
-        """Active ou désactive les actions de navigation selon l'état du workflow."""
+        """Active ou désactive les actions de navigation (verrouillé tant qu'aucune campagne n'est chargée)."""
         w = self.window
         w.actionQualification.setEnabled(not locked)
         w.actionExtraction.setEnabled(True)
-        if locked:
-            w.actionValidation.setEnabled(False)
-            w.actionEvenements.setEnabled(False)
-            w.actionMetadonnees.setEnabled(False)
-        else:
-            w.actionValidation.setEnabled(self.qualification_ever_completed)
-            w.actionEvenements.setEnabled(self.qualification_ever_completed)
-            w.actionMetadonnees.setEnabled(self.qualification_ever_completed)
+        w.actionValidation.setEnabled(not locked)
+        w.actionEvenements.setEnabled(not locked)
+        w.actionMetadonnees.setEnabled(not locked)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
@@ -772,33 +700,6 @@ class AppController:
 
         if not w.actionQualification.isEnabled():
             return
-
-        if page == w.page_validation and not self.qualification_ever_completed:
-            QtWidgets.QMessageBox.warning(
-                w,
-                self.translate("Qualification requise", "Qualification required"),
-                self.translate(
-                    "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
-                    "avant d'accéder à cette page.",
-                    "Please click QUALIFY on the Qualification page\nbefore accessing this page."
-                )
-            )
-            return
-
-        if page in (w.page_metadonnees, w.page_evenements):
-            if not self.qualification_ever_completed:
-                QtWidgets.QMessageBox.warning(
-                    w,
-                    self.translate("Qualification requise", "Qualification required"),
-                    self.translate(
-                        "Veuillez cliquer sur QUALIFIER dans la page Qualification\n"
-                        "avant d'accéder à cette page.",
-                        "Please click QUALIFY on the Qualification page\nbefore accessing this page."
-                    )
-                )
-                return
-            # Navigation libre entre Validation, Événements et Métadonnées : pas besoin
-            # d'avoir cliqué VALIDER au préalable, seule la qualification est requise.
 
         if page == w.page_metadonnees:
             missing = self._check_ardoises_for_exploitable_videos()
