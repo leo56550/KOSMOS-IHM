@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import shutil
 import uuid
@@ -49,6 +50,19 @@ class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
 
     def setModelData(self, editor, model, index):
         model.setData(index, editor.currentText(), QtCore.Qt.ItemDataRole.EditRole)
+
+
+class _CodestationColumnDelegate(QtWidgets.QStyledItemDelegate):
+    """Affiche le code station (au lieu de la date brute) dans la colonne 3 de la liste vidéos."""
+
+    def __init__(self, resolver, parent=None):
+        super().__init__(parent)
+        self._resolver = resolver  # callable(video_path: str) -> str
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        vp = index.sibling(index.row(), 0).data(QtCore.Qt.ItemDataRole.UserRole)
+        option.text = self._resolver(str(vp)) if vp else ""
 
 
 class EvenementsController:
@@ -154,6 +168,9 @@ class EvenementsController:
             self.tree_view_events.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.tree_view_events)
             self.tree_view_events.setItemDelegateForColumn(0, self._bar_delegate)
+            self._codestation_delegate = _CodestationColumnDelegate(
+                self._get_codestation_for_video, self.tree_view_events)
+            self.tree_view_events.setItemDelegateForColumn(3, self._codestation_delegate)
 
         self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)
 
@@ -590,6 +607,50 @@ class EvenementsController:
                 self._on_events_changed()
         except Exception as e:
             print(f"[EVENTS] Erreur capture rotation moteur : {e}")
+
+    def _get_codestation_for_video(self, video_path: str) -> str:
+        """Calcule le code station (zone + année + n° point) affiché dans la liste vidéos.
+
+        Reprend la même reconstruction que la colonne Codestation de la page Métadonnées
+        (zone de campagne + 2 derniers chiffres de l'année + n° point sur 4 chiffres).
+        """
+        if not video_path:
+            return ""
+        json_path = resolve_video_json_path(self._working_dir, video_path)
+        if not json_path or not os.path.isfile(json_path):
+            return ""
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return ""
+
+        def _v(block: dict, key: str) -> str:
+            entry = block.get(key, {})
+            val = entry.get("value") if isinstance(entry, dict) else entry
+            return str(val) if val is not None else ""
+
+        surv = data.get("survey", {})
+        obs = data.get("video_observation", {})
+
+        code = _v(obs, "codeObs")
+        if code:
+            return code
+
+        zone_v = _v(surv, "zone").strip()
+        date_v = _v(surv, "date").strip()
+        year_2d = re.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+        pname_v = (_v(obs, "point_name") or _v(obs, "station_number")).strip()
+        if pname_v:
+            try:
+                station_idx = f"{int(pname_v):04d}"
+            except ValueError:
+                station_idx = pname_v.zfill(4)[:4]
+        else:
+            station_idx = ""
+        if zone_v and year_2d and station_idx:
+            return f"{zone_v}{year_2d}{station_idx}"
+        return ""
 
     def _get_video_fps(self) -> float:
         """Retourne le FPS du lecteur actif, ou 25.0 par défaut."""
