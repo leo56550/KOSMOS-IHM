@@ -141,6 +141,19 @@ def initialise_video_json_if_needed(video_path: str) -> bool:
         return False
 
 
+def _extract_raw_value(v):
+    """Extrait la valeur scalaire d'un champ du JSON brut.
+
+    Le JSON brut <stem>.json peut être soit à plat (system.camera = "imx477"),
+    soit déjà au format riche (system.camera = {"value": "imx477", ...}) selon
+    la version du système d'acquisition — on ne veut jamais imbriquer tout le
+    dict riche dans le champ "value" du template.
+    """
+    if isinstance(v, dict) and "value" in v:
+        return v.get("value")
+    return v
+
+
 def _nullify_values(node) -> None:
     """Met récursivement à null tous les champs 'value' d'un arbre JSON."""
     if isinstance(node, dict):
@@ -227,7 +240,7 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                 }
                 mapped = []
                 for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
-                    val = raw_sys.get(raw_key)
+                    val = _extract_raw_value(raw_sys.get(raw_key))
                     if val is not None and tmpl_key in sys_block:
                         sys_block[tmpl_key]["value"] = val
                         mapped.append(f"system.{tmpl_key} = {val!r}")
@@ -313,7 +326,7 @@ def update_temp_json_paths(video_path: str) -> None:
                 }
                 mapped = []
                 for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
-                    val = raw_sys.get(raw_key)
+                    val = _extract_raw_value(raw_sys.get(raw_key))
                     if val is not None and tmpl_key in sys_block:
                         entry = sys_block[tmpl_key]
                         if isinstance(entry, dict) and not entry.get("value"):
