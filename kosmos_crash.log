@@ -951,3 +951,19 @@ Traceback (most recent call last):
     def _open_recent_campaigns(self):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-24 10:32:17.317750
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 101, in <lambda>
+    window.actionValidation.triggered.connect(lambda: self.switch_page(window.page_validation))
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-24 10:36:43.761079
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\__init__.py", line 233, in cleanup
+    def cleanup():
+    
+KeyboardInterrupt

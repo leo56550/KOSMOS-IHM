@@ -178,7 +178,7 @@ class MetadonneesController:
 
     def __init__(self, widget: QtWidgets.QWidget, video_model: QtGui.QStandardItemModel,
                  trash_model: QtGui.QStandardItemModel, on_metadata_saved=None,
-                 on_video_selected=None):
+                 on_video_selected=None, on_open_map=None):
         """Connecte les modèles, crée les scroll areas et initialise la jauge statistique."""
         self.widget = widget
         self.video_model = video_model
@@ -189,6 +189,7 @@ class MetadonneesController:
         self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
         self._on_metadata_saved = on_metadata_saved
         self._on_video_selected = on_video_selected
+        self._on_open_map = on_open_map
         self._json_data = {}
         self.current_template_json = None
         self.current_video_path = None
@@ -371,6 +372,17 @@ class MetadonneesController:
         )
         self._btn_terrain.clicked.connect(self._open_feuille_terrain)
         tb_row.addWidget(self._btn_terrain)
+
+        self._btn_map = QtWidgets.QPushButton(
+            self.translate("OUVRIR CARTE", "OPEN MAP"))
+        self._btn_map.setStyleSheet(
+            "QPushButton{background:#1a2a3a;color:#7ec8ea;border:1px solid #2778a2;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#2778a2;color:white;}"
+        )
+        self._btn_map.clicked.connect(self._open_map_action)
+        tb_row.addWidget(self._btn_map)
 
         self._btn_generer = QtWidgets.QPushButton(
             self.translate("GENERER INFOSTATION", "GENERATE INFOSTATION"))
@@ -2120,6 +2132,13 @@ class MetadonneesController:
                 if vp:
                     paths.append(str(vp))
         return paths
+
+    def _open_map_action(self):
+        """Ouvre la carte de campagne (Leaflet, QDialog) centrée sur la vidéo en cours."""
+        if not self._on_open_map:
+            return
+        video_name = os.path.basename(self.current_video_path) if self.current_video_path else None
+        self._on_open_map(video_name)
 
     def _export_infostation_action(self):
         """Point d'entrée utilisateur : vérifie toutes les métadonnées, bloque si incomplet."""

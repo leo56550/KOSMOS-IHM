@@ -70,6 +70,7 @@ class AppController:
             self.qualif_ctrl.trash_model,
             on_metadata_saved=self._on_metadata_saved,
             on_video_selected=self._on_meta_video_selected,
+            on_open_map=self._open_map_from_metadonnees,
         )
         self.apropos_ctrl = AProposController(window.page_apropos)
         self.extraction_ctrl = ExtractionController(
@@ -734,8 +735,8 @@ class AppController:
             w.actionMetadonnees.setEnabled(False)
         else:
             w.actionValidation.setEnabled(self.qualification_ever_completed)
-            w.actionEvenements.setEnabled(self.qualification_ever_completed and self.validation_completed)
-            w.actionMetadonnees.setEnabled(self.qualification_ever_completed and self.validation_completed)
+            w.actionEvenements.setEnabled(self.qualification_ever_completed)
+            w.actionMetadonnees.setEnabled(self.qualification_ever_completed)
 
     def _release_file_in_all_players(self, path: str):
         """Libère le verrou Windows sur un fichier vidéo dans tous les players embarqués."""
@@ -796,17 +797,8 @@ class AppController:
                     )
                 )
                 return
-            if not self.validation_completed:
-                QtWidgets.QMessageBox.warning(
-                    w,
-                    self.translate("Validation requise", "Validation required"),
-                    self.translate(
-                        "Veuillez cliquer sur VALIDER dans la page Validation\n"
-                        "avant d'accéder à cette page.",
-                        "Please click VALIDATE on the Validation page\nbefore accessing this page."
-                    )
-                )
-                return
+            # Navigation libre entre Validation, Événements et Métadonnées : pas besoin
+            # d'avoir cliqué VALIDER au préalable, seule la qualification est requise.
 
         if page == w.page_metadonnees:
             missing = self._check_ardoises_for_exploitable_videos()
@@ -849,6 +841,10 @@ class AppController:
     def _focus_map(self, video_name: str):
         """Focalise la carte Leaflet sur la vidéo dont le nom est fourni."""
         self.qualif_ctrl.update_minimap(video_name)
+
+    def _open_map_from_metadonnees(self, video_name: str = None):
+        """Ouvre la carte de campagne (QDialog Leaflet) depuis la page Métadonnées."""
+        self.qualif_ctrl.update_minimap(video_name, show_dialog=True)
 
     def refresh_status_bar(self, *_):
         """Recalcule et affiche les stats de campagne dans la barre de statut."""
