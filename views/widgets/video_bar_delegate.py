@@ -211,13 +211,13 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         size_idx = index.sibling(index.row(), 2)
         size_text = (size_idx.data(QtCore.Qt.ItemDataRole.DisplayRole) or "") if size_idx.isValid() else ""
 
-        is_short_and_light = False
+        is_short_or_light = False
         if self.highlight_short_light:
             duration_min = self._parse_duration_minutes(duration)
             size_mb = self._parse_size_mb(size_text)
-            is_short_and_light = (
-                duration_min is not None and size_mb is not None
-                and duration_min < 9 and size_mb < 500
+            is_short_or_light = (
+                (duration_min is not None and duration_min < 9)
+                or (size_mb is not None and size_mb < 500)
             )
 
         painter.save()
@@ -250,10 +250,10 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             segments.append((f"Heure de prise : {station_time}", _NORMAL_COLOR))
         if duration:
             segments.append((f"Durée : {duration}",
-                              _WARNING_COLOR if is_short_and_light else _NORMAL_COLOR))
+                              _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
         if size_text:
             segments.append((f"Taille : {size_text}",
-                              _WARNING_COLOR if is_short_and_light else _NORMAL_COLOR))
+                              _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
 
         if segments:
             painter.setFont(sub_font)

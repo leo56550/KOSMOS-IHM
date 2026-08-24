@@ -23,6 +23,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
 from views.dialogs.map_dialog import MapDialog, MapBridge
+from views.widgets.video_bar_delegate import VideoBarDelegate
 
 _STATION_TIME_SORT_MISSING = "99:99"
 
@@ -533,8 +534,19 @@ class QualifController:
         time_label = self.translate("Heure de prise", "Recording time")
         dur_label = self.translate("Durée", "Duration")
         time_part = f"{time_label} : {station_time}    " if station_time else ""
-        lbl_info = QtWidgets.QLabel(f"{time_part}{dur_label} : {duration}    {size}")
+
+        duration_min = VideoBarDelegate._parse_duration_minutes(duration)
+        size_mb = VideoBarDelegate._parse_size_mb(size)
+        is_short_or_light = (
+            (duration_min is not None and duration_min < 9)
+            or (size_mb is not None and size_mb < 500)
+        )
+        warn_color = "#FF3B30" if is_short_or_light else "#90b8d0"
+        lbl_info = QtWidgets.QLabel(
+            f"{time_part}<span style=\"color:{warn_color};\">{dur_label} : {duration}    {size}</span>"
+        )
         lbl_info.setStyleSheet("color: #90b8d0; font-size: 10px; background: transparent;")
+        lbl_info.setTextFormat(QtCore.Qt.TextFormat.RichText)
 
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_info)
