@@ -2437,18 +2437,27 @@ class MetadonneesController:
         slate_frame = None
         slate_timecode = None
         obs = self._json_data.get("video_observation", {})
-        for key in ["events_deployment", "events_interesting_images", "events_animal"]:
-            if key in obs and isinstance(obs[key], list) and obs[key]:
-                for evt in obs[key][0].get("values", []):
-                    if any(kw in str(evt.get("value", "")).lower()
-                           for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
-                        slate_frame = evt.get("frame_number_start")
-                        slate_timecode = evt.get("time_code_start")
-                        break
-            if slate_frame is not None or slate_timecode:
-                break
 
-        # Fallback : calculer le frame depuis le timecode si frame_number_start absent (anciens JSONs)
+        # Mécanisme actuel : le bouton "SAISIR ARDOISE" (page Validation) écrit un timecode
+        # scalaire dans video_observation.timecode_ardoise — c'est la source à vérifier en premier.
+        tc_ardoise = obs.get("timecode_ardoise", {})
+        slate_timecode = tc_ardoise.get("value") if isinstance(tc_ardoise, dict) else tc_ardoise
+
+        # Rétro-compat : anciens JSON où l'ardoise était enregistrée comme événement dans un
+        # tableau (events_deployment/events_interesting_images/events_animal).
+        if not slate_timecode:
+            for key in ["events_deployment", "events_interesting_images", "events_animal"]:
+                if key in obs and isinstance(obs[key], list) and obs[key]:
+                    for evt in obs[key][0].get("values", []):
+                        if any(kw in str(evt.get("value", "")).lower()
+                               for kw in ["whiteboard", "slate", "tableau blanc", "ardoise"]):
+                            slate_frame = evt.get("frame_number_start")
+                            slate_timecode = evt.get("time_code_start")
+                            break
+                if slate_frame is not None or slate_timecode:
+                    break
+
+        # Calculer le frame depuis le timecode si non fourni directement
         if slate_frame is None and slate_timecode:
             try:
                 cap_tmp = cv2.VideoCapture(self.current_video_path)
