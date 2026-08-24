@@ -428,9 +428,11 @@ class EvenementsController:
             # events_motor n'a pas de authorized_values dans le template : valeurs fixes
             if json_key == "events_motor" and not authorized_values:
                 if self.current_language == 'en':
-                    authorized_values = ["landing", "takeoff", "analysis_start", "analysis_end"]
+                    authorized_values = ["landing", "takeoff", "analysis_start", "analysis_end",
+                                          "motor rotation"]
                 else:
-                    authorized_values = ["atterrissage", "décollage", "debut_analyse", "fin_analyse"]
+                    authorized_values = ["atterrissage", "décollage", "debut_analyse", "fin_analyse",
+                                          "rotation moteur"]
             if not isinstance(authorized_values, list):
                 continue
             label = self._get_label_from_json_key(json_key)
@@ -516,6 +518,78 @@ class EvenementsController:
                 self._on_events_changed()
         except Exception as e:
             print(f"[EVENTS] Erreur capture {field_key} : {e}")
+
+    @staticmethod
+    def _strip_events_motor_placeholder(events_motor) -> list:
+        """Retire l'entrée-modèle vide de events_motor (copiée telle quelle depuis template.json,
+        event_id/frame_number toujours null) avant d'y ajouter un vrai événement — sinon elle
+        reste indéfiniment dans le tableau à côté des événements réellement capturés."""
+        if not isinstance(events_motor, list):
+            return []
+        return [
+            e for e in events_motor
+            if isinstance(e, dict) and (e.get("event_id") is not None or e.get("frame_number") is not None)
+        ]
+
+    def _capture_motor_rotation_event(self, btn: QtWidgets.QPushButton):
+        """Ajoute un événement 'Rotation moteur' au timecode courant dans events_motor.
+
+        Contrairement à Atterrissage/Décollage (champ unique, écrasé à chaque clic),
+        une vidéo peut contenir plusieurs rotations moteur : chaque clic ajoute une
+        nouvelle entrée dans le tableau plat video_observation.events_motor.
+        """
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        if not hasattr(self, 'event_player') or not self.event_player:
+            return
+        label = self.translate("Rotation moteur", "Motor rotation")
+        pos_ms = self.event_player.timeline.get_current_position() if hasattr(self.event_player, 'timeline') else 0
+        fps = self._get_video_fps()
+        frame_number = self._ms_to_frame(pos_ms, fps)
+        event_uid = self._generate_event_uid()
+        timecode = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else ""
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs["events_motor"] = self._strip_events_motor_placeholder(obs.get("events_motor"))
+            obs["events_motor"].append({
+                "event_id": event_uid,
+                "time_code": timecode,
+                "frame_number": frame_number,
+                "description_fr": "Rotation moteur",
+                "description_en": "Motor rotation",
+                "comment": "",
+            })
+            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← events_motor += "
+                  f"{{frame_number={frame_number}, time_code={timecode!r}}}")
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            # Marqueur sur la timeline (ajout, pas de remplacement : plusieurs rotations possibles)
+            if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+                tl = self.event_player.timeline
+                tl.events.append({
+                    "start": pos_ms, "end": pos_ms,
+                    "title": label,
+                    "type": "timecode_marker",
+                    "zone": 0,
+                    "_json_key": "events_motor",
+                    "_event_uid": event_uid,
+                })
+                tl.update()
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                tree_item = QtWidgets.QTreeWidgetItem([timecode, "-", "Déploiement", label, "", ""])
+                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                self.tree_captures.addTopLevelItem(tree_item)
+                self.add_tree_thumbnail(tree_item, pos_ms)
+            s_dep = self._ZONE_STYLES[0]
+            self._apply_evt_btn_style(btn, s_dep, "selected")
+            QtCore.QTimer.singleShot(600, lambda: self._apply_evt_btn_style(btn, s_dep, "normal"))
+            if self._on_events_changed:
+                self._on_events_changed()
+        except Exception as e:
+            print(f"[EVENTS] Erreur capture rotation moteur : {e}")
 
     def _get_video_fps(self) -> float:
         """Retourne le FPS du lecteur actif, ou 25.0 par défaut."""
@@ -729,10 +803,17 @@ class EvenementsController:
         btn_dec.clicked.connect(lambda: self._capture_timecode_field("timecode_takeoff", btn_dec))
         dep_row_l.addWidget(btn_dec)
 
+        btn_rot = QtWidgets.QPushButton(self.translate("Rotation moteur", "Motor rotation"))
+        btn_rot.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self._apply_evt_btn_style(btn_rot, s_dep, "normal")
+        btn_rot.clicked.connect(lambda: self._capture_motor_rotation_event(btn_rot))
+        dep_row_l.addWidget(btn_rot)
+
         layout.insertWidget(layout.count() - 1, dep_row_w)
 
         self._btn_atterrissage = btn_att
         self._btn_decollage = btn_dec
+        self._btn_rotation_moteur = btn_rot
 
         gap0 = QtWidgets.QWidget()
         gap0.setFixedHeight(6)
@@ -1024,6 +1105,7 @@ class EvenementsController:
             "ardoise", "slate", "tableau blanc", "whiteboard",
             "début annotation", "debut annotation", "annotation start", "début_annotation",
             "fin annotation", "annotation end", "fin_annotation",
+            "rotation moteur", "motor rotation",
         ]):
             return True
         return False
@@ -1500,8 +1582,8 @@ class EvenementsController:
 
             if json_key == "events_motor":
                 # Structure plate : tableau direct d'événements instantanés
-                if json_key not in data["video_observation"] or not isinstance(data["video_observation"][json_key], list):
-                    data["video_observation"][json_key] = []
+                data["video_observation"][json_key] = self._strip_events_motor_placeholder(
+                    data["video_observation"].get(json_key))
                 saved_value = {
                     "event_id": event_uid,
                     "time_code": self.event_player.timeline._format_ms(event_dict["start"]),

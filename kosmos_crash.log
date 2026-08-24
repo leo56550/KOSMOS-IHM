@@ -975,3 +975,76 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-24 14:51:45.542650
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "C:\KOSMOS_IHM\main.py", line 49, in main
+    window.controller = AppController(window)
+                        ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 56, in __init__
+    self.evenements_ctrl = EvenementsController(
+                           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 117, in __init__
+    self.event_player = EmbeddedVideoPlayer(parent=self.player_container_events, zone_definitions=zones)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\views\widgets\embedded_player.py", line 515, in __init__
+    self.telemetry_dialog = TelemetryDialog(self)
+                            ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\views\dialogs\telemetry_dialog.py", line 64, in __init__
+    pw = pg.PlotWidget(title=label)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\widgets\PlotWidget.py", line 58, in __init__
+    self.plotItem = PlotItem(**kargs)
+                    ^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\PlotItem\PlotItem.py", line 185, in __init__
+    self.setAxisItems(axisItems)
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\PlotItem\PlotItem.py", line 376, in setAxisItems
+    axis = AxisItem(orientation=k, parent=self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\AxisItem.py", line 128, in __init__
+    self.setPen()
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\AxisItem.py", line 703, in setPen
+    self._updateLabel()
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\AxisItem.py", line 532, in _updateLabel
+    self._adjustSize()
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\AxisItem.py", line 589, in _adjustSize
+    self._updateHeight()
+  File "C:\KOSMOS_IHM\venv\Lib\site-packages\pyqtgraph\graphicsItems\AxisItem.py", line 617, in _updateHeight
+    h += max(0, self.style['tickLength'])
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+============================================================
+2026-08-24 14:52:32.825554
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 776, in eventFilter
+    return super().eventFilter(obj, event)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+============================================================
+2026-08-24 14:52:32.984218
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 762, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-24 14:52:33.150209
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 762, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-08-24 14:52:33.322993
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 762, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

@@ -1167,8 +1167,17 @@ class MetadonneesController:
     def refresh_feuille_terrain(self):
         """Ré-dérive les champs auto depuis le JSON, recharge l'en-tête et reconstruit le tableau.
 
-        Appelé par app_controller quand des événements changent sur la vidéo courante.
+        Appelé par app_controller quand des événements changent sur la vidéo courante — typiquement
+        après une écriture directe sur disque par la page Événements. _json_data est une copie en
+        mémoire chargée à la sélection de la vidéo ; sans recharge ici, elle reste périmée et le
+        prochain save_metadata_to_json() (debounce 800 ms) l'écraserait par-dessus l'écriture de la
+        page Événements, effaçant l'événement qui vient d'être ajouté.
         """
+        if self._save_timer.isActive():
+            self._save_timer.stop()
+            self.save_metadata_to_json()  # flush une éventuelle édition en attente avant de recharger
+        if self.current_video_path and self.current_template_json:
+            self.load_all_data(self.current_template_json)
         if self.current_video_path:
             self._load_infostation_fields(self.current_video_path)
         self._rebuild_ft_table()
