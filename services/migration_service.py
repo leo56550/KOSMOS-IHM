@@ -218,11 +218,8 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         if "qualifiable" in vo:
             vo["qualifiable"]["value"] = "yes"
 
-        # survey.datawork_folder / survey.video_subfolder → dérivés du chemin
-        # (non présents dans template.json, ajoutés explicitement)
-        survey = data.setdefault("survey", {})
-        survey["datawork_folder"] = {"value": campaign_folder}
-        survey["video_subfolder"] = {"value": system_folder}
+        # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
+        # video_observation.video_path / video_number déjà remplis ci-dessus.
 
         # ── Champs system depuis le JSON brut <stem>.json ─────────────────
         raw_json_path = os.path.join(folder, f"{stem}.json")
@@ -300,15 +297,8 @@ def update_temp_json_paths(video_path: str) -> None:
                     vo[field] = entry
                     modified = True
 
-        survey = data.setdefault("survey", {})
-        for field, value in (
-            ("datawork_folder", campaign_folder),
-            ("video_subfolder", system_folder),
-        ):
-            entry = survey.get(field, {}) if isinstance(survey.get(field), dict) else {}
-            if entry.get("value") != value:
-                survey[field] = {"value": value}
-                modified = True
+        # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
+        # video_observation.video_path / video_number déjà mis à jour ci-dessus.
 
         # Champs system depuis le JSON brut (seulement si vides dans le temp)
         raw_json_path = os.path.join(folder, f"{stem}.json")
