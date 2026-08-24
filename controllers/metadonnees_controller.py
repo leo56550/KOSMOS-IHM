@@ -1363,9 +1363,9 @@ class MetadonneesController:
 
             elif field_key == "point_name":
                 if not val:
-                    val = self._v(obs, "station_number") or "A saisir"
+                    val = self._v(obs, "station_number")
                 # Supprime les zéros de tête pour afficher exactement ce qui a été saisi
-                if val and val != "A saisir":
+                if val:
                     try:
                         val = str(int(val))
                     except ValueError:
