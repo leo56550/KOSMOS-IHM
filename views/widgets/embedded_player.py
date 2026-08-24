@@ -608,6 +608,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Left), self)
         sc_left_1.setContext(_ctx)
         sc_left_1.activated.connect(lambda: self._step_frame(-1))
+        # +/- (accélérer/ralentir) : géré globalement par AppController.eventFilter,
+        # pas ici, pour ne pas dépendre du focus précis du widget dès l'arrivée sur
+        # la page (cf. _speed_step ci-dessous, appelée directement par ce filtre).
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -1160,6 +1163,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.player.setPlaybackRate(rate)
         if self.is_stereo:
             self.player_R.setPlaybackRate(rate)
+
+    _SPEED_STEPS = [1.0, 2.0, 5.0, 10.0]
+
+    def _speed_step(self, direction: int):
+        """Passe au palier de vitesse suivant/précédent parmi x1/x2/x5/x10 (raccourcis +/-)."""
+        current = self.player.playbackRate() or 1.0
+        idx = min(range(len(self._SPEED_STEPS)), key=lambda i: abs(self._SPEED_STEPS[i] - current))
+        idx = max(0, min(len(self._SPEED_STEPS) - 1, idx + direction))
+        self.set_playback_rate_all(self._SPEED_STEPS[idx])
 
     def _toggle_play_pause(self):
         """Bascule entre lecture et pause (raccourci Espace)."""

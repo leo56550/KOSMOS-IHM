@@ -18,11 +18,12 @@ from controllers.apropos_controller import AProposController
 import os
 
 
-class AppController:
+class AppController(QtCore.QObject):
     """Orchestrates navigation, campaign lifecycle, and page controllers."""
 
     def __init__(self, window):
         """Instancie tous les controllers de page, connecte les signaux de navigation et les boutons workflow."""
+        super().__init__()
         self.window = window
         self._current_campaign_name: str = ""
         self._current_derusher_name: str = ""
@@ -147,6 +148,9 @@ class AppController:
         self.switch_page(window.page_accueil)
         # Synchronise la langue initiale (fenêtre démarre en FR, controllers en EN par défaut)
         self.set_language(window.current_language)
+
+        # +/- pour accélérer/ralentir le player visible, sans dépendre du focus (cf. eventFilter)
+        QtWidgets.QApplication.instance().installEventFilter(self)
 
     def _on_meta_video_selected(self, video_name: str, _video_path: str):  # noqa: ARG002
         """Ouvre le player détaché et focus la carte depuis la page Métadonnées."""
@@ -724,8 +728,8 @@ class AppController:
         w.update_nav_highlight(page)
         self._focus_page_player(page)
 
-    def _focus_page_player(self, page):
-        """Donne le focus clavier au player embarqué de la page, si présent."""
+    def _get_page_player(self, page):
+        """Retourne le player embarqué (EmbeddedVideoPlayer) associé à *page*, ou None."""
         w = self.window
         player_map = {
             w.page_validation: (self.validation_ctrl, 'player'),
@@ -733,11 +737,43 @@ class AppController:
             w.page_extraction: (self.extraction_ctrl, 'video_player'),
         }
         entry = player_map.get(page)
-        if entry:
-            ctrl, attr = entry
-            player = getattr(ctrl, attr, None)
-            if player is not None:
-                QtCore.QTimer.singleShot(0, player.setFocus)
+        if not entry:
+            return None
+        ctrl, attr = entry
+        return getattr(ctrl, attr, None)
+
+    def _focus_page_player(self, page):
+        """Donne le focus clavier au player embarqué de la page, si présent."""
+        player = self._get_page_player(page)
+        if player is not None:
+            # Délai non nul : à 0ms, le focus donné au bouton de nav cliqué (ou au
+            # widget par défaut de la page) reprend parfois la main juste après.
+            QtCore.QTimer.singleShot(80, player.setFocus)
+
+    _SPEED_KEYS = {
+        QtCore.Qt.Key.Key_Plus: +1, QtCore.Qt.Key.Key_Equal: +1,
+        QtCore.Qt.Key.Key_Minus: -1, QtCore.Qt.Key.Key_Underscore: -1,
+    }
+    _TEXT_INPUT_TYPES = (
+        QtWidgets.QLineEdit, QtWidgets.QTextEdit, QtWidgets.QPlainTextEdit,
+        QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox, QtWidgets.QComboBox,
+    )
+
+    def eventFilter(self, obj, event):
+        """Intercepte +/- au niveau application pour changer la vitesse du player de la
+        page actuellement affichée, sans dépendre du focus précis d'un widget — ça marche
+        dès l'arrivée sur la page, pas seulement après avoir cliqué dedans."""
+        if event.type() == QtCore.QEvent.Type.KeyPress:
+            direction = self._SPEED_KEYS.get(event.key())
+            if direction is not None:
+                focus_w = QtWidgets.QApplication.focusWidget()
+                if not isinstance(focus_w, self._TEXT_INPUT_TYPES):
+                    page = self.window.stackedWidget.currentWidget()
+                    player = self._get_page_player(page)
+                    if player is not None and hasattr(player, '_speed_step'):
+                        player._speed_step(direction)
+                        return True
+        return super().eventFilter(obj, event)
 
     def _focus_map(self, video_name: str):
         """Focalise la carte Leaflet sur la vidéo dont le nom est fourni."""
