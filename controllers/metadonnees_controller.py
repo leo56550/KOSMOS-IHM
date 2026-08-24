@@ -1279,11 +1279,19 @@ class MetadonneesController:
             except Exception:
                 pass
 
+        # Champs exclusivement saisis via l'IHM (page Validation, ardoise) : le JSON brut
+        # d'acquisition peut contenir une valeur (souvent un simple numéro auto-incrémenté
+        # côté caméra, sans rapport avec le vrai numéro de point lu sur l'ardoise) qui ne
+        # doit jamais être utilisée comme repli tant que l'ardoise n'a pas été saisie.
+        _NO_RAW_FALLBACK = {"point_name", "station_number"}
+
         def _merge_section(section: str) -> dict:
             """Retourne la section fusionnée : _temp.json prioritaire, brut en fallback."""
             tmp = dict(temp_data.get(section, {}))
             raw = raw_data.get(section, {})
             for k, v in raw.items():
+                if k in _NO_RAW_FALLBACK:
+                    continue
                 if k not in tmp:
                     tmp[k] = v
                 else:
