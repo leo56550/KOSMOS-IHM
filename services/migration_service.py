@@ -201,6 +201,10 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         if "video_file_name" in vo:
             vo["video_file_name"]["value"] = stem
 
+        # qualifiable → "yes" par défaut (vidéo retenue tant qu'elle n'est pas jetée)
+        if "qualifiable" in vo:
+            vo["qualifiable"]["value"] = "yes"
+
         # survey.datawork_folder / survey.video_subfolder → dérivés du chemin
         # (non présents dans template.json, ajoutés explicitement)
         survey = data.setdefault("survey", {})

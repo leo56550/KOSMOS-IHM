@@ -1215,10 +1215,12 @@ class MetadonneesController:
             return m.group(3), heure
         return stem, ""
 
-    def _build_infostation_row(self, video_path: str) -> list:
+    def _build_infostation_row(self, video_path: str, for_csv: bool = False) -> list:
         """Construit la liste ordonnée des valeurs pour une ligne CSV (ordre _INFOSTATION_CSV_SCHEMA).
 
         Retourne une liste positionnelle (pour gérer le doublon "Zone" en cols 2 et 12).
+        `for_csv=True` transforme la colonne Codestation en formule =HYPERLINK(...) vers la
+        vidéo brute (uniquement souhaité dans le fichier CSV exporté, pas dans le tableau IHM).
         """
         stem = os.path.splitext(os.path.basename(video_path))[0]
         codestat, heure_stem = self._extract_stem_parts(stem)
@@ -1373,6 +1375,11 @@ class MetadonneesController:
 
             elif field_key == "timecode_debut" and not val:
                 val = _ev_tc(["atterrissage", "landing"])
+
+            if for_csv and field_key == "codeObs" and val and os.path.isfile(video_path):
+                _target = os.path.abspath(video_path).replace('"', '""')
+                _label = val.replace('"', '""')
+                val = f'=LIEN_HYPERTEXTE("{_target}";"{_label}")'
 
             row.append(val)
 
@@ -2160,7 +2167,7 @@ class MetadonneesController:
                 writer.writerow(_INFOSTATION_COLUMNS)
                 for vp in sorted(video_paths):
                     try:
-                        row_data = self._build_infostation_row(vp)
+                        row_data = self._build_infostation_row(vp, for_csv=True)
                         writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
                                          for v in row_data])
                     except Exception as e:
@@ -2189,7 +2196,7 @@ class MetadonneesController:
                 writer.writerow(_INFOSTATION_COLUMNS)
                 for vp in sorted(video_paths):
                     try:
-                        row_data = self._build_infostation_row(vp)
+                        row_data = self._build_infostation_row(vp, for_csv=True)
                         writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
                                          for v in row_data])
                     except Exception as e:

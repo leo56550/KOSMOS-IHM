@@ -919,3 +919,11 @@ Traceback (most recent call last):
     def cleanup():
     
 KeyboardInterrupt
+
+============================================================
+2026-08-24 09:38:47.079759
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\qualif_controller.py", line 594, in <lambda>
+    lambda _, p=video_path: self._restore_from_trash_by_path(p)
+    
+KeyboardInterrupt
