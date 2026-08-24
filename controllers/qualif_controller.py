@@ -14,7 +14,7 @@ from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, get_sequential_segments, check_stereo_status, get_system_name
 from services.campaign_service import (
-    get_video_gps_coords, get_video_json_path, get_working_video_json_path,
+    get_video_gps_coords, get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
     get_temp_json_path,
 )
@@ -799,16 +799,30 @@ class QualifController:
         self.update_minimap(self.selected_video_name, show_dialog=False)
         self._start_thumbnail_generation()
 
-        first_loaded_json = None
-
         for video in videos:
             initialise_temp_json_if_needed(video["path"])    # crée <stem>_temp.json (valeurs nulles)
             update_temp_json_paths(video["path"])             # remplit les champs chemin si absents
-            json_path = get_video_json_path(video["path"])
-            if not os.path.exists(json_path):
+
+        # Doit s'exécuter avant le choix du JSON de référence ci-dessous : une vidéo
+        # mise à la corbeille (qualifiable='no') sort de video_model et ne reçoit plus
+        # les écritures de synchronize_campaign_field. Il ne faut donc jamais choisir
+        # sa _temp.json comme référence pour les propriétés de campagne.
+        self._restore_qualifiable_state()
+
+        # JSON de référence pour les propriétés de campagne + infos système : on prend la
+        # première vidéo encore présente dans video_model (donc synchronisée par
+        # synchronize_campaign_field), jamais une vidéo trouvée dans le dossier mais
+        # déjà écartée.
+        first_loaded_json = None
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if not vp:
                 continue
-            if not first_loaded_json:
+            json_path = get_temp_json_path(str(vp))
+            if os.path.exists(json_path):
                 first_loaded_json = json_path
+                break
 
         self.system_data = None
         if first_loaded_json:
@@ -821,7 +835,6 @@ class QualifController:
                 print(f"[ERROR] Could not read system data: {e}")
             self.load_and_display_campaign_json(first_loaded_json)
 
-        self._restore_qualifiable_state()
         self._reset_left_splitter_sizes()
         self.refresh_completion_colors()
         self._rebuild_video_rows()
@@ -1227,7 +1240,7 @@ class QualifController:
             vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
             if not vpath:
                 continue
-            jpath = get_video_json_path(vpath)
+            jpath = get_temp_json_path(vpath)
             if not os.path.exists(jpath):
                 continue
             try:
