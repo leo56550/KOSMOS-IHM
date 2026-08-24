@@ -154,6 +154,44 @@ def _extract_raw_value(v):
     return v
 
 
+# Anciens JSON bruts "system" à plat : noms de clés courts, différents du template.
+_RAW_TO_TEMPLATE_SYSTEM = {
+    "camera":  "camera",
+    "model":   "model_mcu",
+    "system":  "type_system",
+    "version": "system_version",
+}
+
+
+def _merge_raw_block(temp_block: dict, raw_block: dict, legacy_key_map: dict | None = None,
+                      only_if_empty: bool = False) -> list:
+    """Copie les valeurs non vides de raw_block dans temp_block pour les clés communes.
+
+    Le JSON brut <stem>.json est aujourd'hui au même format riche que template.json,
+    donc pour la plupart des champs (dont tout le bloc "survey") la clé est identique
+    des deux côtés — une simple correspondance directe suffit. legacy_key_map ne sert
+    que de repli pour d'anciens JSON "system" à plat avec des noms de clés différents.
+    Retourne la liste des "clé = valeur" effectivement copiés (pour le log appelant).
+    """
+    if not isinstance(raw_block, dict) or not isinstance(temp_block, dict):
+        return []
+    changed = []
+    for tmpl_key, entry in temp_block.items():
+        if not isinstance(entry, dict) or "value" not in entry:
+            continue
+        if only_if_empty and entry.get("value"):
+            continue
+        val = _extract_raw_value(raw_block.get(tmpl_key))
+        if val is None and legacy_key_map:
+            raw_key = next((rk for rk, tk in legacy_key_map.items() if tk == tmpl_key), None)
+            if raw_key:
+                val = _extract_raw_value(raw_block.get(raw_key))
+        if val is not None and val != "" and entry.get("value") != val:
+            entry["value"] = val
+            changed.append(f"{tmpl_key} = {val!r}")
+    return changed
+
+
 def _nullify_values(node) -> None:
     """Met récursivement à null tous les champs 'value' d'un arbre JSON."""
     if isinstance(node, dict):
@@ -221,32 +259,24 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
         # video_observation.video_path / video_number déjà remplis ci-dessus.
 
-        # ── Champs system depuis le JSON brut <stem>.json ─────────────────
+        # ── Champs system + survey depuis le JSON brut <stem>.json ────────
         raw_json_path = os.path.join(folder, f"{stem}.json")
         if os.path.isfile(raw_json_path):
             try:
                 with open(raw_json_path, "r", encoding="utf-8") as f_raw:
                     raw = json.load(f_raw)
-                raw_sys = raw.get("system", {})
-                sys_block = data.setdefault("system", {})
-                _RAW_TO_TEMPLATE = {
-                    "camera":  "camera",
-                    "model":   "model_mcu",
-                    "system":  "type_system",
-                    "version": "system_version",
-                }
                 mapped = []
-                for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
-                    val = _extract_raw_value(raw_sys.get(raw_key))
-                    if val is not None and tmpl_key in sys_block:
-                        sys_block[tmpl_key]["value"] = val
-                        mapped.append(f"system.{tmpl_key} = {val!r}")
+                mapped += [f"system.{c}" for c in _merge_raw_block(
+                    data.setdefault("system", {}), raw.get("system", {}),
+                    legacy_key_map=_RAW_TO_TEMPLATE_SYSTEM)]
+                mapped += [f"survey.{c}" for c in _merge_raw_block(
+                    data.setdefault("survey", {}), raw.get("survey", {}))]
                 if mapped:
-                    print(f"[TEMP_JSON] {stem}_temp.json ← system (depuis {stem}.json) :")
+                    print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:
                         print(f"            {entry}")
             except Exception as e_raw:
-                print(f"[INIT] Impossible de lire {stem}.json pour system : {e_raw}")
+                print(f"[INIT] Impossible de lire {stem}.json pour system/survey : {e_raw}")
 
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -300,31 +330,25 @@ def update_temp_json_paths(video_path: str) -> None:
         # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
         # video_observation.video_path / video_number déjà mis à jour ci-dessus.
 
-        # Champs system depuis le JSON brut (seulement si vides dans le temp)
+        # Champs system + survey depuis le JSON brut (seulement si vides dans le temp,
+        # pour ne jamais écraser une saisie manuelle déjà faite dans l'IHM)
         raw_json_path = os.path.join(folder, f"{stem}.json")
         if os.path.isfile(raw_json_path):
             try:
                 with open(raw_json_path, "r", encoding="utf-8") as f_raw:
                     raw = json.load(f_raw)
-                raw_sys = raw.get("system", {})
-                sys_block = data.get("system", {})
-                _RAW_TO_TEMPLATE = {
-                    "camera":  "camera",
-                    "model":   "model_mcu",
-                    "system":  "type_system",
-                    "version": "system_version",
-                }
                 mapped = []
-                for raw_key, tmpl_key in _RAW_TO_TEMPLATE.items():
-                    val = _extract_raw_value(raw_sys.get(raw_key))
-                    if val is not None and tmpl_key in sys_block:
-                        entry = sys_block[tmpl_key]
-                        if isinstance(entry, dict) and not entry.get("value"):
-                            entry["value"] = val
-                            modified = True
-                            mapped.append(f"system.{tmpl_key} = {val!r}")
+                sys_changed = _merge_raw_block(
+                    data.setdefault("system", {}), raw.get("system", {}),
+                    legacy_key_map=_RAW_TO_TEMPLATE_SYSTEM, only_if_empty=True)
+                surv_changed = _merge_raw_block(
+                    data.setdefault("survey", {}), raw.get("survey", {}), only_if_empty=True)
+                if sys_changed or surv_changed:
+                    modified = True
+                mapped += [f"system.{c}" for c in sys_changed]
+                mapped += [f"survey.{c}" for c in surv_changed]
                 if mapped:
-                    print(f"[TEMP_JSON] {stem}_temp.json ← system (depuis {stem}.json) :")
+                    print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:
                         print(f"            {entry}")
             except Exception:
