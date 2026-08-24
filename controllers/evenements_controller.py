@@ -98,14 +98,17 @@ class EvenementsController:
 
         if self.left_frame_events:
             self.left_frame_events.setMinimumWidth(150)
-            self.left_frame_events.setMaximumWidth(16777215)
+            # Ne pas dépasser 420 (largeur max de choose_event_container) : sinon frame_12
+            # se voit allouer plus d'espace par le splitter que son contenu n'en occupe,
+            # et son propre fond bleu reste visible en trou entre la liste et le lecteur.
+            self.left_frame_events.setMaximumWidth(420)
 
         self.proxy_model = VideoFilterProxyModel(self.page)
         self.proxy_model.setSourceModel(self.video_model)
 
         if self.player_container_events:
             layout = self.player_container_events.layout() or QtWidgets.QVBoxLayout(self.player_container_events)
-            layout.setContentsMargins(10, 10, 10, 10)
+            layout.setContentsMargins(0, 0, 0, 0)
             zones = [
                 {"label": "Deployment",     "color": QtGui.QColor(39, 120, 162, 180)},  # bleu
                 {"label": "Fauna / Animal", "color": QtGui.QColor(217, 79,  56, 180)},  # rouge
@@ -239,15 +242,50 @@ class EvenementsController:
         self.tree_captures = QtWidgets.QTreeWidget()
         self.tree_captures.setColumnCount(6)
         self.tree_captures.setHeaderLabels(self._get_tree_headers())
-        self.tree_captures.setColumnWidth(0, 130)
-        self.tree_captures.setColumnWidth(1, 90)
-        self.tree_captures.setColumnWidth(2, 150)
-        self.tree_captures.setColumnWidth(3, 130)
-        self.tree_captures.setColumnWidth(4, 180)
+        self.tree_captures.setColumnWidth(0, 95)
+        self.tree_captures.setColumnWidth(1, 60)
+        self.tree_captures.setColumnWidth(2, 100)
+        self.tree_captures.setColumnWidth(3, 80)
+        self.tree_captures.setColumnWidth(5, 68)
+        header = self.tree_captures.header()
+        for col in (0, 1, 2, 3, 5):
+            header.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        self.tree_captures.setAlternatingRowColors(True)
+        self.tree_captures.setRootIsDecorated(False)
+        self.tree_captures.setUniformRowHeights(True)
         self.tree_captures.setStyleSheet("""
-            QTreeWidget { background-color: #1e1e1e; color: white; border: 1px solid #2778a2; border-radius: 4px; }
-            QHeaderView::section { background-color: #20415d; color: white; font-weight: bold; border: 1px solid #2778a2; }
-            QTreeWidget::item { height: 40px; }
+            QTreeWidget {
+                background-color: #14202c;
+                alternate-background-color: #182838;
+                color: #d4e8f5;
+                border: 1px solid #2a4057;
+                border-radius: 6px;
+                font-size: 12px;
+                outline: none;
+            }
+            QTreeWidget::item {
+                height: 42px;
+                border-bottom: 1px solid #1e3448;
+            }
+            QTreeWidget::item:hover {
+                background-color: #1e3448;
+            }
+            QTreeWidget::item:selected {
+                background-color: #2778a2;
+                color: white;
+            }
+            QHeaderView::section {
+                background-color: #1a2e3a;
+                color: #7ec8e3;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 7px 4px;
+                border: none;
+                border-bottom: 2px solid #2778a2;
+            }
+            QHeaderView::section:first { border-top-left-radius: 5px; }
+            QHeaderView::section:last { border-top-right-radius: 5px; }
         """)
         self.tree_captures.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_captures.customContextMenuRequested.connect(
@@ -850,13 +888,13 @@ class EvenementsController:
         if not self.export_container:
             return
         layout = self.export_container.layout() or QtWidgets.QVBoxLayout(self.export_container)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
-        self.export_button = QtWidgets.QPushButton(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"), self.export_container)
+        self.export_button = QtWidgets.QPushButton("EXPORTER LES ÉVÉNEMENTS", self.export_container)
         self.export_button.setStyleSheet(
             "QPushButton { background-color: #e68c14; color: white; font-weight: bold; "
-            "border: 1px solid #f09624; border-radius: 6px; padding: 5px 8px; }"
+            "font-size: 13px; border: 1px solid #f09624; border-radius: 6px; padding: 8px 10px; }"
             "QPushButton:hover { background-color: #f09624; }"
         )
         self.export_button.setEnabled(False)
@@ -873,7 +911,9 @@ class EvenementsController:
 
         self.export_status_label = QtWidgets.QLabel("", self.export_container)
         self.export_status_label.setWordWrap(True)
-        self.export_status_label.setStyleSheet("color: #F2BFB4; font-size: 11px; border: none;")
+        self.export_status_label.setStyleSheet("color: #F2BFB4; font-size: 12px; border: none;")
+        self.export_status_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
 
         layout.addWidget(self.export_button)
         layout.addWidget(self.export_progress)
@@ -885,19 +925,22 @@ class EvenementsController:
         sep_analyse.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         layout.addWidget(sep_analyse)
 
-        lbl_analyse = QtWidgets.QLabel(self.translate("Analyse vidéo", "Video analysis"))
-        lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 11px; font-weight: bold; border: none;")
+        lbl_analyse = QtWidgets.QLabel("Analyse vidéo")
+        lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
         layout.addWidget(lbl_analyse)
 
-        _lbl_s = "color: #7ec8e3; font-size: 10px; border: none;"
+        _lbl_s = "color: #7ec8e3; font-size: 14px; border: none;"
         _inp_s = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
-                  " border-radius: 3px; padding: 2px 5px; font-size: 11px;")
+                  " border-radius: 4px; padding: 6px 8px; font-size: 14px;")
 
         analyse_grid = QtWidgets.QWidget()
         analyse_grid.setStyleSheet("background: transparent;")
+        analyse_grid.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
         ag = QtWidgets.QGridLayout(analyse_grid)
-        ag.setContentsMargins(0, 4, 0, 4)
-        ag.setSpacing(6)
+        ag.setContentsMargins(0, 8, 0, 8)
+        ag.setHorizontalSpacing(10)
+        ag.setVerticalSpacing(16)
 
         def _albl(text):
             l = QtWidgets.QLabel(text)
@@ -908,24 +951,25 @@ class EvenementsController:
             w = QtWidgets.QLineEdit()
             w.setPlaceholderText(placeholder)
             w.setStyleSheet(_inp_s)
+            w.setMinimumHeight(30)
             w.editingFinished.connect(lambda fk=field_key, widget=w: self._save_analysis_field(fk, widget.text()))
             self._analysis_widgets[field_key] = w
             return w
 
-        ag.addWidget(_albl(self.translate("Analyseur poisson", "Fish annotator")), 0, 0)
+        ag.addWidget(_albl("Analyseur poisson"), 0, 0)
         ag.addWidget(_ainput("fish_annotator", "ex : Jean Dupont"), 0, 1)
-        ag.addWidget(_albl(self.translate("Analyseur habitat", "Habitat annotator")), 1, 0)
+        ag.addWidget(_albl("Analyseur habitat"), 1, 0)
         ag.addWidget(_ainput("habitat_annotator", "ex : Marie Martin"), 1, 1)
-        ag.addWidget(_albl(self.translate("Substrat", "Substrate")), 2, 0)
+        ag.addWidget(_albl("Substrat"), 2, 0)
         ag.addWidget(_ainput("substrat", "ex : Sable, Roche, Herbier…"), 2, 1)
-        ag.addWidget(_albl(self.translate("Visibilité (m)", "Visibility (m)")), 3, 0)
+        ag.addWidget(_albl("Visibilité (m)"), 3, 0)
         ag.addWidget(_ainput("estimated_visibility", "ex : 5"), 3, 1)
 
         dist_w = QtWidgets.QWidget()
         dist_w.setStyleSheet("background: transparent;")
         dist_row = QtWidgets.QHBoxLayout(dist_w)
         dist_row.setContentsMargins(0, 0, 0, 0)
-        dist_row.setSpacing(4)
+        dist_row.setSpacing(6)
         lbl_min = QtWidgets.QLabel("min")
         lbl_min.setStyleSheet(_lbl_s)
         lbl_max = QtWidgets.QLabel("max")
@@ -934,10 +978,11 @@ class EvenementsController:
         dist_row.addWidget(_ainput("distance_min", "0"))
         dist_row.addWidget(lbl_max)
         dist_row.addWidget(_ainput("distance_max", "5"))
-        ag.addWidget(_albl(self.translate("Distance anal. (m)", "Analysis dist. (m)")), 4, 0)
+        ag.addWidget(_albl("Distance analysable (m)"), 4, 0)
         ag.addWidget(dist_w, 4, 1)
 
         layout.addWidget(analyse_grid)
+        layout.addStretch(1)
 
         self.export_button.clicked.connect(self.on_export_segment_clicked)
         self.export_worker = None
@@ -1741,7 +1786,8 @@ class EvenementsController:
         """Extrait une miniature vidéo et l'insère dans la colonne Aperçu de tree_item."""
         thumbnail_label = QtWidgets.QLabel()
         thumbnail_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        thumbnail_label.setStyleSheet("background-color: black; margin: 2px; border-radius: 2px;")
+        thumbnail_label.setStyleSheet(
+            "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057; border-radius: 4px;")
         vignette_pixmap = None
         if self.current_video_path and os.path.exists(self.current_video_path):
             frame_rgb = extract_frame_at_time(self.current_video_path, timestamp_ms / 1000.0)
@@ -1751,12 +1797,14 @@ class EvenementsController:
                 vignette_pixmap = QtGui.QPixmap.fromImage(q_img)
         if vignette_pixmap and not vignette_pixmap.isNull():
             thumbnail_label.setPixmap(
-                vignette_pixmap.scaled(60, 34, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                vignette_pixmap.scaled(58, 32, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                                        QtCore.Qt.TransformationMode.SmoothTransformation)
             )
         else:
-            thumbnail_label.setText("N/A")
-            thumbnail_label.setStyleSheet("color: gray; font-size: 9px; font-weight: bold;")
+            thumbnail_label.setText("—")
+            thumbnail_label.setStyleSheet(
+                "background-color: #0c141c; margin: 3px; border: 1px solid #2a4057; border-radius: 4px;"
+                " color: #4a6478; font-size: 10px; font-weight: bold;")
         self.tree_captures.setItemWidget(tree_item, 5, thumbnail_label)
 
     # --- JSON cleanup ---
