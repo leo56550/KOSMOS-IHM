@@ -5,6 +5,7 @@ from services.campaign_service import (get_campaign_json_data, get_video_json_pa
                                        get_working_video_json_path, resolve_video_json_path)
 from services.video_service import check_stereo_status, get_system_name
 from services.weather_service import WeatherWorker
+from services.sound_service import get_sound_service
 from views.dialogs.notes_dialog import NotesDialog
 from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
 from services.report_service import generate_pdf_report
@@ -525,6 +526,7 @@ class AppController(QtCore.QObject):
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session
         self._update_info_labels(w.translations.get(w.current_language, w.translations['fr']))
+        get_sound_service().play("campaign_open")
 
         try:
             from services.recent_campaigns_service import add_recent_campaign

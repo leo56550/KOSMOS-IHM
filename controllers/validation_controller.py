@@ -6,6 +6,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from services.motor_service import get_motor_stable_timestamps
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path
+from services.sound_service import get_sound_service
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from models.video_model import VideoFilterProxyModel
@@ -926,6 +927,7 @@ class ValidationController:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
             print(f"[VALIDATION] timecode_ardoise='{time_str}' écrit dans {self.current_json_path}")
+            get_sound_service().play("ardoise")
 
             # Mise à jour immédiate du numéro de point dans la liste vidéo
             if station_num and self.video_tree and self.video_model:

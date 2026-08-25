@@ -22,6 +22,7 @@ from services.migration_service import initialise_temp_json_if_needed, update_te
 from services.motor_service import get_motor_stable_timestamps
 from services.image_service import extract_frame_at_time
 from services.thumbnail_service import ThumbnailWorkerMulti, THUMB_W, THUMB_H
+from services.sound_service import get_sound_service
 from views.dialogs.map_dialog import MapDialog, MapBridge
 from views.widgets.video_bar_delegate import VideoBarDelegate
 
@@ -1811,6 +1812,7 @@ class QualifController:
             return
         video_name = name_item.text()
         video_path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        get_sound_service().play("discard")
 
         if self._on_before_delete:
             self._on_before_delete(video_path)
@@ -1857,7 +1859,7 @@ class QualifController:
             return
         video_name = item_name.text()
         video_path = item_name.data(QtCore.Qt.ItemDataRole.UserRole)
-
+        get_sound_service().play("keep")
 
         items = [self.trash_model.item(row, c) for c in range(5)]
         col_name = QtGui.QStandardItem(video_name)

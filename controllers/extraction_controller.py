@@ -7,6 +7,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.thumbnail_service import THUMB_W, THUMB_H
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
+from services.sound_service import get_sound_service
 from services.campaign_service import get_campaign_output_dir, get_working_video_dir
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
@@ -311,6 +312,7 @@ class ExtractionController:
 
     def on_segment_finished(self, message):
         """Réactive le panneau export et ajoute le segment aux livrables."""
+        get_sound_service().play("export_complete")
         self.group_export.setEnabled(True)
         # Le worker génère le nom automatiquement — on le retrouve dans le message
         # ou on le reconstruit depuis le chemin réel dans segments/

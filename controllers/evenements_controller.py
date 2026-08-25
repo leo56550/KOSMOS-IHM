@@ -14,6 +14,7 @@ from services.campaign_service import (
 from services.image_service import extract_frame_at_time
 from services.video_service import check_stereo_status
 from services.export_service import ExportWorker
+from services.sound_service import get_sound_service
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.export_options_dialog import ExportOptionsDialog
@@ -2386,6 +2387,7 @@ class EvenementsController:
 
     def _on_export_finished(self, saved_count: int):
         """Affiche le résultat de l'export et génère le CSV d'événements."""
+        get_sound_service().play("export_complete")
         self._copy_companion_files(self.current_video_path)
         message = self.translate(f"Export terminé : {saved_count} images sauvegardées.", f"Export complete: {saved_count} images saved.")
         categories = getattr(self, '_export_event_categories', ["events_motor", "events_animal", "events_interesting_images"])

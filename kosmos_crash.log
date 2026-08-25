@@ -1389,3 +1389,11 @@ Traceback (most recent call last):
     self.combo_type_event.blockSignals(True)
     ^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'EvenementsController' object has no attribute 'combo_type_event'
+
+============================================================
+2026-08-25 13:23:55.522934
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 794, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
