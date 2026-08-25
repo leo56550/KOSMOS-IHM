@@ -259,8 +259,13 @@ class QualifController:
         self._videos_scroll = QtWidgets.QScrollArea()
         self._videos_scroll.setWidgetResizable(True)
         self._videos_scroll.setStyleSheet("background-color: #0d1b2a; border: none;")
+        # AsNeeded (et non AlwaysOff) : sur un panneau étroit, les lignes vidéo (vignette +
+        # nom + boutons GARDER/JETER de taille fixe) ne peuvent pas descendre sous leur
+        # largeur minimale — sans barre de défilement horizontale, GARDER/JETER se
+        # retrouvaient simplement invisibles, hors de la zone visible, sans aucun moyen
+        # de les atteindre.
         self._videos_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self._videos_scroll_content = QtWidgets.QWidget()
         self._videos_scroll_layout = QtWidgets.QVBoxLayout(self._videos_scroll_content)
@@ -536,6 +541,10 @@ class QualifController:
         )
         lbl_name.setToolTip(video_name)
         lbl_name.setWordWrap(False)
+        # Autorise le label à se comprimer sous sa largeur naturelle : sur un panneau
+        # étroit, ça laisse la priorité aux boutons GARDER/JETER plutôt que de forcer
+        # toute la ligne à déborder (et donc nécessiter un défilement horizontal).
+        lbl_name.setMinimumWidth(0)
 
         time_label = self.translate("Heure de prise", "Recording time")
         dur_label = self.translate("Durée", "Duration")
@@ -553,6 +562,7 @@ class QualifController:
         )
         lbl_info.setStyleSheet("color: #90b8d0; font-size: 10px; background: transparent;")
         lbl_info.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        lbl_info.setMinimumWidth(0)
 
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_info)

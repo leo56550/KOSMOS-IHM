@@ -223,17 +223,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_vue_globale = _btn("Vue globale",      "Vision globale de la campagne sur une timeline", "btn_vue_globale", enabled=False)
         self.btn_load_history = _btn("Données historiques", "Charger les données historiques depuis le serveur", "btn_load_history")
 
-        right_spacer = QtWidgets.QWidget()
-        right_spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        # Boutons regroupés dans une zone défilable horizontalement : sur petit écran,
+        # le chevron d'overflow natif de QToolBar gère mal les widgets ajoutés via
+        # addWidget() (ils peuvent disparaître silencieusement sans indication). Avec un
+        # QScrollArea, tous les boutons restent atteignables par un défilement horizontal.
+        buttons_container = QtWidgets.QWidget()
+        buttons_layout = QtWidgets.QHBoxLayout(buttons_container)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(4)
 
-        self.action_toolbar.addWidget(self.btn_recent_campaigns)
-        self.action_toolbar.addWidget(self.btn_open_video)
-        self.action_toolbar.addWidget(self.btn_sftp)
-        self.action_toolbar.addSeparator()
-        self.action_toolbar.addWidget(self.btn_notes)
-        self.action_toolbar.addWidget(self.btn_rapport_pdf)
-        self.action_toolbar.addWidget(self.btn_vue_globale)
-        self.action_toolbar.addWidget(right_spacer)
+        sep = QtWidgets.QFrame()
+        sep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        sep.setStyleSheet("color: #2778A2; background-color: #2778A2; max-width: 1px;")
+
+        buttons_layout.addWidget(self.btn_recent_campaigns)
+        buttons_layout.addWidget(self.btn_open_video)
+        buttons_layout.addWidget(self.btn_sftp)
+        buttons_layout.addWidget(sep)
+        buttons_layout.addWidget(self.btn_notes)
+        buttons_layout.addWidget(self.btn_rapport_pdf)
+        buttons_layout.addWidget(self.btn_vue_globale)
+        buttons_layout.addStretch()
+
+        buttons_scroll = QtWidgets.QScrollArea()
+        buttons_scroll.setWidget(buttons_container)
+        buttons_scroll.setWidgetResizable(True)
+        buttons_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        buttons_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        buttons_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        buttons_scroll.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred
+        )
+        buttons_scroll.setFixedHeight(36)
+        buttons_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        self.action_toolbar.addWidget(buttons_scroll)
         self.action_toolbar.addWidget(self.btn_load_history)
 
         self.action_toolbar.setStyleSheet("""
