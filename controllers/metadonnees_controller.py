@@ -2321,6 +2321,21 @@ class MetadonneesController:
 
     # ── CSV export ────────────────────────────────────────────────────────
 
+    def _sort_paths_by_station_time(self, video_paths: list[str]) -> list[str]:
+        """Trie une liste de chemins vidéo par heure de prise (UserRole+2 du modèle partagé),
+        même logique de tri que le tableau infostation affiché à l'écran (_rebuild_ft_table).
+        Les vidéos sans heure connue ("99:99") se retrouvent en fin de liste."""
+        _MISSING = "99:99"
+        time_by_path: dict[str, str] = {}
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if vp:
+                time_by_path[str(vp)] = item.data(QtCore.Qt.ItemDataRole.UserRole + 2) or _MISSING
+        return sorted(video_paths, key=lambda vp: time_by_path.get(str(vp), _MISSING))
+
     def _collect_video_paths(self) -> list[str]:
         """Retourne la liste des chemins vidéo du modèle courant."""
         paths = []
@@ -2383,7 +2398,7 @@ class MetadonneesController:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
                 writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
                 writer.writerow(_INFOSTATION_COLUMNS)
-                for vp in sorted(video_paths):
+                for vp in self._sort_paths_by_station_time(video_paths):
                     try:
                         row_data = self._build_infostation_row(vp, for_csv=True)
                         writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
@@ -2412,7 +2427,7 @@ class MetadonneesController:
             with open(csv_path, 'w', newline='', encoding='cp1252', errors='replace') as f:
                 writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
                 writer.writerow(_INFOSTATION_COLUMNS)
-                for vp in sorted(video_paths):
+                for vp in self._sort_paths_by_station_time(video_paths):
                     try:
                         row_data = self._build_infostation_row(vp, for_csv=True)
                         writer.writerow([str(v).replace('\n', ' | ').replace('\r', '')
