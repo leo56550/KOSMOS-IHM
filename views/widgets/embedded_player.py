@@ -287,7 +287,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
         self.btn_cam_R = QtWidgets.QPushButton("Cam D")
         self.btn_cam_R.setCheckable(True)
-        self.btn_cam_R.setChecked(True)
+        self.btn_cam_R.setChecked(False)
         self.btn_cam_R.setStyleSheet(_CAM_BTN_STYLE)
 
         self.cam_bar = QtWidgets.QWidget()
@@ -768,10 +768,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         win.exit_requested.connect(self._exit_fullscreen)
         win.step_frame.connect(self._step_frame)
         win.toggle_play.connect(self._toggle_play_pause)
+        # Respecte la même sélection exclusive Gauche/Droite qu'en vue normale.
+        show_right = self.is_stereo and self.btn_cam_R.isChecked()
+        win.video_L.setVisible(not show_right)
         self.player.setVideoOutput(win.video_L)
         if self.is_stereo:
             self.player_R.setVideoOutput(win.video_R)
-            win.video_R.setVisible(True)
+            win.video_R.setVisible(show_right)
         # Repasser en rendu hardware (pas de corrections en plein écran)
         self.left_display.setCurrentIndex(0)
         win.showFullScreen()
@@ -1029,18 +1032,23 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if is_stereo and isinstance(video_data, list) and len(video_data) >= 2:
             path_l, path_r = video_data[0], video_data[1]
             if os.path.exists(path_l) and os.path.exists(path_r):
+                # Gauche affichée par défaut, droite chargée mais masquée (bascule exclusive
+                # via btn_cam_L/btn_cam_R) — les deux flux restent synchronisés en arrière-plan
+                # pour une bascule instantanée.
                 self.left_display.setVisible(True)
-                self.video_widget_R.setVisible(True)
+                self.video_widget_R.setVisible(False)
                 self.video_fps = self._get_video_fps(path_l)
                 self.current_video_path = path_l
                 self.player.setSource(QtCore.QUrl.fromLocalFile(path_l))
                 self.player_R.setSource(QtCore.QUrl.fromLocalFile(path_r))
                 has_video = True
-            # Reset cam toggles
-            for btn in [self.btn_cam_L, self.btn_cam_R]:
-                btn.blockSignals(True)
-                btn.setChecked(True)
-                btn.blockSignals(False)
+            # Reset cam toggles : Gauche sélectionnée, Droite désélectionnée
+            self.btn_cam_L.blockSignals(True)
+            self.btn_cam_L.setChecked(True)
+            self.btn_cam_L.blockSignals(False)
+            self.btn_cam_R.blockSignals(True)
+            self.btn_cam_R.setChecked(False)
+            self.btn_cam_R.blockSignals(False)
             self.cam_bar.setVisible(True)
         else:
             self.is_stereo = False
@@ -1061,22 +1069,33 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.timeline.update()
 
     def _on_cam_L_toggled(self, checked: bool):
-        """Masque/affiche la caméra gauche tout en garantissant qu'au moins une caméra reste visible."""
-        if not checked and not self.btn_cam_R.isChecked():
+        """Bascule sur la caméra gauche — exclusif avec la droite (une seule vue affichée)."""
+        if not checked:
+            # Pas de désélection au clic : on reste sur Gauche tant que Droite n'est pas choisie.
             self.btn_cam_L.blockSignals(True)
             self.btn_cam_L.setChecked(True)
             self.btn_cam_L.blockSignals(False)
             return
-        self.left_display.setVisible(checked)
+        if self.btn_cam_R.isChecked():
+            self.btn_cam_R.blockSignals(True)
+            self.btn_cam_R.setChecked(False)
+            self.btn_cam_R.blockSignals(False)
+        self.video_widget_R.setVisible(False)
+        self.left_display.setVisible(True)
 
     def _on_cam_R_toggled(self, checked: bool):
-        """Masque/affiche la caméra droite tout en garantissant qu'au moins une caméra reste visible."""
-        if not checked and not self.btn_cam_L.isChecked():
+        """Bascule sur la caméra droite — exclusif avec la gauche (une seule vue affichée)."""
+        if not checked:
             self.btn_cam_R.blockSignals(True)
             self.btn_cam_R.setChecked(True)
             self.btn_cam_R.blockSignals(False)
             return
-        self.video_widget_R.setVisible(checked)
+        if self.btn_cam_L.isChecked():
+            self.btn_cam_L.blockSignals(True)
+            self.btn_cam_L.setChecked(False)
+            self.btn_cam_L.blockSignals(False)
+        self.left_display.setVisible(False)
+        self.video_widget_R.setVisible(True)
 
     def release_video_file(self, path: str):
         """Stop and clear source if this player holds a file from the same directory as path."""
