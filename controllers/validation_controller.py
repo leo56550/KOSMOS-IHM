@@ -750,20 +750,9 @@ class ValidationController:
             )
             if not ok:
                 return
-            station_num = ""
-            if num_str.strip():
-                raw = num_str.strip()
-                try:
-                    station_num = f"{int(raw):04d}"
-                except ValueError:
-                    station_num = raw.zfill(4)[:4]
+            station_num = self._normalize_point_num(num_str)
             # Vérification doublon
-            existing_norm = ""
-            if existing_num:
-                try:
-                    existing_norm = f"{int(existing_num):04d}"
-                except ValueError:
-                    existing_norm = existing_num
+            existing_norm = self._normalize_point_num(existing_num)
             if station_num and station_num != existing_norm:
                 dup = self._find_point_name_duplicate(station_num)
                 if dup:
@@ -857,21 +846,10 @@ class ValidationController:
             if not ok:
                 return
 
-            station_num = ""
-            if num_str.strip():
-                raw = num_str.strip()
-                try:
-                    station_num = f"{int(raw):04d}"
-                except ValueError:
-                    station_num = raw.zfill(4)[:4]
+            station_num = self._normalize_point_num(num_str)
 
             # Vérification doublon (ignoré si le numéro n'a pas changé)
-            existing_norm = ""
-            if existing_num:
-                try:
-                    existing_norm = f"{int(existing_num):04d}"
-                except ValueError:
-                    existing_norm = existing_num
+            existing_norm = self._normalize_point_num(existing_num)
             if station_num and station_num != existing_norm:
                 dup = self._find_point_name_duplicate(station_num)
                 if dup:
@@ -973,6 +951,19 @@ class ValidationController:
         except Exception as e:
             print(f"[VALIDATION] Erreur sauvegarde ardoise/codeObs : {e}")
 
+    @staticmethod
+    def _normalize_point_num(raw: str) -> str:
+        """Normalise un numéro de point pour le stockage : entier sans zéros de tête
+        (le zero-padding à 4 chiffres n'est appliqué qu'à la construction du codestation,
+        ex. build_video_output_name / _get_codestation_for_video)."""
+        raw = (raw or "").strip()
+        if not raw:
+            return ""
+        try:
+            return str(int(raw))
+        except ValueError:
+            return raw
+
     def _find_point_name_duplicate(self, station_num: str) -> str | None:
         """Scanne le dossier système pour trouver une autre vidéo ayant déjà ce point_name."""
         if not station_num or not self.current_video_path:
@@ -1008,7 +999,9 @@ class ValidationController:
                         other_pname = (data.get("video_observation", {})
                                            .get("point_name", {})
                                            .get("value") or "").strip()
-                        if other_pname == station_num:
+                        # Comparaison normalisée : robuste face à d'anciennes valeurs encore
+                        # stockées avec padding ("0051") face à de nouvelles non paddées ("51").
+                        if self._normalize_point_num(other_pname) == self._normalize_point_num(station_num):
                             return f"{stem}.mp4"
                     except Exception:
                         continue
@@ -1099,14 +1092,7 @@ class ValidationController:
         accepted = dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted
 
         # Récupère le numéro de point saisi (seulement si "Saisir" cliqué et champ rempli)
-        station_num = ""
-        if accepted:
-            raw_pt = pt_edit.text().strip()
-            if raw_pt:
-                try:
-                    station_num = f"{int(raw_pt):04d}"
-                except ValueError:
-                    station_num = raw_pt.zfill(4)[:4]
+        station_num = self._normalize_point_num(pt_edit.text()) if accepted else ""
 
         try:
             vob = data.setdefault("video_observation", {})

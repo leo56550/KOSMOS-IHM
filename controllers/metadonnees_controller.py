@@ -793,6 +793,20 @@ class MetadonneesController:
         if json_key == "point_name" and new_value:
             self._check_point_name_duplicate(video_path, new_value)
 
+    @staticmethod
+    def _normalize_point_num(raw: str) -> str:
+        """Normalise un numéro de point pour la comparaison : entier sans zéros de tête.
+        Robuste face à d'anciennes valeurs encore stockées avec padding ("0051") comparées
+        à de nouvelles valeurs non paddées ("51") — le padding n'est appliqué qu'à la
+        construction du codestation, jamais au stockage de point_name/station_number."""
+        raw = (raw or "").strip()
+        if not raw:
+            return ""
+        try:
+            return str(int(raw))
+        except ValueError:
+            return raw
+
     def _check_point_name_duplicate(self, video_path: str, point_name: str) -> None:
         """Avertit si point_name est déjà utilisé par une autre vidéo du même système."""
         system_dir = os.path.dirname(os.path.dirname(os.path.normpath(video_path)))
@@ -815,7 +829,7 @@ class MetadonneesController:
                 other_pname = (data.get("video_observation", {})
                                    .get("point_name", {})
                                    .get("value") or "").strip()
-                if other_pname == point_name:
+                if self._normalize_point_num(other_pname) == self._normalize_point_num(point_name):
                     duplicates.append(os.path.basename(str(other_path)))
             except Exception:
                 continue
