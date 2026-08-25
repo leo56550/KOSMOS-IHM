@@ -36,6 +36,9 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         # Page Validation uniquement : signale en rouge vif les vidéos courtes (<9 min)
         # et légères (<500 Mo), souvent révélatrices d'un problème d'acquisition.
         self.highlight_short_light = highlight_short_light
+        # Désactivable sur les pages au panneau étroit (ex. Événements) où "Taille"
+        # n'aurait de toute façon jamais la place de s'afficher utilement.
+        self.show_size = True
 
     def set_working_dir(self, path: str):
         self._working_dir = path
@@ -269,11 +272,11 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
         segments = []
         if station_time:
-            segments.append((self.translate(f"Heure de prise : {station_time}", f"Time taken: {station_time}"), _NORMAL_COLOR))
+            segments.append((self.translate(f"Heure : {station_time}", f"Time: {station_time}"), _NORMAL_COLOR))
         if duration:
             segments.append((self.translate(f"Durée : {duration}", f"Duration: {duration}"),
                               _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
-        if size_text:
+        if size_text and self.show_size:
             segments.append((self.translate(f"Taille : {size_text}", f"Size: {size_text}"),
                               _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
 
@@ -282,15 +285,24 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             fm = QtGui.QFontMetrics(sub_font)
             gap = fm.horizontalAdvance("    ")
             x = sub_rect.left()
+            right_edge = sub_rect.right()
             for seg_text, seg_color in segments:
-                seg_rect = QtCore.QRect(x, sub_rect.top(), sub_rect.right() - x, sub_rect.height())
+                available = right_edge - x
+                if available <= 6:
+                    # Plus assez de place : on arrête plutôt que de laisser du texte
+                    # invisible/tronqué en plein milieu (ex. "Durée : 19:" sans les secondes).
+                    break
+                display_text = seg_text
+                if fm.horizontalAdvance(seg_text) > available:
+                    display_text = fm.elidedText(seg_text, QtCore.Qt.TextElideMode.ElideRight, available)
+                seg_rect = QtCore.QRect(x, sub_rect.top(), available, sub_rect.height())
                 painter.setPen(seg_color)
                 painter.drawText(
                     seg_rect,
                     QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                    seg_text,
+                    display_text,
                 )
-                x += fm.horizontalAdvance(seg_text) + gap
+                x += fm.horizontalAdvance(display_text) + gap
             info_w = (x - sub_rect.left()) + 12  # +12 d'espace avant le statut d'exploitabilité
         else:
             info_w = 0
@@ -311,15 +323,22 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             fm_trail = QtGui.QFontMetrics(trail_font)
             trail_gap = fm_trail.horizontalAdvance("   ")
             tx = text_left + info_w
+            trail_right_edge = text_left + text_w
             for seg_text, seg_color in trailing:
-                seg_rect = QtCore.QRect(tx, rect.top() + half_h, text_w - (tx - text_left), half_h - 4)
+                available = trail_right_edge - tx
+                if available <= 6:
+                    break
+                display_text = seg_text
+                if fm_trail.horizontalAdvance(seg_text) > available:
+                    display_text = fm_trail.elidedText(seg_text, QtCore.Qt.TextElideMode.ElideRight, available)
+                seg_rect = QtCore.QRect(tx, rect.top() + half_h, available, half_h - 4)
                 painter.setPen(seg_color)
                 painter.drawText(
                     seg_rect,
                     QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                    seg_text,
+                    display_text,
                 )
-                tx += fm_trail.horizontalAdvance(seg_text) + trail_gap
+                tx += fm_trail.horizontalAdvance(display_text) + trail_gap
         painter.restore()
 
     def sizeHint(self, option, index):

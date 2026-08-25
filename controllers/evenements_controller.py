@@ -134,6 +134,8 @@ class EvenementsController:
 
         self.proxy_model = VideoFilterProxyModel(self.page)
         self.proxy_model.setSourceModel(self.video_model)
+        self.proxy_model.setSortRole(QtCore.Qt.ItemDataRole.UserRole + 2)
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
 
         if self.player_container_events:
             layout = self.player_container_events.layout() or QtWidgets.QVBoxLayout(self.player_container_events)
@@ -182,10 +184,20 @@ class EvenementsController:
             )
             self.tree_view_events.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.tree_view_events)
+            # Panneau trop étroit sur cette page pour afficher Heure + Durée + Taille en entier —
+            # Taille est l'info la moins utile ici (pas de mise en avant rouge courte/légère
+            # sur cette page, contrairement à la page Validation).
+            self._bar_delegate.show_size = False
             self.tree_view_events.setItemDelegateForColumn(0, self._bar_delegate)
             self._codestation_delegate = _CodestationColumnDelegate(
                 self._get_codestation_for_video, self.tree_view_events)
             self.tree_view_events.setItemDelegateForColumn(3, self._codestation_delegate)
+            self.tree_view_events.header().setSectionResizeMode(
+                3, QtWidgets.QHeaderView.ResizeMode.Fixed
+            )
+            # Colonne codestation resserrée pour laisser un maximum de largeur à la colonne 0
+            # (nom + heure/durée/taille) — le panneau de cette page est plus étroit qu'ailleurs.
+            self.tree_view_events.setColumnWidth(3, 88)
 
         self.tree_captures.itemChanged.connect(self.on_arbre_item_changed)
 
@@ -273,6 +285,7 @@ class EvenementsController:
         """Remplace le modèle vidéo partagé après ouverture d'une nouvelle campagne."""
         self.video_model = model
         self.proxy_model.setSourceModel(self.video_model)
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
 
     def select_video_by_name(self, video_name: str):
         """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
