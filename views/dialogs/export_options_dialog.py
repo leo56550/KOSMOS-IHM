@@ -163,7 +163,7 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         """Retourne un dict avec les options de traitement sélectionnées."""
         selected_categories = [
             cat for cat, chk in [
-                ("events_deployment", self.check_deployment),
+                ("events_motor", self.check_deployment),
                 ("events_animal", self.check_animal),
                 ("events_interesting_images", self.check_images_type),
             ]

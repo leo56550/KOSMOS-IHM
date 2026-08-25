@@ -69,12 +69,19 @@ class EvenementsController:
     """Contrôleur de la page Événements : capture, édition et export des événements vidéo."""
 
     def __init__(self, page_widget: QtWidgets.QWidget, shared_model: QtGui.QStandardItemModel,
-                 on_video_focused=None, on_events_changed=None):
+                 on_video_focused=None, on_events_changed=None,
+                 on_export_started=None, on_export_progress=None, on_export_ended=None):
         """Initialise les widgets de la page et connecte les signaux de capture et d'export."""
         self.page = page_widget
         self.video_model = shared_model
         self._on_video_focused = on_video_focused
         self._on_events_changed = on_events_changed
+        # Reflète l'export en cours dans la barre de statut globale (visible depuis
+        # n'importe quelle page), pas seulement dans le panneau de la page Événements.
+        # Noms distincts des méthodes _on_export_* (slots Qt) pour éviter tout conflit.
+        self._export_started_cb = on_export_started
+        self._export_progress_cb = on_export_progress
+        self._export_ended_cb = on_export_ended
         self._working_dir: str = ""
         self.current_language = 'en'
         self.export_start_ms = 0
@@ -2016,6 +2023,51 @@ class EvenementsController:
             ]
         return [v for v in raw if isinstance(v, dict) and "frame_number" in v]
 
+    def _build_events_list(self, video_obs: dict, event_categories: list, video_fps: float):
+        """Construit la liste d'événements (id/start/end/name, en frames) pour le CSV VIAME.
+
+        Inclut, pour la catégorie 'events_motor' : le tableau events_motor/events_deployment
+        (rotation moteur, etc.) ET les champs scalaires timecode_landing/timecode_takeoff —
+        ces derniers sont écrits par les boutons dédiés Atterrissage/Décollage et n'apparaissent
+        jamais dans le tableau, donc sans ce repli ils étaient toujours absents du CSV.
+        Retourne (events_list, next_track_id).
+        """
+        events_list = []
+        track_id = 0
+
+        if "events_motor" in event_categories:
+            for field, label in (("timecode_landing", "atterrissage"), ("timecode_takeoff", "décollage")):
+                ms = self._timecode_str_to_ms((video_obs.get(field) or {}).get("value"))
+                if ms is not None:
+                    f = self._ms_to_frame(ms, video_fps)
+                    events_list.append({'id': track_id, 'start': f, 'end': f, 'name': label})
+                    track_id += 1
+            for item in self._read_events_motor(video_obs):
+                f = item.get('frame_number')
+                name = str(item.get('description_fr') or item.get('value') or 'rotation').strip()
+                if f is not None:
+                    f = int(f)
+                    events_list.append({'id': track_id, 'start': f, 'end': f, 'name': name})
+                    track_id += 1
+
+        for category in event_categories:
+            if category == "events_motor":
+                continue
+            cat_data = video_obs.get(category, [])
+            if not isinstance(cat_data, list) or not cat_data:
+                continue
+            for item in cat_data[0].get('values', []) if isinstance(cat_data[0], dict) else []:
+                f_start = item.get('frame_number_start')
+                f_end = item.get('frame_number_end')
+                name = str(item.get('value', 'unknown')).strip()
+                if f_start is not None:
+                    f_start = int(f_start)
+                    f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
+                    events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
+                    track_id += 1
+
+        return events_list, track_id
+
     @staticmethod
     def _timecode_str_to_ms(tc) -> int | None:
         """Convertit 'hh:mm:ss' ou 'mm:ss' en millisecondes. None si non parsable/vide."""
@@ -2198,10 +2250,13 @@ class EvenementsController:
             self.export_button.setEnabled(bool(self.current_video_path))
             return
 
+        status_text = self.translate(f"Export en cours ({target_fps} FPS)...", f"Exporting ({target_fps} FPS)...")
         self.export_progress.setVisible(True)
         self.export_progress.setValue(0)
-        self.export_status_label.setText(self.translate(f"Export en cours ({target_fps} FPS)...", f"Exporting ({target_fps} FPS)..."))
+        self.export_status_label.setText(status_text)
         self.export_button.setEnabled(False)
+        if self._export_started_cb:
+            self._export_started_cb(status_text)
 
         self.export_worker = ExportWorker(
             video_path=self.current_video_path,
@@ -2215,12 +2270,20 @@ class EvenementsController:
         self.export_worker.progress_updated.connect(self._on_export_progress)
         self.export_worker.export_finished.connect(self._on_export_finished)
         self.export_worker.export_error.connect(self._on_export_error)
+        self.export_worker.export_cancelled.connect(self._on_export_cancelled)
         self.export_worker.start()
 
+    def stop_export(self):
+        """Arrête l'export en cours : ExportWorker supprime les images déjà générées."""
+        if getattr(self, 'export_worker', None) and self.export_worker.isRunning():
+            self.export_worker.stop()
+
     def _on_export_progress(self, progress: int):
-        """Met à jour la barre de progression pendant l'export."""
+        """Met à jour la barre de progression pendant l'export (page + barre globale)."""
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setValue(progress)
+        if self._export_progress_cb:
+            self._export_progress_cb(progress)
 
     def _create_video_shortcut(self, video_path: str, dst_dir: str, base_name: str):
         """Crée un raccourci Windows (.lnk) vers la vidéo source dans dst_dir — pas une copie,
@@ -2266,6 +2329,8 @@ class EvenementsController:
             self.export_button.setEnabled(bool(self.current_video_path))
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setVisible(False)
+        if self._export_ended_cb:
+            self._export_ended_cb()
 
     def _on_export_error(self, error_message: str):
         """Affiche le message d'erreur de l'export et réactive le bouton."""
@@ -2275,6 +2340,21 @@ class EvenementsController:
             self.export_button.setEnabled(bool(self.current_video_path))
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setVisible(False)
+        if self._export_ended_cb:
+            self._export_ended_cb()
+
+    def _on_export_cancelled(self):
+        """Export arrêté par l'utilisateur : les images partielles ont déjà été supprimées
+        par ExportWorker. Pas de génération de CSV (rien de cohérent à y mettre)."""
+        msg = self.translate("Export annulé — images supprimées.", "Export cancelled — images deleted.")
+        if hasattr(self, 'export_status_label') and self.export_status_label:
+            self.export_status_label.setText(msg)
+        if hasattr(self, 'export_button') and self.export_button:
+            self.export_button.setEnabled(bool(self.current_video_path))
+        if hasattr(self, 'export_progress') and self.export_progress:
+            self.export_progress.setVisible(False)
+        if self._export_ended_cb:
+            self._export_ended_cb()
 
     def set_working_dir(self, path: str):
         """Définit le répertoire de travail IHM pour les exports."""
@@ -2296,7 +2376,9 @@ class EvenementsController:
         """Génère Annotation_VIAME.csv avec références vidéo+frame, sans lot d'images."""
         if event_categories is None:
             event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
-        template_json_path = get_video_json_path(video_path)
+        # _temp.json = données IHM à jour (événements capturés dans l'app) ; le JSON brut
+        # d'acquisition n'est jamais mis à jour par l'IHM et ne contiendrait donc jamais rien.
+        template_json_path = resolve_video_json_path(self._working_dir, video_path)
         video_out = self._get_video_out_dir(video_path)
         events_csv_path = os.path.normpath(os.path.join(video_out, "Annotation_VIAME.csv"))
         parent_dir = os.path.dirname(os.path.normpath(video_path))
@@ -2314,31 +2396,7 @@ class EvenementsController:
             video_name = os.path.basename(video_path)
             start_frame = int((start_ms / 1000.0) * video_fps)
 
-            events_list = []
-            track_id = 0
-            for category in event_categories:
-                raw = video_obs.get(category)
-                if not raw:
-                    continue
-                if category == "events_motor":
-                    items = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
-                    for item in items:
-                        f = item.get('frame_number')
-                        name = str(item.get('description_fr', 'rotation')).strip()
-                        if f is not None:
-                            f = int(f)
-                            events_list.append({'id': track_id, 'start': f, 'end': f, 'name': name})
-                            track_id += 1
-                else:
-                    for item in raw[0].get('values', []) if isinstance(raw[0], dict) else []:
-                        f_start = item.get('frame_number_start')
-                        f_end = item.get('frame_number_end')
-                        name = str(item.get('value', 'unknown')).strip()
-                        if f_start is not None:
-                            f_start = int(f_start)
-                            f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
-                            events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
-                            track_id += 1
+            events_list, track_id = self._build_events_list(video_obs, event_categories, video_fps)
 
             motor_events = []
             system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))
@@ -2378,7 +2436,7 @@ class EvenementsController:
         if event_categories is None:
             event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
         parent_dir = os.path.dirname(os.path.normpath(video_path))
-        template_json_path = get_video_json_path(video_path)
+        template_json_path = resolve_video_json_path(self._working_dir, video_path)
         video_out = self._get_video_out_dir(video_path)
         events_csv_path = os.path.normpath(os.path.join(video_out, "Annotation_VIAME.csv"))
         img_dir_root_dehaze = os.path.normpath(os.path.join(video_out, "IMG_dehaze"))
@@ -2418,30 +2476,7 @@ class EvenementsController:
             def frame_to_seq(video_frame: int) -> int:
                 return max(1, min(round((video_frame - start_frame) / interval) + 1, total_images))
 
-            events_list = []
-            track_id = 0
-            for category in event_categories:
-                cat_data = video_obs.get(category, [])
-                if not isinstance(cat_data, list) or not cat_data:
-                    continue
-                if category == "events_motor":
-                    for item in [v for v in cat_data if isinstance(v, dict) and "frame_number" in v]:
-                        f = item.get('frame_number')
-                        name = str(item.get('description_fr', 'rotation')).strip()
-                        if f is not None:
-                            f = int(f)
-                            events_list.append({'id': track_id, 'start': f, 'end': f, 'name': name})
-                            track_id += 1
-                else:
-                    for item in cat_data[0].get('values', []) if isinstance(cat_data[0], dict) else []:
-                        f_start = item.get('frame_number_start')
-                        f_end = item.get('frame_number_end')
-                        name = str(item.get('value', 'unknown')).strip()
-                        if f_start is not None:
-                            f_start = int(f_start)
-                            f_end = int(f_end) if (f_end is not None and int(f_end) >= f_start) else f_start
-                            events_list.append({'id': track_id, 'start': f_start, 'end': f_end, 'name': name})
-                            track_id += 1
+            events_list, track_id = self._build_events_list(video_obs, event_categories, video_fps)
 
             motor_events = []
             system_event_path = os.path.normpath(os.path.join(parent_dir, "systemEvent.csv"))

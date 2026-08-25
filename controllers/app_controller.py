@@ -57,7 +57,12 @@ class AppController(QtCore.QObject):
             window.page_evenements, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
             on_events_changed=self._on_events_changed,
+            on_export_started=window.show_export_progress,
+            on_export_progress=window.update_export_progress,
+            on_export_ended=window.hide_export_progress,
         )
+        if hasattr(window, 'btn_stop_export'):
+            window.btn_stop_export.clicked.connect(self.evenements_ctrl.stop_export)
         self.metadonnees_ctrl = MetadonneesController(
             window.page_metadonnees,
             self.qualif_ctrl.video_model,

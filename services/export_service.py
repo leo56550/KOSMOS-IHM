@@ -1,4 +1,6 @@
 import os
+import shutil
+import threading
 import cv2
 import pandas as pd
 import numpy as np
@@ -13,6 +15,7 @@ class ExportWorker(QThread):
     progress_updated = pyqtSignal(int)
     export_finished = pyqtSignal(int)
     export_error = pyqtSignal(str)
+    export_cancelled = pyqtSignal()
 
     def __init__(self, video_path: str, base_output_dir: str, start_ms: int, end_ms: int,
                  target_fps: float, events: list, apply_he: bool = False,
@@ -47,6 +50,12 @@ class ExportWorker(QThread):
         self.json_path = json_path
         self.maps_L = None
         self.maps_R = None
+        self._cancel_event = threading.Event()
+
+    def stop(self):
+        """Demande l'arrêt de l'export ; run() supprimera les images déjà générées et
+        émettra export_cancelled au lieu de export_finished."""
+        self._cancel_event.set()
 
     def run(self):
         """Extrait les frames dans img/ (mono) ou img/LEFT + img/RIGHT (stéréo), émet progress_updated puis export_finished."""
@@ -112,6 +121,15 @@ class ExportWorker(QThread):
             total_to_do = len(matches)
 
             for k, (idxL, idxR) in enumerate(matches):
+                if self._cancel_event.is_set():
+                    capR.release()
+                    if capL:
+                        capL.release()
+                    self._cleanup_partial_output(img_dir)
+                    print("--- EXPORT ANNULÉ ---\n")
+                    self.export_cancelled.emit()
+                    return
+
                 if idxR is not None:
                     capR.set(cv2.CAP_PROP_POS_FRAMES, idxR)
                     retR, frameR = capR.read()
@@ -145,6 +163,16 @@ class ExportWorker(QThread):
         except Exception as e:
             print(f"\n[ERREUR CRITIQUE] {str(e)}")
             self.export_error.emit(f"Erreur Export : {str(e)}")
+
+    @staticmethod
+    def _cleanup_partial_output(img_dir: str):
+        """Supprime le dossier d'images en cours de génération après une annulation."""
+        try:
+            if os.path.isdir(img_dir):
+                shutil.rmtree(img_dir)
+                print(f"[EXPORT] Dossier partiel supprimé : {img_dir}")
+        except Exception as e:
+            print(f"[EXPORT] Échec suppression dossier partiel {img_dir} : {e}")
 
     def _apply_image_filters(self, frame: np.ndarray) -> np.ndarray:
         """Applique HE et/ou dehaze sur une frame BGR selon les options de l'instance."""

@@ -22,6 +22,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._setup_toolbar()
 
         self._setup_status_bar()
+        self._setup_export_progress_bar()
         self.translations = {
             'fr': {
                 'Accueil': 'Accueil', 'Qualification': 'Qualification',
@@ -346,6 +347,60 @@ class MainWindow(QtWidgets.QMainWindow):
             " font-size: 13px; padding: 0 14px;"
         )
         self._sb_qualified.setText(qual_lbl)
+
+    def _setup_export_progress_bar(self):
+        """Barre de progression d'export + bouton STOP, visibles depuis n'importe quelle page."""
+        sb = self.statusBar()
+
+        self.export_progress_container = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(self.export_progress_container)
+        row.setContentsMargins(0, 0, 8, 0)
+        row.setSpacing(8)
+
+        self.export_progress_label = QtWidgets.QLabel("")
+        self.export_progress_label.setStyleSheet(
+            "color: #e68c14; font-family: 'Segoe UI', sans-serif;"
+            " font-size: 12px; font-weight: bold;"
+        )
+
+        self.export_progress_bar = QtWidgets.QProgressBar()
+        self.export_progress_bar.setFixedWidth(160)
+        self.export_progress_bar.setFixedHeight(16)
+        self.export_progress_bar.setTextVisible(True)
+        self.export_progress_bar.setStyleSheet(
+            "QProgressBar { border: 1px solid #e68c14; border-radius: 4px;"
+            " background-color: #1a2a3a; color: white; font-size: 10px; }"
+            "QProgressBar::chunk { background-color: #e68c14; }"
+        )
+
+        self.btn_stop_export = QtWidgets.QPushButton("■ STOP")
+        self.btn_stop_export.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_stop_export.setStyleSheet(
+            "QPushButton { background-color: #5c1e1e; color: #ff8080; border: 1px solid #D94F38;"
+            " border-radius: 4px; padding: 2px 10px; font-size: 10px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #7a2e2e; }"
+        )
+
+        row.addWidget(self.export_progress_label)
+        row.addWidget(self.export_progress_bar)
+        row.addWidget(self.btn_stop_export)
+
+        self.export_progress_container.setVisible(False)
+        sb.addWidget(self.export_progress_container)
+
+    def show_export_progress(self, text: str = ""):
+        """Affiche la barre de progression d'export dans la barre de statut."""
+        self.export_progress_label.setText(text)
+        self.export_progress_bar.setValue(0)
+        self.export_progress_container.setVisible(True)
+
+    def update_export_progress(self, percent: int):
+        """Met à jour la valeur de la barre de progression d'export."""
+        self.export_progress_bar.setValue(percent)
+
+    def hide_export_progress(self):
+        """Masque la barre de progression d'export."""
+        self.export_progress_container.setVisible(False)
 
     def _load_flag_icon(self, filename: str) -> QtGui.QIcon:
         """Charge l'icône drapeau depuis img/filename, retourne une icône vide si absent."""
