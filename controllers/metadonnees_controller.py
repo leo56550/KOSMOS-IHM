@@ -647,6 +647,12 @@ class MetadonneesController:
 
         self._ft_table.cellChanged.connect(self._on_ft_table_cell_changed)
         self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
+
+        # Touche Suppr : efface le contenu de la/les cellule(s) sélectionnée(s)
+        del_shortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Delete), self._ft_table)
+        del_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetShortcut)
+        del_shortcut.activated.connect(self._delete_selected_ft_cells)
+
         outer.addWidget(self._ft_table, stretch=1)
 
         self.refresh_statistics()
@@ -733,6 +739,21 @@ class MetadonneesController:
 
         self._ft_table.blockSignals(False)
         self._ft_table.setSortingEnabled(True)
+
+    def _delete_selected_ft_cells(self):
+        """Efface le contenu de la/les cellule(s) sélectionnée(s) du tableau infostation (touche Suppr)."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        for index in self._ft_table.selectedIndexes():
+            col = index.column()
+            if not (0 <= col < len(_FT_TABLE_COLS)):
+                continue
+            _, _, _, read_only = _FT_TABLE_COLS[col]
+            if read_only:
+                continue
+            item = self._ft_table.item(index.row(), col)
+            if item and item.text():
+                item.setText("")
 
     def _on_ft_table_cell_changed(self, row: int, col: int):
         """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
