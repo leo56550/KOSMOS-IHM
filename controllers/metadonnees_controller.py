@@ -17,7 +17,7 @@ from services.campaign_service import (
     resolve_video_json_path, get_working_video_json_path,
     get_temp_json_path,
 )
-from views.dialogs.weather_dialog import WeatherWebDialog
+from views.dialogs.weather_dialog import WeatherWebDialog, WeatherWebMultiDialog
 from models.video_model import VideoFilterProxyModel
 
 # ── Chargement dynamique du schéma depuis template.json ─────────────────
@@ -2525,10 +2525,11 @@ class MetadonneesController:
 
     # ── Weather web compare ───────────────────────────────────────────────
 
-    def action_compare_weather_web(self):
-        """Extrait lat/lon/date du JSON et lance WeatherWorker pour comparer avec les données web."""
+    @staticmethod
+    def _extract_lat_lon_date(json_data: dict):
+        """Extrait (lat, lon, date_formatee 'YYYY-MM-DD') depuis un JSON vidéo complet."""
         lat, lon, raw_date = None, None, None
-        for block_content in self._json_data.values():
+        for block_content in json_data.values():
             if not isinstance(block_content, dict):
                 continue
             if "date" in block_content and block_content["date"].get("value"):
@@ -2546,6 +2547,32 @@ class MetadonneesController:
             elif "-" in date_str:
                 formatted_date = date_str.split(" ")[0].split("T")[0]
 
+        return lat, lon, raw_date, formatted_date
+
+    def _get_selected_ft_video_paths(self) -> list:
+        """Chemins vidéo (dédupliqués, ordre du tableau) des lignes sélectionnées dans
+        le tableau infostation — permet de lancer la comparaison météo sur plusieurs points."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return []
+        rows = sorted({idx.row() for idx in self._ft_table.selectedIndexes()})
+        paths = []
+        for row in rows:
+            item = self._ft_table.item(row, 0)
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole) if item else None
+            if vp:
+                paths.append(str(vp))
+        return paths
+
+    def action_compare_weather_web(self):
+        """Lance la comparaison météo web — pour tous les points sélectionnés dans le tableau
+        infostation s'il y en a plusieurs, sinon pour la vidéo actuellement affichée."""
+        selected_paths = self._get_selected_ft_video_paths()
+        if len(selected_paths) > 1:
+            self._action_compare_weather_web_multi(selected_paths)
+            return
+
+        lat, lon, raw_date, formatted_date = self._extract_lat_lon_date(self._json_data)
+
         if not lat or not lon:
             QtWidgets.QMessageBox.warning(self.widget,
                 self.translate("Coordonnées manquantes", "Missing Coordinates"),
@@ -2561,6 +2588,73 @@ class MetadonneesController:
         self.weather_worker = WeatherWorker(lat, lon, formatted_date)
         self.weather_worker.weather_fetched.connect(self._open_web_weather_popup)
         self.weather_worker.start()
+
+    def _action_compare_weather_web_multi(self, video_paths: list):
+        """Lance une requête météo web pour chaque point sélectionné, puis affiche un dialogue
+        récapitulatif unique proposant d'appliquer les résultats à tous les points à la fois."""
+        pending_entries = []
+        for vp in video_paths:
+            json_path = resolve_video_json_path(self._working_dir, vp)
+            if not os.path.isfile(json_path):
+                continue
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    jdata = json.load(f)
+            except Exception:
+                continue
+            lat, lon, _raw_date, formatted_date = self._extract_lat_lon_date(jdata)
+            if not lat or not lon or not formatted_date:
+                continue
+            pending_entries.append({
+                "video_path": vp,
+                "video_name": os.path.basename(vp),
+                "lat": lat, "lon": lon, "date": formatted_date,
+            })
+
+        if not pending_entries:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Coordonnées manquantes", "Missing coordinates"),
+                self.translate(
+                    "Aucune des vidéos sélectionnées n'a de latitude/longitude/date valides.",
+                    "None of the selected videos have valid latitude/longitude/date."
+                )
+            )
+            return
+
+        self._multi_weather_pending = len(pending_entries)
+        self._multi_weather_results = []
+        self._multi_weather_workers = []  # référence gardée pour éviter le garbage collection
+
+        for entry in pending_entries:
+            worker = WeatherWorker(entry["lat"], entry["lon"], entry["date"], self.current_language)
+            worker.weather_fetched.connect(
+                lambda data, date, e=entry: self._on_multi_weather_fetched(e, data, date)
+            )
+            self._multi_weather_workers.append(worker)
+            worker.start()
+
+    def _on_multi_weather_fetched(self, entry: dict, fetched_data: dict, relevant_date: str):
+        """Collecte le résultat d'un point ; ouvre le dialogue récapitulatif une fois tous reçus."""
+        self._multi_weather_results.append({
+            "video_path": entry["video_path"],
+            "video_name": entry["video_name"],
+            "date": relevant_date,
+            "web_data": fetched_data or {},
+        })
+        self._multi_weather_pending -= 1
+        if self._multi_weather_pending <= 0:
+            self._multi_weather_workers = []
+            results = sorted(self._multi_weather_results, key=lambda r: r["video_name"])
+            self._weather_dialog = WeatherWebMultiDialog(
+                entries=results,
+                lang=self.current_language,
+                on_apply_one=self._apply_web_weather_to_json,
+                parent=self.widget,
+            )
+            self._weather_dialog.show()
+            self._weather_dialog.raise_()
+            self._weather_dialog.activateWindow()
 
     def _open_web_weather_popup(self, fetched_api_data, relevant_date):
         """Ouvre WeatherWebDialog (non-bloquant) avec les données API récupérées par WeatherWorker."""
@@ -2595,10 +2689,12 @@ class MetadonneesController:
         "coefficient":      "coefficient",
     }
 
-    def _apply_web_weather_to_json(self, api_data: dict):
-        """Écrit les valeurs météo web dans le _temp.json de la vidéo courante."""
-        json_path = resolve_video_json_path(self._working_dir, self.current_video_path) \
-            if self.current_video_path else None
+    def _apply_web_weather_to_json(self, api_data: dict, video_path: str = None):
+        """Écrit les valeurs météo web dans le _temp.json de la vidéo indiquée
+        (ou de la vidéo actuellement affichée si video_path est omis)."""
+        target_path = video_path or self.current_video_path
+        json_path = resolve_video_json_path(self._working_dir, target_path) \
+            if target_path else None
         if not json_path or not os.path.isfile(json_path):
             QtWidgets.QMessageBox.warning(
                 self.widget,
@@ -2621,8 +2717,10 @@ class MetadonneesController:
                 print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.{json_key} = {val!r}")
             with open(json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            # Recharge les panneaux et reconstruit le tableau des colonnes
-            self.load_all_data(json_path)
+            # Ne recharge le panneau d'édition que si c'est bien la vidéo actuellement affichée
+            # (une application groupée sur plusieurs points ne doit pas changer l'affichage courant).
+            if target_path == self.current_video_path:
+                self.load_all_data(json_path)
             self._rebuild_ft_table()
         except Exception as e:
             print(f"[WEATHER APPLY] Erreur : {e}")
