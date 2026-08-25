@@ -8,8 +8,8 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from services.motor_service import get_motor_stable_timestamps
 from services.campaign_service import (
-    get_video_json_path, get_campaign_output_dir, get_video_output_dir,
-    get_working_video_dir, resolve_video_json_path,
+    get_video_json_path, get_campaign_output_dir,
+    resolve_video_json_path, build_video_output_name,
 )
 from services.image_service import extract_frame_at_time
 from services.video_service import check_stereo_status
@@ -2016,6 +2016,23 @@ class EvenementsController:
             ]
         return [v for v in raw if isinstance(v, dict) and "frame_number" in v]
 
+    @staticmethod
+    def _timecode_str_to_ms(tc) -> int | None:
+        """Convertit 'hh:mm:ss' ou 'mm:ss' en millisecondes. None si non parsable/vide."""
+        if not tc:
+            return None
+        try:
+            parts = [int(p) for p in str(tc).strip().replace(',', ':').split(':')]
+            if len(parts) == 2:
+                secs = parts[0] * 60 + parts[1]
+            elif len(parts) == 3:
+                secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+            else:
+                return None
+            return secs * 1000
+        except Exception:
+            return None
+
     def _get_export_segment_bounds(self):
         """Lit les frames atterrissage et décollage du JSON et retourne (start_ms, end_ms), ou None."""
         if not self.current_video_path or not os.path.exists(self.current_video_path):
@@ -2027,28 +2044,38 @@ class EvenementsController:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-            events_motor = self._read_events_motor(json_data.get('video_observation', {}))
-            if not events_motor:
-                return None
+            obs = json_data.get('video_observation', {})
+            video_fps = self._get_video_fps()
+
             landing_frame = takeoff_frame = None
-            for item in events_motor:
-                if not isinstance(item, dict):
-                    continue
-                val = str(item.get('description_fr') or item.get('value', '')).strip()
-                fn = item.get('frame_number')
-                if fn is None:
-                    continue
-                if self._is_landing_event(val) and landing_frame is None:
-                    landing_frame = fn
-                elif self._is_takeoff_event(val) and takeoff_frame is None:
-                    takeoff_frame = fn
+
+            # Source principale : boutons dédiés Atterrissage/Décollage (video_observation.
+            # timecode_landing/timecode_takeoff, champs scalaires écrits par _capture_timecode_field).
+            landing_ms = self._timecode_str_to_ms((obs.get("timecode_landing") or {}).get("value"))
+            takeoff_ms = self._timecode_str_to_ms((obs.get("timecode_takeoff") or {}).get("value"))
+            if landing_ms is not None:
+                landing_frame = self._ms_to_frame(landing_ms, video_fps)
+            if takeoff_ms is not None:
+                takeoff_frame = self._ms_to_frame(takeoff_ms, video_fps)
+
+            # Repli : flux générique menu déroulant type/valeur (events_motor / events_deployment)
+            if landing_frame is None or takeoff_frame is None:
+                for item in self._read_events_motor(obs):
+                    if not isinstance(item, dict):
+                        continue
+                    val = str(item.get('description_fr') or item.get('value', '')).strip()
+                    fn = item.get('frame_number')
+                    if fn is None:
+                        continue
+                    if landing_frame is None and self._is_landing_event(val):
+                        landing_frame = fn
+                    elif takeoff_frame is None and self._is_takeoff_event(val):
+                        takeoff_frame = fn
+
             if landing_frame is None or takeoff_frame is None:
                 return None
             landing_frame = int(landing_frame)
             takeoff_frame = int(takeoff_frame)
-            cap = cv2.VideoCapture(self.current_video_path)
-            video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-            cap.release()
             start_ms = ((float(landing_frame) - 1.0) / float(video_fps)) * 1000.0
             end_ms = ((float(takeoff_frame) - 1.0) / float(video_fps)) * 1000.0
             return start_ms, end_ms
@@ -2195,20 +2222,36 @@ class EvenementsController:
         if hasattr(self, 'export_progress') and self.export_progress:
             self.export_progress.setValue(progress)
 
+    def _create_video_shortcut(self, video_path: str, dst_dir: str, base_name: str):
+        """Crée un raccourci Windows (.lnk) vers la vidéo source dans dst_dir — pas une copie,
+        pour ne pas dupliquer des fichiers vidéo volumineux dans le dossier de sortie."""
+        lnk_path = os.path.join(dst_dir, f"{base_name}.lnk")
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(lnk_path)
+            shortcut.TargetPath = os.path.abspath(video_path)
+            shortcut.WorkingDirectory = os.path.dirname(os.path.abspath(video_path))
+            shortcut.save()
+        except Exception as e:
+            print(f"[EXPORT] Impossible de créer le raccourci vidéo : {e}")
+
     def _copy_companion_files(self, video_path: str):
-        """Copie uniquement le JSON source dans le sous-dossier de travail (si absent)."""
+        """Copie le JSON de travail (_temp.json, données à jour) et crée un raccourci vers la
+        vidéo dans le dossier de sortie, tous deux renommés au format de sortie
+        (YYYYMMDDhhmm_ZONE_CODESTATION)."""
         if not self._working_dir:
             return
-        src_dir = os.path.dirname(os.path.normpath(video_path))
         dst_dir = self._get_video_out_dir(video_path)
         os.makedirs(dst_dir, exist_ok=True)
-        stem = os.path.splitext(os.path.basename(video_path))[0]
-        json_fname = f"{stem}.json"
-        src_file = os.path.join(src_dir, json_fname)
+        base_name = build_video_output_name(video_path)
+
+        src_file = resolve_video_json_path(self._working_dir, video_path)
         if os.path.isfile(src_file):
-            dst_file = os.path.join(dst_dir, json_fname)
-            if not os.path.exists(dst_file):
-                shutil.copy2(src_file, dst_file)
+            dst_file = os.path.join(dst_dir, f"{base_name}.json")
+            shutil.copy2(src_file, dst_file)
+
+        self._create_video_shortcut(video_path, dst_dir, base_name)
 
     def _on_export_finished(self, saved_count: int):
         """Affiche le résultat de l'export et génère le CSV d'événements."""
@@ -2240,20 +2283,22 @@ class EvenementsController:
             self._bar_delegate.set_working_dir(path)
 
     def _get_video_out_dir(self, video_path: str) -> str:
-        """Retourne le dossier de sortie pour une vidéo : répertoire de travail si défini, sinon fallback campagne."""
+        """Retourne le dossier de sortie formaté (YYYYMMDDhhmm_ZONE_CODESTATION), directement
+        dans le répertoire de travail (pas de sous-dossier .kosmos_work)."""
+        folder_name = build_video_output_name(video_path)
         if self._working_dir:
-            return get_working_video_dir(self._working_dir, video_path)
+            return os.path.join(self._working_dir, folder_name)
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         campaign_folder = os.path.dirname(parent_dir)
-        return get_video_output_dir(campaign_folder, video_path)
+        return os.path.join(get_campaign_output_dir(campaign_folder), folder_name)
 
     def _generate_events_csv_no_images(self, video_path, start_ms, end_ms, event_categories=None):
-        """Génère events_VIAME.csv avec références vidéo+frame, sans lot d'images."""
+        """Génère Annotation_VIAME.csv avec références vidéo+frame, sans lot d'images."""
         if event_categories is None:
             event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
-        events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
+        events_csv_path = os.path.normpath(os.path.join(video_out, "Annotation_VIAME.csv"))
         parent_dir = os.path.dirname(os.path.normpath(video_path))
 
         if not os.path.exists(template_json_path):
@@ -2329,16 +2374,16 @@ class EvenementsController:
             return False
 
     def _generate_events_csv(self, video_path, start_ms, end_ms, event_categories=None):
-        """Génère events_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""
+        """Génère Annotation_VIAME.csv dans le sous-dossier vidéo du répertoire de travail."""
         if event_categories is None:
             event_categories = ['events_motor', 'events_animal', 'events_interesting_images']
         parent_dir = os.path.dirname(os.path.normpath(video_path))
         template_json_path = get_video_json_path(video_path)
         video_out = self._get_video_out_dir(video_path)
-        events_csv_path = os.path.normpath(os.path.join(video_out, "events_VIAME.csv"))
-        img_dir_root_dehaze = os.path.normpath(os.path.join(video_out, "img_dehaze"))
+        events_csv_path = os.path.normpath(os.path.join(video_out, "Annotation_VIAME.csv"))
+        img_dir_root_dehaze = os.path.normpath(os.path.join(video_out, "IMG_dehaze"))
         img_dir_root = img_dir_root_dehaze if os.path.exists(img_dir_root_dehaze) else \
-                       os.path.normpath(os.path.join(video_out, "img"))
+                       os.path.normpath(os.path.join(video_out, "IMG"))
         stereo_left_path = os.path.join(img_dir_root, "LEFT")
         img_dir = stereo_left_path if os.path.exists(stereo_left_path) else img_dir_root
 

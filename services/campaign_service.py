@@ -125,7 +125,9 @@ def build_video_output_name(video_path: str) -> str:
     if m_stem:
         hhmm = m_stem.group(1)[:4]
 
-    json_path = get_video_json_path(video_path)
+    # _temp.json = données IHM à jour (zone/date/point saisis dans l'app) ; le JSON
+    # brut d'acquisition n'est jamais mis à jour par l'IHM et serait donc périmé ici.
+    json_path = get_temp_json_path(video_path)
     if not os.path.isfile(json_path):
         return stem
     try:
@@ -150,10 +152,10 @@ def build_video_output_name(video_path: str) -> str:
 
     year_2d = date[2:4] if len(date) >= 4 else "00"
 
-    # N° du point saisi à l'ardoise (champ station_number, 4 chiffres)
-    station_num_raw = (data.get("video_observation", {})
-                          .get("station_number", {})
-                          .get("value") or "").strip()
+    # N° du point saisi à l'ardoise (point_name en priorité, station_number en repli)
+    vo = data.get("video_observation", {})
+    station_num_raw = ((vo.get("point_name", {}).get("value"))
+                        or (vo.get("station_number", {}).get("value")) or "").strip()
     if station_num_raw:
         try:
             station_idx = f"{int(station_num_raw):04d}"
