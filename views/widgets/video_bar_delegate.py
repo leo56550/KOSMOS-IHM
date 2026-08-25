@@ -18,10 +18,20 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     BAR_W = 4
     BAR_X = 2   # décalage depuis le bord gauche du rect
 
+    _EXPLOITABLE_TEXT_COLORS = {
+        "oui": "#4CAF50", "yes": "#4CAF50",
+        "non": "#ff6060", "no": "#ff6060",
+        "habitat": "#E8A838", "communication": "#E8A838",
+        "?": "#aaaaaa",
+    }
+
     def __init__(self, parent=None, highlight_short_light: bool = False):
         super().__init__(parent)
         self._working_dir = ""
         self.show_point_number = False
+        # Page Validation uniquement : affiche le statut d'exploitabilité de la vidéo
+        # (oui/non/habitat/communication/?) en plus du numéro de point.
+        self.show_exploitable_status = False
         # Page Validation uniquement : signale en rouge vif les vidéos courtes (<9 min)
         # et légères (<500 Mo), souvent révélatrices d'un problème d'acquisition.
         self.highlight_short_light = highlight_short_light
@@ -32,19 +42,20 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     # ── Couleur de complétion ─────────────────────────────────────────────
 
     def _get_video_status(self, video_path: str) -> tuple:
-        """Retourne (couleur_barre, ardoise_manquante).
+        """Retourne (couleur_barre, ardoise_manquante, exploitable_value).
 
         Couleur : rouge = rien, orange = ardoise/manquante, vert = ardoise + statut.
         ardoise_manquante : True si ardoise_missing a été explicitement signalée.
+        exploitable_value : valeur brute de video_observation.exploitable ("" si absente).
         """
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if not os.path.exists(json_path):
-            return QtGui.QColor("#D94F38"), False
+            return QtGui.QColor("#D94F38"), False, ""
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception:
-            return QtGui.QColor("#D94F38"), False
+            return QtGui.QColor("#D94F38"), False, ""
 
         obs = data.get("video_observation", {})
 
@@ -54,7 +65,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
         expl = obs.get("exploitable", {})
         expl_val = expl.get("value", "") if isinstance(expl, dict) else str(expl or "")
-        has_status = bool(expl_val and str(expl_val).strip() not in ("", "None", "null", "?"))
+        expl_val = "" if str(expl_val).strip() in ("", "None", "null") else str(expl_val).strip()
+        has_status = bool(expl_val and expl_val != "?")
 
         if has_ardoise_effective and has_status:
             color = QtGui.QColor("#5DBB63")
@@ -63,7 +75,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         else:
             color = QtGui.QColor("#D94F38")
 
-        return color, ardoise_missing
+        return color, ardoise_missing, expl_val
 
     # ── Seuils durée/taille ──────────────────────────────────────────────
 
@@ -140,7 +152,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         if not vp:
             return
 
-        color, _ = self._get_video_status(str(vp))
+        color, _, exploitable_value = self._get_video_status(str(vp))
         ext_top, ext_bot = self._link_info(index)
         rect = option.rect
 
@@ -235,6 +247,9 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             name_text,
         )
         point_number = (index.data(QtCore.Qt.ItemDataRole.UserRole + 3) or "") if self.show_point_number else ""
+        exploitable_label = ""
+        if self.show_exploitable_status and exploitable_value:
+            exploitable_label = exploitable_value.capitalize()
 
         # Sous-titre — moitié basse (heure + durée)
         sub_font = QtGui.QFont(painter.font())
@@ -269,26 +284,35 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
                     seg_text,
                 )
                 x += fm.horizontalAdvance(seg_text) + gap
-            info_w = (x - sub_rect.left()) + 12  # +12 d'espace avant le numéro de point
+            info_w = (x - sub_rect.left()) + 12  # +12 d'espace avant le statut d'exploitabilité
         else:
             info_w = 0
 
-        # Numéro de point — plus grand, couleur distincte
+        # Numéro de point + statut d'exploitabilité — plus grand, couleurs distinctes
+        trailing = []
         if point_number:
-            pt_font = QtGui.QFont(painter.font())
-            pt_font.setBold(True)
-            pt_font.setPointSize(10)
-            painter.setFont(pt_font)
-            painter.setPen(QtGui.QColor("#f0a030"))
-            pt_rect = QtCore.QRect(
-                text_left + info_w, rect.top() + half_h,
-                text_w - info_w, half_h - 4
-            )
-            painter.drawText(
-                pt_rect,
-                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
-                f"Pt {point_number}",
-            )
+            trailing.append((f"Pt {point_number}", QtGui.QColor("#f0a030")))
+        if exploitable_label:
+            excl_color = self._EXPLOITABLE_TEXT_COLORS.get(exploitable_value.lower(), "#f0a030")
+            trailing.append((exploitable_label, QtGui.QColor(excl_color)))
+
+        if trailing:
+            trail_font = QtGui.QFont(painter.font())
+            trail_font.setBold(True)
+            trail_font.setPointSize(10)
+            painter.setFont(trail_font)
+            fm_trail = QtGui.QFontMetrics(trail_font)
+            trail_gap = fm_trail.horizontalAdvance("   ")
+            tx = text_left + info_w
+            for seg_text, seg_color in trailing:
+                seg_rect = QtCore.QRect(tx, rect.top() + half_h, text_w - (tx - text_left), half_h - 4)
+                painter.setPen(seg_color)
+                painter.drawText(
+                    seg_rect,
+                    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                    seg_text,
+                )
+                tx += fm_trail.horizontalAdvance(seg_text) + trail_gap
         painter.restore()
 
     def sizeHint(self, option, index):

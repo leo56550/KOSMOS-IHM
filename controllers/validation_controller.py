@@ -121,6 +121,7 @@ class ValidationController:
             self.video_tree.clicked.connect(self.on_video_selected)
             self._bar_delegate = VideoBarDelegate(self.video_tree, highlight_short_light=True)
             self._bar_delegate.show_point_number = True
+            self._bar_delegate.show_exploitable_status = True
             self.video_tree.setItemDelegateForColumn(0, self._bar_delegate)
 
         if self.player_container:
