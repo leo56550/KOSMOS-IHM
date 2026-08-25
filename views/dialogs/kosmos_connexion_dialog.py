@@ -57,8 +57,9 @@ def _sep():
 class KosmosConnexionDialog(QtWidgets.QDialog):
     """Landing dialog KOSMOS Connexion : SFTP ou Planification déploiement."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowTitle("KOSMOS Connexion")
         self.setModal(True)
         self.setFixedSize(480, 310)
@@ -71,7 +72,7 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
         # ── Titre ──────────────────────────────────────────────────────────
         lbl_title = QtWidgets.QLabel("KOSMOS Connexion")
         lbl_title.setObjectName("title")
-        lbl_sub = QtWidgets.QLabel("Choisissez une action")
+        lbl_sub = QtWidgets.QLabel(self.translate("Choisissez une action", "Choose an action"))
         lbl_sub.setObjectName("subtitle")
         root.addWidget(lbl_title)
         root.addWidget(lbl_sub)
@@ -83,14 +84,20 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
         cards.setSpacing(16)
 
         self.btn_sftp = self._card(
-            "📡  Téléverser des vidéos",
-            "Connexion SFTP à la Raspberry\net transfert de la carte SD",
+            self.translate("📡  Téléverser des vidéos", "📡  Upload videos"),
+            self.translate(
+                "Connexion SFTP à la Raspberry\net transfert de la carte SD",
+                "SFTP connection to the Raspberry\nand SD card transfer"
+            ),
             bg="#0d1f32", fg="#7ec8e3", border="#2778a2",
             hover="#162a3e", hover_border="#4a9fcf", pressed="#0a1520",
         )
         self.btn_plan = self._card(
-            "🗺  Planifier un déploiement",
-            "Poser des points sur la carte\net préparer les waypoints",
+            self.translate("🗺  Planifier un déploiement", "🗺  Plan a deployment"),
+            self.translate(
+                "Poser des points sur la carte\net préparer les waypoints",
+                "Place points on the map\nand prepare the waypoints"
+            ),
             bg="#1a1a0d", fg="#e6c86e", border="#8a7a20",
             hover="#252510", hover_border="#c9a83a", pressed="#111108",
         )
@@ -101,7 +108,7 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
 
         root.addWidget(_sep())
 
-        btn_close = QtWidgets.QPushButton("Fermer")
+        btn_close = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
         btn_close.setStyleSheet(
             "QPushButton { background-color: #1e1e2e; color: #7ec8e3;"
             " border: 1px solid #2a4057; border-radius: 6px; padding: 7px 20px;"
@@ -117,6 +124,9 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
         # Connexions
         self.btn_sftp.clicked.connect(self._open_sftp)
         self.btn_plan.clicked.connect(self._open_planner)
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -137,10 +147,10 @@ class KosmosConnexionDialog(QtWidgets.QDialog):
 
     def _open_sftp(self):
         from views.dialogs.sftp_dialog import SftpDialog
-        dlg = SftpDialog(self)
+        dlg = SftpDialog(self, language=self.current_language)
         dlg.exec()
 
     def _open_planner(self):
         from views.dialogs.deployment_planner_dialog import DeploymentPlannerDialog
-        dlg = DeploymentPlannerDialog(self)
+        dlg = DeploymentPlannerDialog(self, language=self.current_language)
         dlg.exec()

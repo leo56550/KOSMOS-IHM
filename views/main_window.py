@@ -28,6 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 'Accueil': 'Accueil', 'Qualification': 'Qualification',
                 'Validation': 'Validation', 'Événements': 'Événements',
                 'Métadonnées': 'Métadonnées', 'À propos': 'À propos',
+                'Extraction': 'Extraction',
                 'Finir qualification': 'Finir qualification',
                 'Finir validation': 'VALIDER',
                 'Qualification Terminée ✓': 'Qualification Terminée ✓',
@@ -39,6 +40,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 'Accueil': 'Home', 'Qualification': 'Qualification',
                 'Validation': 'Validation', 'Événements': 'Events',
                 'Métadonnées': 'Metadata', 'À propos': 'About',
+                'Extraction': 'Extraction',
                 'Finir qualification': 'Finish qualification',
                 'Finir validation': 'VALIDATE',
                 'Qualification Terminée ✓': 'Qualification completed ✓',
@@ -433,6 +435,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ('actionEvenements', 'Événements'),
             ('actionMetadonnees', 'Métadonnées'),
             ('actionA_propos', 'À propos'),
+            ('actionExtraction', 'Extraction'),
         ]:
             action = getattr(self, attr, None)
             if action:

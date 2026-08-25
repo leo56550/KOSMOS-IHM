@@ -264,14 +264,14 @@ class AppController(QtCore.QObject):
         """Ouvre un fichier MP4 standalone dans un player complet, sans campagne."""
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.window,
-            "Ouvrir une vidéo",
+            self.translate("Ouvrir une vidéo", "Open a video"),
             "",
-            "Vidéos MP4 (*.mp4);;Tous les fichiers (*)",
+            self.translate("Vidéos MP4 (*.mp4);;Tous les fichiers (*)", "MP4 videos (*.mp4);;All files (*)"),
         )
         if not path:
             return
         from views.dialogs.quick_video_dialog import QuickVideoDialog
-        dlg = QuickVideoDialog(path, parent=self.window)
+        dlg = QuickVideoDialog(path, parent=self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.show()
 
     def _open_notes(self):
@@ -279,7 +279,7 @@ class AppController(QtCore.QObject):
         dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
         if not dossier:
             return
-        dlg = NotesDialog(dossier, parent=self.window)
+        dlg = NotesDialog(dossier, parent=self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.show()
 
     def _generate_rapport_pdf(self):
@@ -291,9 +291,9 @@ class AppController(QtCore.QObject):
         default_name = f"rapport_{os.path.basename(dossier.rstrip('/\\'))}.pdf"
         out_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.window,
-            "Enregistrer le rapport PDF",
+            self.translate("Enregistrer le rapport PDF", "Save PDF report"),
             os.path.join(dossier, default_name),
-            "PDF (*.pdf)",
+            self.translate("PDF (*.pdf)", "PDF (*.pdf)"),
         )
         if not out_path:
             return
@@ -314,9 +314,10 @@ class AppController(QtCore.QObject):
 
         # Show progress dialog
         progress = QtWidgets.QProgressDialog(
-            "Génération du rapport PDF…", "Annuler", 0, 0, self.window
+            self.translate("Génération du rapport PDF…", "Generating PDF report…"),
+            self.translate("Annuler", "Cancel"), 0, 0, self.window
         )
-        progress.setWindowTitle("Rapport PDF")
+        progress.setWindowTitle(self.translate("Rapport PDF", "PDF Report"))
         progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.show()
@@ -328,12 +329,15 @@ class AppController(QtCore.QObject):
 
         if result == out_path:
             QtWidgets.QMessageBox.information(
-                self.window, "Rapport PDF",
-                f"Rapport généré avec succès :\n{out_path}"
+                self.window, self.translate("Rapport PDF", "PDF Report"),
+                self.translate(
+                    f"Rapport généré avec succès :\n{out_path}",
+                    f"Report generated successfully:\n{out_path}",
+                )
             )
         else:
             QtWidgets.QMessageBox.critical(
-                self.window, "Erreur", result
+                self.window, self.translate("Erreur", "Error"), result
             )
 
     def _on_qualification_changed(self):
@@ -363,13 +367,13 @@ class AppController(QtCore.QObject):
     def _open_sftp_dialog(self):
         """Ouvre le hub KOSMOS Connexion (SFTP + planification déploiement)."""
         from views.dialogs.kosmos_connexion_dialog import KosmosConnexionDialog
-        dlg = KosmosConnexionDialog(self.window)
+        dlg = KosmosConnexionDialog(self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.exec()
 
     def _open_recent_campaigns(self):
         """Ouvre le dialog de sélection d'une campagne récente."""
         from views.dialogs.recent_campaigns_dialog import RecentCampaignsDialog
-        dlg = RecentCampaignsDialog(parent=self.window)
+        dlg = RecentCampaignsDialog(parent=self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.campaign_selected.connect(self._open_campaign_from_recent)
         dlg.exec()
 
@@ -412,7 +416,10 @@ class AppController(QtCore.QObject):
             self._overview_dialog.raise_()
             self._overview_dialog.activateWindow()
             return
-        dlg = CampaignOverviewDialog(dossier, self.qualif_ctrl.video_model, parent=self.window)
+        dlg = CampaignOverviewDialog(
+            dossier, self.qualif_ctrl.video_model, parent=self.window,
+            language=getattr(self.window, 'current_language', 'fr')
+        )
         dlg.video_selected.connect(self._on_overview_video_selected)
         dlg.destroyed.connect(lambda: setattr(self, '_overview_dialog', None))
         self._overview_dialog = dlg
@@ -447,6 +454,8 @@ class AppController(QtCore.QObject):
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
+        if self._overview_dialog is not None:
+            self._overview_dialog.set_language(language)
         self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):

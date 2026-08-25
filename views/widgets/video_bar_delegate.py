@@ -28,6 +28,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent=None, highlight_short_light: bool = False):
         super().__init__(parent)
         self._working_dir = ""
+        self.current_language = 'fr'
         self.show_point_number = False
         # Page Validation uniquement : affiche le statut d'exploitabilité de la vidéo
         # (oui/non/habitat/communication/?) en plus du numéro de point.
@@ -38,6 +39,12 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
     def set_working_dir(self, path: str):
         self._working_dir = path
+
+    def set_language(self, language: str):
+        self.current_language = language
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
 
     # ── Couleur de complétion ─────────────────────────────────────────────
 
@@ -262,12 +269,12 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
 
         segments = []
         if station_time:
-            segments.append((f"Heure de prise : {station_time}", _NORMAL_COLOR))
+            segments.append((self.translate(f"Heure de prise : {station_time}", f"Time taken: {station_time}"), _NORMAL_COLOR))
         if duration:
-            segments.append((f"Durée : {duration}",
+            segments.append((self.translate(f"Durée : {duration}", f"Duration: {duration}"),
                               _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
         if size_text:
-            segments.append((f"Taille : {size_text}",
+            segments.append((self.translate(f"Taille : {size_text}", f"Size: {size_text}"),
                               _WARNING_COLOR if is_short_or_light else _NORMAL_COLOR))
 
         if segments:

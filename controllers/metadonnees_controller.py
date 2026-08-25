@@ -148,6 +148,52 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
 # Colonnes du CSV infostation (ordre XLSX)
 _INFOSTATION_COLUMNS: list[str] = [col for _, _, col in _INFOSTATION_CSV_SCHEMA]
 
+# Traduction anglaise des en-têtes de colonne pour l'affichage à l'écran uniquement
+# (le CSV généré garde toujours les noms français ci-dessus, format figé calqué sur
+# TEMPLATE_infoStation.xlsx — ne jamais traduire _INFOSTATION_CSV_SCHEMA lui-même).
+_COL_NAME_EN: dict[str, str] = {
+    "Codestation":                          "Station code",
+    "Zone":                                 "Zone",
+    "Type":                                 "Type",
+    "Systeme":                              "System",
+    "Latitude":                             "Latitude",
+    "Longitude":                            "Longitude",
+    "Date":                                 "Date",
+    "Heure":                                "Time",
+    "Nom du point":                         "Point name",
+    "Pt GPS Garmin":                        "Garmin GPS Pt",
+    "Pt gps bateau":                        "Boat GPS Pt",
+    "Site":                                 "Site",
+    "Pt de Suivi":                          "Monitoring Pt",
+    "Profondeur":                           "Depth",
+    "Commentaires terrain pose":            "Field comments (deployment)",
+    "Commentaires terrain localisation":    "Field comments (location)",
+    "Dossier Datawork":                     "Datawork folder",
+    "sous-dossier video & metadata":        "video & metadata subfolder",
+    "Commentaires video":                   "Video comments",
+    "Images interessantes":                 "Interesting images",
+    "Milieu/Habitat":                       "Environment/Habitat",
+    "Visibilite":                           "Visibility",
+    "Exploitable":                          "Exploitable",
+    "Codestatut":                           "Status code",
+    "Codestatut2":                          "Status code 2",
+    "Statutprotection":                     "Protection status",
+    "Maree":                                "Tide",
+    "Lune":                                 "Moon",
+    "Meteo":                                "Weather",
+    "Vent":                                 "Wind",
+    "Mer":                                  "Sea",
+    "Houle":                                "Swell",
+    "Bateau":                               "Boat",
+    "Pilote":                               "Pilot",
+    "Equipage":                             "Crew",
+    "Analyseur poisson":                    "Fish annotator",
+    "Analyseur habitat":                    "Habitat annotator",
+    "Distance analysable min (m)":          "Analyzable distance min (m)",
+    "Distance analysable max (m)":          "Analyzable distance max (m)",
+    "Substrat":                             "Substrate",
+}
+
 # Colonnes du tableau = exactement les mêmes que le CSV (41 colonnes, même ordre XLSX).
 # Tuple : (col_name, section, field_key, read_only)
 # read_only = champs calculés (section None ou _COMPUTED_FIELDS) + champs identiques pour toutes les vidéos
@@ -513,7 +559,7 @@ class MetadonneesController:
         # ── Tableau infostation (une ligne = une vidéo) ───────────────────
         self._ft_table = QtWidgets.QTableWidget()
         self._ft_table.setColumnCount(len(_FT_TABLE_COLS))
-        self._ft_table.setHorizontalHeaderLabels([c[0] for c in _FT_TABLE_COLS])
+        self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
         self._ft_table.horizontalHeader().setStretchLastSection(False)
         self._ft_table.horizontalHeader().setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeMode.Interactive)
@@ -803,6 +849,15 @@ class MetadonneesController:
             self._btn_ardoise.setText(self.translate("Comparer avec l'ardoise", "Compare with slate"))
         if hasattr(self, '_btn_web'):
             self._btn_web.setText(self.translate("Comparer données web", "Compare web data"))
+        if hasattr(self, '_btn_map'):
+            self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
+        if hasattr(self, '_ft_table'):
+            self._ft_table.setHorizontalHeaderLabels(self._get_ft_header_labels())
+
+    def _get_ft_header_labels(self) -> list:
+        """En-têtes de colonnes du tableau infostation, traduites pour l'affichage.
+        Le CSV exporté garde toujours les noms français de _INFOSTATION_CSV_SCHEMA."""
+        return [self.translate(c[0], _COL_NAME_EN.get(c[0], c[0])) for c in _FT_TABLE_COLS]
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle vidéo et reconnecte le signal de sélection au nouveau selectionModel."""
@@ -1866,10 +1921,13 @@ class MetadonneesController:
             for vid_name, fields in missing_by_video[:10]:
                 lines.append(f"• {vid_name} : {', '.join(fields)}")
             if len(missing_by_video) > 10:
-                lines.append(f"  … et {len(missing_by_video) - 10} autre(s) vidéo(s)")
+                lines.append(self.translate(
+                    f"  … et {len(missing_by_video) - 10} autre(s) vidéo(s)",
+                    f"  … and {len(missing_by_video) - 10} more video(s)",
+                ))
 
             dlg = QtWidgets.QDialog(self.widget)
-            dlg.setWindowTitle("Champs manquants")
+            dlg.setWindowTitle(self.translate("Champs manquants", "Missing fields"))
             dlg.setMinimumWidth(520)
             _lay = QtWidgets.QVBoxLayout(dlg)
             _lay.setSpacing(10)
@@ -1881,9 +1939,15 @@ class MetadonneesController:
                 QtWidgets.QStyle.StandardPixmap.SP_MessageBoxWarning))
             _icon_row.addWidget(_ico, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
             _msg = QtWidgets.QLabel(
-                "Les champs suivants sont requis pour générer les noms de dossier :\n\n"
+                self.translate(
+                    "Les champs suivants sont requis pour générer les noms de dossier :\n\n",
+                    "The following fields are required to generate the folder names:\n\n",
+                )
                 + "\n".join(lines)
-                + "\n\nRenseignez ces champs dans la feuille terrain ou directement dans les JSON vidéo."
+                + self.translate(
+                    "\n\nRenseignez ces champs dans la feuille terrain ou directement dans les JSON vidéo.",
+                    "\n\nFill in these fields in the field sheet or directly in the video JSON files.",
+                )
             )
             _msg.setWordWrap(True)
             _icon_row.addWidget(_msg, stretch=1)
@@ -1892,7 +1956,7 @@ class MetadonneesController:
             _force = [False]
             _btn_row = QtWidgets.QHBoxLayout()
 
-            _btn_force = QtWidgets.QPushButton("Générer quand-même")
+            _btn_force = QtWidgets.QPushButton(self.translate("Générer quand-même", "Generate anyway"))
             _btn_force.setStyleSheet(
                 "QPushButton{background:#3a2800;color:#E8A838;border:1px solid #E8A838;"
                 "border-radius:4px;padding:5px 14px;font-size:11px;}"

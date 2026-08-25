@@ -198,8 +198,19 @@ class EvenementsController:
         self.current_language = language
         if hasattr(self, 'event_player'):
             self.event_player.set_language(language)
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_language(language)
+            if hasattr(self, 'tree_view_events') and self.tree_view_events:
+                self.tree_view_events.viewport().update()
         if hasattr(self, 'tree_captures') and self.tree_captures:
             self.tree_captures.setHeaderLabels(self._get_tree_headers())
+        # event_dictionary (catégories/valeurs du menu déroulant) est construit dans la
+        # langue active au moment du chargement de la vidéo — sans ce ré-appel, il reste
+        # figé dans l'ancienne langue après un changement de langue en cours de session.
+        # Garde nécessaire : set_language() est aussi appelé depuis __init__ avant que
+        # l'UI (combo_type_event etc.) ne soit construite.
+        if hasattr(self, 'combo_type_event'):
+            self.charger_evenements_du_json()
         self._retranslate_ui()
 
     def _retranslate_ui(self):
@@ -220,6 +231,35 @@ class EvenementsController:
         self._rebuild_event_buttons()
         if hasattr(self, 'export_button'):
             self.export_button.setText(self.translate("EXPORTER LES ÉVÉNEMENTS", "EXPORT EVENTS"))
+        if hasattr(self, '_lbl_analyse'):
+            self._lbl_analyse.setText(self.translate("Analyse vidéo", "Video analysis"))
+        if hasattr(self, '_lbl_dist_min'):
+            self._lbl_dist_min.setText(self.translate("min", "min"))
+        if hasattr(self, '_lbl_dist_max'):
+            self._lbl_dist_max.setText(self.translate("max", "max"))
+        if hasattr(self, '_analysis_labels'):
+            _analysis_label_texts = {
+                "fish_annotator":        ("Analyseur poisson", "Fish annotator"),
+                "habitat_annotator":     ("Analyseur habitat", "Habitat annotator"),
+                "substrat":              ("Substrat", "Substrate"),
+                "estimated_visibility":  ("Visibilité (m)", "Visibility (m)"),
+                "distance_range":        ("Distance analysable (m)", "Analyzable distance (m)"),
+            }
+            for key, (fr, en) in _analysis_label_texts.items():
+                lbl = self._analysis_labels.get(key)
+                if lbl:
+                    lbl.setText(self.translate(fr, en))
+        if hasattr(self, '_analysis_widgets'):
+            _analysis_placeholders = {
+                "fish_annotator":       ("ex : Jean Dupont", "e.g. John Doe"),
+                "habitat_annotator":    ("ex : Marie Martin", "e.g. Jane Doe"),
+                "substrat":             ("ex : Sable, Roche, Herbier…", "e.g. Sand, Rock, Seagrass…"),
+                "estimated_visibility": ("ex : 5", "e.g. 5"),
+            }
+            for key, (fr, en) in _analysis_placeholders.items():
+                widget = self._analysis_widgets.get(key)
+                if widget:
+                    widget.setPlaceholderText(self.translate(fr, en))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle vidéo partagé après ouverture d'une nouvelle campagne."""
@@ -1098,9 +1138,9 @@ class EvenementsController:
         sep_analyse.setStyleSheet("border: none; border-top: 1px solid #1e3448; max-height: 1px;")
         layout.addWidget(sep_analyse)
 
-        lbl_analyse = QtWidgets.QLabel("Analyse vidéo")
-        lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
-        layout.addWidget(lbl_analyse)
+        self._lbl_analyse = QtWidgets.QLabel(self.translate("Analyse vidéo", "Video analysis"))
+        self._lbl_analyse.setStyleSheet("color: #7ec8e3; font-size: 15px; font-weight: bold; border: none;")
+        layout.addWidget(self._lbl_analyse)
 
         _lbl_s = "color: #7ec8e3; font-size: 14px; border: none;"
         _inp_s = ("background-color: #162433; color: #F2BFB4; border: 1px solid #2a4057;"
@@ -1115,9 +1155,12 @@ class EvenementsController:
         ag.setHorizontalSpacing(10)
         ag.setVerticalSpacing(16)
 
-        def _albl(text):
+        self._analysis_labels: dict[str, QtWidgets.QLabel] = {}
+
+        def _albl(key, text):
             l = QtWidgets.QLabel(text)
             l.setStyleSheet(_lbl_s)
+            self._analysis_labels[key] = l
             return l
 
         def _ainput(field_key, placeholder=""):
@@ -1129,29 +1172,29 @@ class EvenementsController:
             self._analysis_widgets[field_key] = w
             return w
 
-        ag.addWidget(_albl("Analyseur poisson"), 0, 0)
-        ag.addWidget(_ainput("fish_annotator", "ex : Jean Dupont"), 0, 1)
-        ag.addWidget(_albl("Analyseur habitat"), 1, 0)
-        ag.addWidget(_ainput("habitat_annotator", "ex : Marie Martin"), 1, 1)
-        ag.addWidget(_albl("Substrat"), 2, 0)
-        ag.addWidget(_ainput("substrat", "ex : Sable, Roche, Herbier…"), 2, 1)
-        ag.addWidget(_albl("Visibilité (m)"), 3, 0)
-        ag.addWidget(_ainput("estimated_visibility", "ex : 5"), 3, 1)
+        ag.addWidget(_albl("fish_annotator", self.translate("Analyseur poisson", "Fish annotator")), 0, 0)
+        ag.addWidget(_ainput("fish_annotator", self.translate("ex : Jean Dupont", "e.g. John Doe")), 0, 1)
+        ag.addWidget(_albl("habitat_annotator", self.translate("Analyseur habitat", "Habitat annotator")), 1, 0)
+        ag.addWidget(_ainput("habitat_annotator", self.translate("ex : Marie Martin", "e.g. Jane Doe")), 1, 1)
+        ag.addWidget(_albl("substrat", self.translate("Substrat", "Substrate")), 2, 0)
+        ag.addWidget(_ainput("substrat", self.translate("ex : Sable, Roche, Herbier…", "e.g. Sand, Rock, Seagrass…")), 2, 1)
+        ag.addWidget(_albl("estimated_visibility", self.translate("Visibilité (m)", "Visibility (m)")), 3, 0)
+        ag.addWidget(_ainput("estimated_visibility", self.translate("ex : 5", "e.g. 5")), 3, 1)
 
         dist_w = QtWidgets.QWidget()
         dist_w.setStyleSheet("background: transparent;")
         dist_row = QtWidgets.QHBoxLayout(dist_w)
         dist_row.setContentsMargins(0, 0, 0, 0)
         dist_row.setSpacing(6)
-        lbl_min = QtWidgets.QLabel("min")
-        lbl_min.setStyleSheet(_lbl_s)
-        lbl_max = QtWidgets.QLabel("max")
-        lbl_max.setStyleSheet(_lbl_s)
-        dist_row.addWidget(lbl_min)
+        self._lbl_dist_min = QtWidgets.QLabel(self.translate("min", "min"))
+        self._lbl_dist_min.setStyleSheet(_lbl_s)
+        self._lbl_dist_max = QtWidgets.QLabel(self.translate("max", "max"))
+        self._lbl_dist_max.setStyleSheet(_lbl_s)
+        dist_row.addWidget(self._lbl_dist_min)
         dist_row.addWidget(_ainput("distance_min", "0"))
-        dist_row.addWidget(lbl_max)
+        dist_row.addWidget(self._lbl_dist_max)
         dist_row.addWidget(_ainput("distance_max", "5"))
-        ag.addWidget(_albl("Distance analysable (m)"), 4, 0)
+        ag.addWidget(_albl("distance_range", self.translate("Distance analysable (m)", "Analyzable distance (m)")), 4, 0)
         ag.addWidget(dist_w, 4, 1)
 
         layout.addWidget(analyse_grid)

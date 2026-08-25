@@ -84,10 +84,11 @@ def _sep() -> QtWidgets.QFrame:
 class DeploymentPlannerDialog(QtWidgets.QDialog):
     """Dialog de planification : carte Leaflet + liste de waypoints nommables."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
-        self.setWindowTitle("Planification de deploiement")
+        self.setWindowTitle(self.translate("Planification de deploiement", "Deployment planning"))
         self.setModal(True)
         self.resize(1150, 700)
         self.setStyleSheet(_STYLE)
@@ -102,6 +103,9 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
         self._build_ui()
 
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
+
     # ── Construction UI ───────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -115,11 +119,13 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         header.setFixedHeight(44)
         hl = QtWidgets.QHBoxLayout(header)
         hl.setContentsMargins(16, 0, 16, 0)
-        lbl_title = QtWidgets.QLabel("Planification de deploiement")
+        lbl_title = QtWidgets.QLabel(self.translate("Planification de deploiement", "Deployment planning"))
         lbl_title.setStyleSheet("color: #F2BFB4; font-size: 14px; font-weight: bold; border: none;")
         hl.addWidget(lbl_title)
         hl.addStretch()
-        hl.addWidget(QtWidgets.QLabel("Cliquez sur la carte pour poser un waypoint"))
+        hl.addWidget(QtWidgets.QLabel(self.translate(
+            "Cliquez sur la carte pour poser un waypoint", "Click on the map to place a waypoint"
+        )))
         root.addWidget(header)
 
         # Corps
@@ -148,13 +154,13 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.setSpacing(8)
 
         # Nom de mission
-        rl.addWidget(_lbl("Nom de la mission"))
+        rl.addWidget(_lbl(self.translate("Nom de la mission", "Mission name")))
         self._edit_mission = QtWidgets.QLineEdit()
-        self._edit_mission.setPlaceholderText("ex : Campagne Iroise 2026")
+        self._edit_mission.setPlaceholderText(self.translate("ex : Campagne Iroise 2026", "e.g.: Iroise Campaign 2026"))
         rl.addWidget(self._edit_mission)
 
         # Date de deploiement
-        rl.addWidget(_lbl("Date de deploiement"))
+        rl.addWidget(_lbl(self.translate("Date de deploiement", "Deployment date")))
         self._date_edit = QtWidgets.QDateEdit()
         self._date_edit.setCalendarPopup(True)
         self._date_edit.setDate(QtCore.QDate.currentDate())
@@ -164,11 +170,11 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.addWidget(_sep())
 
         # Chargement infoStation
-        lbl_info = QtWidgets.QLabel("Infostation de référence")
+        lbl_info = QtWidgets.QLabel(self.translate("Infostation de référence", "Reference infostation"))
         lbl_info.setStyleSheet("color: #F2BFB4; font-weight: bold; font-size: 12px; border: none;")
         rl.addWidget(lbl_info)
 
-        btn_load_info = QtWidgets.QPushButton("CHARGER infostation")
+        btn_load_info = QtWidgets.QPushButton(self.translate("CHARGER infostation", "LOAD infostation"))
         btn_load_info.setStyleSheet(
             "QPushButton { background-color: #1a3010; color: #e68c14;"
             " border: 1px solid #e68c14; border-radius: 4px;"
@@ -184,7 +190,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             "color: #7ec8e3; font-size: 10px; border: none; font-style: italic;")
         rl.addWidget(self._lbl_infostation_info)
 
-        btn_clr_info = QtWidgets.QPushButton("Effacer points infostation")
+        btn_clr_info = QtWidgets.QPushButton(self.translate("Effacer points infostation", "Clear infostation points"))
         btn_clr_info.setObjectName("btn_clear")
         btn_clr_info.clicked.connect(self._clear_infostation)
         rl.addWidget(btn_clr_info)
@@ -201,33 +207,33 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         rl.addWidget(self._list, stretch=1)
 
         # Edition du nom du point selectionne
-        self._edit_name_lbl = _lbl("Nom du point selectionne")
+        self._edit_name_lbl = _lbl(self.translate("Nom du point selectionne", "Selected point name"))
         rl.addWidget(self._edit_name_lbl)
         self._edit_name = QtWidgets.QLineEdit()
-        self._edit_name.setPlaceholderText("Nom du waypoint...")
+        self._edit_name.setPlaceholderText(self.translate("Nom du waypoint...", "Waypoint name..."))
         self._edit_name.setEnabled(False)
         self._edit_name.textEdited.connect(self._on_name_edited)
         rl.addWidget(self._edit_name)
 
         rl.addWidget(_sep())
 
-        btn_del = QtWidgets.QPushButton("Supprimer la selection")
+        btn_del = QtWidgets.QPushButton(self.translate("Supprimer la selection", "Delete selection"))
         btn_del.setObjectName("btn_delete")
         btn_del.clicked.connect(self._delete_selected)
         rl.addWidget(btn_del)
 
-        btn_clr = QtWidgets.QPushButton("Tout effacer")
+        btn_clr = QtWidgets.QPushButton(self.translate("Tout effacer", "Clear all"))
         btn_clr.setObjectName("btn_clear")
         btn_clr.clicked.connect(self._clear_all)
         rl.addWidget(btn_clr)
 
         rl.addWidget(_sep())
 
-        btn_exp = QtWidgets.QPushButton("Exporter JSON")
+        btn_exp = QtWidgets.QPushButton(self.translate("Exporter JSON", "Export JSON"))
         btn_exp.clicked.connect(self._export_json)
         rl.addWidget(btn_exp)
 
-        btn_send = QtWidgets.QPushButton("Envoyer vers KOSMOS")
+        btn_send = QtWidgets.QPushButton(self.translate("Envoyer vers KOSMOS", "Send to KOSMOS"))
         btn_send.setStyleSheet(
             "QPushButton { background-color: #1a3a1a; color: #4CAF50;"
             " border: 1px solid #4CAF50; border-radius: 4px;"
@@ -252,7 +258,7 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         self._lbl_count.setStyleSheet("color: #556677; font-size: 10px; border: none;")
         fl.addWidget(self._lbl_count)
         fl.addStretch()
-        btn_close = QtWidgets.QPushButton("Fermer")
+        btn_close = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
         btn_close.setFixedWidth(90)
         btn_close.clicked.connect(self.reject)
         fl.addWidget(btn_close)
@@ -262,8 +268,8 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     def _load_infostation(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Charger un fichier infoStation", "",
-            "Tous les fichiers (*);;CSV (*.csv *.CSV *.txt)"
+            self, self.translate("Charger un fichier infoStation", "Load an infoStation file"), "",
+            self.translate("Tous les fichiers (*);;CSV (*.csv *.CSV *.txt)", "All files (*);;CSV (*.csv *.CSV *.txt)")
         )
         if not path:
             return
@@ -310,13 +316,19 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                 })
 
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Erreur", f"Impossible de lire le fichier :\n{e}")
+            QtWidgets.QMessageBox.critical(
+                self, self.translate("Erreur", "Error"),
+                self.translate(f"Impossible de lire le fichier :\n{e}", f"Unable to read the file:\n{e}")
+            )
             return
 
         if not points:
             QtWidgets.QMessageBox.warning(
-                self, "Aucun point",
-                "Aucun point avec coordonnées valides trouvé dans ce fichier.")
+                self, self.translate("Aucun point", "No points"),
+                self.translate(
+                    "Aucun point avec coordonnées valides trouvé dans ce fichier.",
+                    "No point with valid coordinates found in this file."
+                ))
             return
 
         # Afficher sur la carte
@@ -336,11 +348,11 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
                 pass
 
         # Info label
-        info = f"{len(points)} point(s) chargé(s)"
+        info = self.translate(f"{len(points)} point(s) chargé(s)", f"{len(points)} point(s) loaded")
         if campaign_name:
-            info += f"\nCampagne : {campaign_name}"
+            info += self.translate(f"\nCampagne : {campaign_name}", f"\nCampaign: {campaign_name}")
         if year:
-            info += f"  —  Année : {year}"
+            info += self.translate(f"  —  Année : {year}", f"  —  Year: {year}")
         self._lbl_infostation_info.setText(info)
 
     def _clear_infostation(self):
@@ -422,7 +434,8 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         if not self._points:
             return
         reply = QtWidgets.QMessageBox.question(
-            self, "Confirmer", "Effacer tous les waypoints ?",
+            self, self.translate("Confirmer", "Confirm"),
+            self.translate("Effacer tous les waypoints ?", "Clear all waypoints?"),
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No
         )
         if reply != QtWidgets.QMessageBox.StandardButton.Yes:
@@ -455,10 +468,12 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
 
     def _export_json(self):
         if not self._points:
-            QtWidgets.QMessageBox.information(self, "Export", "Aucun waypoint a exporter.")
+            QtWidgets.QMessageBox.information(
+                self, "Export", self.translate("Aucun waypoint a exporter.", "No waypoint to export.")
+            )
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Exporter le plan de deploiement",
+            self, self.translate("Exporter le plan de deploiement", "Export the deployment plan"),
             f"deploiement_{self._date_edit.date().toString('yyyyMMdd')}.json",
             "JSON (*.json)"
         )
@@ -468,21 +483,27 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
             with open(path, 'wb') as f:
                 f.write(self._build_json_bytes())
             QtWidgets.QMessageBox.information(
-                self, "Export reussi",
-                f"{len(self._points)} waypoints exportes vers :\n{path}"
+                self, self.translate("Export reussi", "Export successful"),
+                self.translate(
+                    f"{len(self._points)} waypoints exportes vers :\n{path}",
+                    f"{len(self._points)} waypoints exported to:\n{path}"
+                )
             )
         except OSError as e:
-            QtWidgets.QMessageBox.critical(self, "Erreur export", str(e))
+            QtWidgets.QMessageBox.critical(self, self.translate("Erreur export", "Export error"), str(e))
 
     # ── Envoi SFTP vers KOSMOS ────────────────────────────────────────────────
 
     def _send_to_kosmos(self):
         if not self._points:
-            QtWidgets.QMessageBox.information(self, "Envoi", "Aucun waypoint a envoyer.")
+            QtWidgets.QMessageBox.information(
+                self, self.translate("Envoi", "Send"),
+                self.translate("Aucun waypoint a envoyer.", "No waypoint to send.")
+            )
             return
         dlg = _SftpSendDialog(self._build_json_bytes(),
                               self._date_edit.date().toString("yyyyMMdd"),
-                              parent=self)
+                              parent=self, language=self.current_language)
         dlg.exec()
 
 
@@ -515,13 +536,14 @@ QProgressBar::chunk { background-color: #4CAF50; border-radius: 2px; }
 class _SftpSendDialog(QtWidgets.QDialog):
     """Dialog compact pour envoyer un JSON de planification vers le KOSMOS en SFTP."""
 
-    def __init__(self, data: bytes, date_str: str, parent=None):
+    def __init__(self, data: bytes, date_str: str, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self._data     = data
         self._date_str = date_str
         self._worker   = None
 
-        self.setWindowTitle("Envoyer vers KOSMOS")
+        self.setWindowTitle(self.translate("Envoyer vers KOSMOS", "Send to KOSMOS"))
         self.setModal(True)
         self.setFixedWidth(480)
         self.setStyleSheet(_SFTP_STYLE)
@@ -546,14 +568,14 @@ class _SftpSendDialog(QtWidgets.QDialog):
         self._pwd  = QtWidgets.QLineEdit("kosmos")
         self._pwd.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
-        _row("Adresse IP :", self._ip)
-        _row("Port :", self._port)
-        _row("Utilisateur :", self._user)
-        _row("Mot de passe :", self._pwd)
+        _row(self.translate("Adresse IP :", "IP Address:"), self._ip)
+        _row(self.translate("Port :", "Port:"), self._port)
+        _row(self.translate("Utilisateur :", "User:"), self._user)
+        _row(self.translate("Mot de passe :", "Password:"), self._pwd)
 
         # Dossier distant
         self._remote_dir = QtWidgets.QLineEdit("/home/kosmos/deployments")
-        _row("Dossier distant :", self._remote_dir)
+        _row(self.translate("Dossier distant :", "Remote folder:"), self._remote_dir)
 
         # ── Statut ────────────────────────────────────────────────────────
         self._progress = QtWidgets.QProgressBar()
@@ -569,7 +591,7 @@ class _SftpSendDialog(QtWidgets.QDialog):
         # ── Boutons ───────────────────────────────────────────────────────
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
-        self._btn_send = QtWidgets.QPushButton("Envoyer")
+        self._btn_send = QtWidgets.QPushButton(self.translate("Envoyer", "Send"))
         self._btn_send.setStyleSheet(
             "QPushButton { background-color: #1a3a1a; color: #4CAF50;"
             " border: 1px solid #4CAF50; border-radius: 4px;"
@@ -579,11 +601,14 @@ class _SftpSendDialog(QtWidgets.QDialog):
             " border-color: #333; }"
         )
         self._btn_send.clicked.connect(self._do_send)
-        btn_cancel = QtWidgets.QPushButton("Annuler")
+        btn_cancel = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
         btn_cancel.clicked.connect(self.reject)
         btn_row.addWidget(btn_cancel)
         btn_row.addWidget(self._btn_send)
         root.addLayout(btn_row)
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
 
     def _do_send(self):
         from services.sftp_service import SftpUploadWorker
@@ -598,7 +623,7 @@ class _SftpSendDialog(QtWidgets.QDialog):
 
         self._btn_send.setEnabled(False)
         self._progress.setVisible(True)
-        self._lbl_status.setText("Connexion en cours…")
+        self._lbl_status.setText(self.translate("Connexion en cours…", "Connecting…"))
         self._lbl_status.setStyleSheet("color: #7ec8e3; font-size: 11px; border: none;")
 
         self._worker = SftpUploadWorker(ip, port, user, password, remote_path, self._data)
@@ -608,15 +633,17 @@ class _SftpSendDialog(QtWidgets.QDialog):
 
     def _on_finished(self, remote_path: str):
         self._progress.setVisible(False)
-        self._lbl_status.setText(f"Fichier envoye avec succes :\n{remote_path}")
+        self._lbl_status.setText(self.translate(
+            f"Fichier envoye avec succes :\n{remote_path}", f"File sent successfully:\n{remote_path}"
+        ))
         self._lbl_status.setStyleSheet("color: #4CAF50; font-size: 11px; border: none;")
-        self._btn_send.setText("Fermer")
+        self._btn_send.setText(self.translate("Fermer", "Close"))
         self._btn_send.setEnabled(True)
         self._btn_send.clicked.disconnect()
         self._btn_send.clicked.connect(self.accept)
 
     def _on_error(self, msg: str):
         self._progress.setVisible(False)
-        self._lbl_status.setText(f"Erreur : {msg}")
+        self._lbl_status.setText(self.translate(f"Erreur : {msg}", f"Error: {msg}"))
         self._lbl_status.setStyleSheet("color: #e57373; font-size: 11px; border: none;")
         self._btn_send.setEnabled(True)

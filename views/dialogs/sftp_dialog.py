@@ -110,10 +110,11 @@ def _fmt_size(n_bytes: int) -> str:
 class SftpDialog(QtWidgets.QDialog):
     """Dialog de connexion SFTP au KOSMOS et de téléversement de la carte SD."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
-        self.setWindowTitle("KOSMOS — Connexion SFTP / Carte SD")
+        self.setWindowTitle(self.translate("KOSMOS — Connexion SFTP / Carte SD", "KOSMOS — SFTP Connection / SD Card"))
         self.setModal(True)
         self.resize(780, 650)
         self.setStyleSheet(_STYLE)
@@ -126,6 +127,9 @@ class SftpDialog(QtWidgets.QDialog):
         self._build_ui()
         self._set_connected(False)
 
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
+
     # ── Construction UI ───────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -137,7 +141,7 @@ class SftpDialog(QtWidgets.QDialog):
         root.addWidget(self._build_files_group(), stretch=1)
         root.addWidget(self._build_download_group())
 
-        btn_close = QtWidgets.QPushButton("Fermer")
+        btn_close = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
         btn_close.setFixedWidth(100)
         btn_close.clicked.connect(self.reject)
         row = QtWidgets.QHBoxLayout()
@@ -146,31 +150,31 @@ class SftpDialog(QtWidgets.QDialog):
         root.addLayout(row)
 
     def _build_connection_group(self) -> QtWidgets.QGroupBox:
-        grp = QtWidgets.QGroupBox("Connexion SSH / SFTP")
+        grp = QtWidgets.QGroupBox(self.translate("Connexion SSH / SFTP", "SSH / SFTP Connection"))
         lay = QtWidgets.QVBoxLayout(grp)
         lay.setSpacing(8)
 
         # Ligne 1 — identifiants
         row1 = QtWidgets.QHBoxLayout()
-        row1.addWidget(QtWidgets.QLabel("Adresse IP :"))
+        row1.addWidget(QtWidgets.QLabel(self.translate("Adresse IP :", "IP Address:")))
         self.edit_ip = QtWidgets.QLineEdit("192.168.10.2")
         self.edit_ip.setFixedWidth(130)
         row1.addWidget(self.edit_ip)
 
         row1.addSpacing(10)
-        row1.addWidget(QtWidgets.QLabel("Port :"))
+        row1.addWidget(QtWidgets.QLabel(self.translate("Port :", "Port:")))
         self.edit_port = QtWidgets.QLineEdit("22")
         self.edit_port.setFixedWidth(55)
         row1.addWidget(self.edit_port)
 
         row1.addSpacing(10)
-        row1.addWidget(QtWidgets.QLabel("Utilisateur :"))
+        row1.addWidget(QtWidgets.QLabel(self.translate("Utilisateur :", "User:")))
         self.edit_user = QtWidgets.QLineEdit("kosmos")
         self.edit_user.setFixedWidth(100)
         row1.addWidget(self.edit_user)
 
         row1.addSpacing(10)
-        row1.addWidget(QtWidgets.QLabel("Mot de passe :"))
+        row1.addWidget(QtWidgets.QLabel(self.translate("Mot de passe :", "Password:")))
         self.edit_pwd = QtWidgets.QLineEdit("kosmos")
         self.edit_pwd.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.edit_pwd.setFixedWidth(100)
@@ -179,7 +183,7 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_show_pwd = QtWidgets.QPushButton("👁")
         self.btn_show_pwd.setFixedSize(28, 28)
         self.btn_show_pwd.setCheckable(True)
-        self.btn_show_pwd.setToolTip("Afficher / masquer le mot de passe")
+        self.btn_show_pwd.setToolTip(self.translate("Afficher / masquer le mot de passe", "Show / hide password"))
         self.btn_show_pwd.toggled.connect(self._toggle_pwd_visibility)
         row1.addWidget(self.btn_show_pwd)
         row1.addStretch()
@@ -187,25 +191,29 @@ class SftpDialog(QtWidgets.QDialog):
 
         # Ligne 2 — dossier distant + bouton connecter
         row2 = QtWidgets.QHBoxLayout()
-        row2.addWidget(QtWidgets.QLabel("Dossier distant :"))
+        row2.addWidget(QtWidgets.QLabel(self.translate("Dossier distant :", "Remote folder:")))
         self.edit_remote = QtWidgets.QLineEdit("kosmos_local_sd")
-        self.edit_remote.setPlaceholderText("Ex : kosmos_local_sd  ou  /home/kosmos/data")
+        self.edit_remote.setPlaceholderText(self.translate(
+            "Ex : kosmos_local_sd  ou  /home/kosmos/data", "E.g.: kosmos_local_sd  or  /home/kosmos/data"
+        ))
         self.edit_remote.returnPressed.connect(self._on_refresh_remote)
         row2.addWidget(self.edit_remote)
-        self.btn_refresh_remote = QtWidgets.QPushButton("Actualiser")
-        self.btn_refresh_remote.setToolTip(
-            "Relister le dossier distant (chemin modifiable même après connexion)")
+        self.btn_refresh_remote = QtWidgets.QPushButton(self.translate("Actualiser", "Refresh"))
+        self.btn_refresh_remote.setToolTip(self.translate(
+            "Relister le dossier distant (chemin modifiable même après connexion)",
+            "Relist the remote folder (path editable even after connecting)"
+        ))
         self.btn_refresh_remote.setMinimumWidth(90)
         self.btn_refresh_remote.setEnabled(False)
         self.btn_refresh_remote.clicked.connect(self._on_refresh_remote)
         row2.addWidget(self.btn_refresh_remote)
-        self.btn_connect = QtWidgets.QPushButton("  Se connecter")
+        self.btn_connect = QtWidgets.QPushButton(self.translate("  Se connecter", "  Connect"))
         self.btn_connect.setIcon(
             self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DriveNetIcon))
         self.btn_connect.setMinimumWidth(140)
         self.btn_connect.clicked.connect(self._on_connect)
         row2.addWidget(self.btn_connect)
-        self.btn_disconnect = QtWidgets.QPushButton("Déconnecter")
+        self.btn_disconnect = QtWidgets.QPushButton(self.translate("Déconnecter", "Disconnect"))
         self.btn_disconnect.setMinimumWidth(110)
         self.btn_disconnect.clicked.connect(self._on_disconnect)
         row2.addWidget(self.btn_disconnect)
@@ -226,7 +234,7 @@ class SftpDialog(QtWidgets.QDialog):
         return grp
 
     def _build_files_group(self) -> QtWidgets.QGroupBox:
-        grp = QtWidgets.QGroupBox("Fichiers distants")
+        grp = QtWidgets.QGroupBox(self.translate("Fichiers distants", "Remote files"))
         lay = QtWidgets.QVBoxLayout(grp)
         lay.setSpacing(6)
 
@@ -235,9 +243,9 @@ class SftpDialog(QtWidgets.QDialog):
         self.lbl_file_count = QtWidgets.QLabel("—")
         bar.addWidget(self.lbl_file_count)
         bar.addStretch()
-        self.btn_select_all = QtWidgets.QPushButton("Tout sélectionner")
+        self.btn_select_all = QtWidgets.QPushButton(self.translate("Tout sélectionner", "Select all"))
         self.btn_select_all.clicked.connect(self._select_all)
-        self.btn_deselect_all = QtWidgets.QPushButton("Tout désélectionner")
+        self.btn_deselect_all = QtWidgets.QPushButton(self.translate("Tout désélectionner", "Deselect all"))
         self.btn_deselect_all.clicked.connect(self._deselect_all)
         bar.addWidget(self.btn_select_all)
         bar.addWidget(self.btn_deselect_all)
@@ -246,7 +254,9 @@ class SftpDialog(QtWidgets.QDialog):
         # Arbre de fichiers
         self.file_tree = QtWidgets.QTreeWidget()
         self.file_tree.setColumnCount(3)
-        self.file_tree.setHeaderLabels(["Nom", "Taille", "Type"])
+        self.file_tree.setHeaderLabels([
+            self.translate("Nom", "Name"), self.translate("Taille", "Size"), self.translate("Type", "Type")
+        ])
         self.file_tree.setColumnWidth(0, 380)
         self.file_tree.setColumnWidth(1, 90)
         self.file_tree.setColumnWidth(2, 80)
@@ -258,29 +268,31 @@ class SftpDialog(QtWidgets.QDialog):
         return grp
 
     def _build_download_group(self) -> QtWidgets.QGroupBox:
-        grp = QtWidgets.QGroupBox("Téléversement vers l'ordinateur")
+        grp = QtWidgets.QGroupBox(self.translate("Téléversement vers l'ordinateur", "Download to computer"))
         lay = QtWidgets.QVBoxLayout(grp)
         lay.setSpacing(6)
 
         row1 = QtWidgets.QHBoxLayout()
-        row1.addWidget(QtWidgets.QLabel("Destination :"))
+        row1.addWidget(QtWidgets.QLabel(self.translate("Destination :", "Destination:")))
         self.edit_dest = QtWidgets.QLineEdit()
-        self.edit_dest.setPlaceholderText("Choisir un dossier de destination…")
+        self.edit_dest.setPlaceholderText(self.translate(
+            "Choisir un dossier de destination…", "Choose a destination folder…"
+        ))
         self.edit_dest.setReadOnly(True)
         row1.addWidget(self.edit_dest)
-        self.btn_browse = QtWidgets.QPushButton("Parcourir…")
+        self.btn_browse = QtWidgets.QPushButton(self.translate("Parcourir…", "Browse…"))
         self.btn_browse.clicked.connect(self._browse_dest)
         row1.addWidget(self.btn_browse)
         lay.addLayout(row1)
 
         row2 = QtWidgets.QHBoxLayout()
-        self.btn_download = QtWidgets.QPushButton("  Téléverser la sélection")
+        self.btn_download = QtWidgets.QPushButton(self.translate("  Téléverser la sélection", "  Download selection"))
         self.btn_download.setIcon(
             self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_ArrowDown))
         self.btn_download.setMinimumWidth(200)
         self.btn_download.clicked.connect(self._on_download)
         row2.addWidget(self.btn_download)
-        self.btn_cancel_dl = QtWidgets.QPushButton("Annuler")
+        self.btn_cancel_dl = QtWidgets.QPushButton(self.translate("Annuler", "Cancel"))
         self.btn_cancel_dl.setVisible(False)
         self.btn_cancel_dl.clicked.connect(self._on_cancel_download)
         row2.addWidget(self.btn_cancel_dl)
@@ -293,7 +305,7 @@ class SftpDialog(QtWidgets.QDialog):
         sep1.setStyleSheet("background:#1e3448; border:none; max-height:1px;")
         lay.addWidget(sep1)
 
-        lbl_cur = QtWidgets.QLabel("Fichier en cours")
+        lbl_cur = QtWidgets.QLabel(self.translate("Fichier en cours", "Current file"))
         lbl_cur.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
         lay.addWidget(lbl_cur)
 
@@ -324,7 +336,7 @@ class SftpDialog(QtWidgets.QDialog):
         sep2.setStyleSheet("background:#1e3448; border:none; max-height:1px;")
         lay.addWidget(sep2)
 
-        lbl_tot = QtWidgets.QLabel("Progression totale")
+        lbl_tot = QtWidgets.QLabel(self.translate("Progression totale", "Total progress"))
         lbl_tot.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
         lay.addWidget(lbl_tot)
 
@@ -387,15 +399,20 @@ class SftpDialog(QtWidgets.QDialog):
             port = 22
 
         if not ip or not user or not remote:
-            QtWidgets.QMessageBox.warning(self, "Champs manquants",
-                                          "IP, utilisateur et dossier distant sont requis.")
+            QtWidgets.QMessageBox.warning(
+                self, self.translate("Champs manquants", "Missing fields"),
+                self.translate(
+                    "IP, utilisateur et dossier distant sont requis.",
+                    "IP, user and remote folder are required."
+                )
+            )
             return
 
         self._sftp_cfg = dict(ip=ip, port=port, user=user, password=pwd,
                               remote_dir=remote)
         self.btn_connect.setEnabled(False)
         self.conn_progress.setVisible(True)
-        self.lbl_conn_status.setText("Connexion en cours…")
+        self.lbl_conn_status.setText(self.translate("Connexion en cours…", "Connecting…"))
         self.lbl_conn_status.setStyleSheet("color: #b0c8d8;")
         self.file_tree.clear()
 
@@ -406,8 +423,10 @@ class SftpDialog(QtWidgets.QDialog):
 
     def _on_connected(self, entries: list):
         self.conn_progress.setVisible(False)
-        self.lbl_conn_status.setText(
-            f"Connecté à {self._sftp_cfg['ip']} — {self.edit_remote.text()}")
+        self.lbl_conn_status.setText(self.translate(
+            f"Connecté à {self._sftp_cfg['ip']} — {self.edit_remote.text()}",
+            f"Connected to {self._sftp_cfg['ip']} — {self.edit_remote.text()}"
+        ))
         self.lbl_conn_status.setStyleSheet("color: #5ecf80; font-weight: bold;")
         self._set_connected(True)
         self._populate_tree(entries)
@@ -415,7 +434,7 @@ class SftpDialog(QtWidgets.QDialog):
     def _on_connect_error(self, msg: str):
         self.conn_progress.setVisible(False)
         self.btn_connect.setEnabled(True)
-        self.lbl_conn_status.setText(f"Erreur : {msg}")
+        self.lbl_conn_status.setText(self.translate(f"Erreur : {msg}", f"Error: {msg}"))
         self.lbl_conn_status.setStyleSheet("color: #D94F38; font-weight: bold;")
 
     def _on_refresh_remote(self):
@@ -426,7 +445,7 @@ class SftpDialog(QtWidgets.QDialog):
         self._sftp_cfg['remote_dir'] = remote
         self.btn_refresh_remote.setEnabled(False)
         self.conn_progress.setVisible(True)
-        self.lbl_conn_status.setText(f"Listage de {remote}…")
+        self.lbl_conn_status.setText(self.translate(f"Listage de {remote}…", f"Listing {remote}…"))
         self.lbl_conn_status.setStyleSheet("color: #b0c8d8;")
         self.file_tree.clear()
 
@@ -440,8 +459,10 @@ class SftpDialog(QtWidgets.QDialog):
     def _on_refreshed(self, entries: list):
         self.conn_progress.setVisible(False)
         self.btn_refresh_remote.setEnabled(True)
-        self.lbl_conn_status.setText(
-            f"Connecté à {self._sftp_cfg['ip']} — {self.edit_remote.text()}")
+        self.lbl_conn_status.setText(self.translate(
+            f"Connecté à {self._sftp_cfg['ip']} — {self.edit_remote.text()}",
+            f"Connected to {self._sftp_cfg['ip']} — {self.edit_remote.text()}"
+        ))
         self.lbl_conn_status.setStyleSheet("color: #5ecf80; font-weight: bold;")
         self._populate_tree(entries)
 
@@ -449,7 +470,7 @@ class SftpDialog(QtWidgets.QDialog):
         if self._connect_worker and self._connect_worker.isRunning():
             self._connect_worker.requestInterruption()
         self.file_tree.clear()
-        self.lbl_conn_status.setText("Déconnecté.")
+        self.lbl_conn_status.setText(self.translate("Déconnecté.", "Disconnected."))
         self.lbl_conn_status.setStyleSheet("color: #b0c8d8;")
         self.lbl_file_count.setText("—")
         self._set_connected(False)
@@ -472,7 +493,8 @@ class SftpDialog(QtWidgets.QDialog):
                 icon = _ICON_FOLDER if entry['is_dir'] else _ICON_FILE
                 item.setText(0, f"{icon}  {entry['name']}")
                 item.setText(1, "" if entry['is_dir'] else _fmt_size(entry['size']))
-                item.setText(2, "Dossier" if entry['is_dir'] else "Fichier")
+                item.setText(2, self.translate("Dossier", "Folder") if entry['is_dir']
+                             else self.translate("Fichier", "File"))
                 item.setData(0, QtCore.Qt.ItemDataRole.UserRole, entry['path'])
                 item.setData(0, QtCore.Qt.ItemDataRole.UserRole + 1, entry['is_dir'])
                 flags = (QtCore.Qt.ItemFlag.ItemIsEnabled
@@ -490,7 +512,10 @@ class SftpDialog(QtWidgets.QDialog):
         self.file_tree.blockSignals(False)
 
         n = total_files[0]
-        self.lbl_file_count.setText(f"{n} fichier{'s' if n > 1 else ''} trouvé{'s' if n > 1 else ''}")
+        self.lbl_file_count.setText(self.translate(
+            f"{n} fichier{'s' if n > 1 else ''} trouvé{'s' if n > 1 else ''}",
+            f"{n} file{'s' if n > 1 else ''} found"
+        ))
 
     def _on_item_changed(self, item: QtWidgets.QTreeWidgetItem, column: int):
         if column != 0:
@@ -548,7 +573,8 @@ class SftpDialog(QtWidgets.QDialog):
 
     def _browse_dest(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(
-            self, "Choisir le dossier de destination", self._local_dest or "")
+            self, self.translate("Choisir le dossier de destination", "Choose the destination folder"),
+            self._local_dest or "")
         if folder:
             self._local_dest = folder
             self.edit_dest.setText(folder)
@@ -587,14 +613,21 @@ class SftpDialog(QtWidgets.QDialog):
 
     def _on_download(self):
         if not self._local_dest:
-            QtWidgets.QMessageBox.warning(self, "Destination manquante",
-                                          "Veuillez choisir un dossier de destination.")
+            QtWidgets.QMessageBox.warning(
+                self, self.translate("Destination manquante", "Missing destination"),
+                self.translate(
+                    "Veuillez choisir un dossier de destination.",
+                    "Please choose a destination folder."
+                )
+            )
             return
 
         files = self._collect_selected_files()
         if not files:
-            QtWidgets.QMessageBox.information(self, "Rien à télécharger",
-                                              "Aucun fichier sélectionné.")
+            QtWidgets.QMessageBox.information(
+                self, self.translate("Rien à télécharger", "Nothing to download"),
+                self.translate("Aucun fichier sélectionné.", "No file selected.")
+            )
             return
 
         remote_base = self._sftp_cfg.get('remote_dir', '').rstrip('/')
@@ -606,10 +639,12 @@ class SftpDialog(QtWidgets.QDialog):
         self._set_dl_panel_visible(True)
         self.pb_file.setValue(0)
         self.pb_total.setValue(0)
-        self.lbl_file_name.setText("Récupération des tailles…")
+        self.lbl_file_name.setText(self.translate("Récupération des tailles…", "Fetching sizes…"))
         self.lbl_file_bytes.setText("")
         self.lbl_speed.setText("")
-        self.lbl_total_bytes.setText(f"0 B / … — {len(files)} fichier(s)")
+        self.lbl_total_bytes.setText(self.translate(
+            f"0 B / … — {len(files)} fichier(s)", f"0 B / … — {len(files)} file(s)"
+        ))
         self.lbl_eta.setText("")
         self.lbl_dl_status.setStyleSheet("color: #b0c8d8;")
         self.lbl_dl_status.setText("")
@@ -663,24 +698,29 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_cancel_dl.setVisible(False)
         self.lbl_speed.setText("")
         self.lbl_eta.setText("")
-        self.lbl_total_bytes.setText(
-            f"{_fmt_size(total_bytes)}  —  {count} fichier{'s' if count > 1 else ''}")
+        self.lbl_total_bytes.setText(self.translate(
+            f"{_fmt_size(total_bytes)}  —  {count} fichier{'s' if count > 1 else ''}",
+            f"{_fmt_size(total_bytes)}  —  {count} file{'s' if count > 1 else ''}"
+        ))
         self.lbl_dl_status.setStyleSheet("color: #5ecf80; font-weight: bold;")
-        self.lbl_dl_status.setText(
+        self.lbl_dl_status.setText(self.translate(
             f"Transfert terminé — {count} fichier{'s' if count > 1 else ''} "
-            f"({_fmt_size(total_bytes)})  ✓")
+            f"({_fmt_size(total_bytes)})  ✓",
+            f"Transfer complete — {count} file{'s' if count > 1 else ''} "
+            f"({_fmt_size(total_bytes)})  ✓"
+        ))
 
     def _on_dl_error(self, msg: str):
         self.btn_download.setEnabled(True)
         self.btn_cancel_dl.setVisible(False)
         self.lbl_dl_status.setStyleSheet("color: #D94F38; font-weight: bold;")
-        self.lbl_dl_status.setText(f"Erreur : {msg}")
+        self.lbl_dl_status.setText(self.translate(f"Erreur : {msg}", f"Error: {msg}"))
 
     def _on_cancel_download(self):
         if self._download_worker and self._download_worker.isRunning():
             self._download_worker.requestInterruption()
             self.btn_cancel_dl.setEnabled(False)
-            self.lbl_dl_status.setText("Annulation en cours…")
+            self.lbl_dl_status.setText(self.translate("Annulation en cours…", "Cancelling…"))
 
     # ── Fermeture propre ──────────────────────────────────────────────────
 

@@ -16,10 +16,11 @@ class MapBridge(QtCore.QObject):
 class MapDialog(QtWidgets.QDialog):
     """Dialogue affichant la carte de campagne dans un QWebEngineView."""
 
-    def __init__(self, bridge: MapBridge, channel, parent=None):
+    def __init__(self, bridge: MapBridge, channel, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
-        self.setWindowTitle("Carte de Campagne")
+        self.setWindowTitle("Carte de Campagne" if language == 'fr' else "Campaign Map")
         self.resize(800, 600)
 
         self.bridge = bridge
@@ -31,3 +32,7 @@ class MapDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.map_view)
+
+    def set_language(self, language: str):
+        self.current_language = language
+        self.setWindowTitle("Carte de Campagne" if language == 'fr' else "Campaign Map")

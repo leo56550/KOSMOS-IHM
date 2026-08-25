@@ -210,6 +210,9 @@ class QualifController:
     def set_language(self, language: str):
         """Traduit les en-têtes des modèles et les titres de section."""
         self.current_language = language
+        if hasattr(self, 'map_dialog'):
+            self.map_dialog.set_language(language)
+        self.map_initialized = False
         if hasattr(self, 'lbl_section_title'):
             self.lbl_section_title.setText(self.translate("Propriétés de campagne", "Campaign Properties"))
         if hasattr(self, 'lbl_videos_title'):
@@ -227,6 +230,8 @@ class QualifController:
             self.btn_save_campaign.setText(self.translate("Sauvegarder", "Save"))
         if hasattr(self, '_video_row_widgets'):
             self._rebuild_video_rows()
+        if getattr(self, '_campaign_properties_json_path', None):
+            self.load_and_display_campaign_json(self._campaign_properties_json_path)
 
     # --- Init helpers ---
 
@@ -685,7 +690,7 @@ class QualifController:
         self.channel = QWebChannel()
         self.channel.registerObject("backend", self.bridge)
         self.bridge.videoSelected.connect(self.select_video_by_name)
-        self.map_dialog = MapDialog(self.bridge, self.channel, parent=self.widget)
+        self.map_dialog = MapDialog(self.bridge, self.channel, parent=self.widget, language=self.current_language)
         self.map_initialized = False
 
     def _init_miniature_area(self):
@@ -1053,6 +1058,9 @@ class QualifController:
     def load_and_display_campaign_json(self, json_path: str):
         if not hasattr(self, 'scroll_campaign') or not self.scroll_campaign:
             return
+        # Mémorisé pour pouvoir reconstruire le formulaire (labels name_fr/name) sans
+        # relire le disque quand set_language() change la langue en cours de session.
+        self._campaign_properties_json_path = json_path
 
         # Remplacer le widget interne — évite "QWidget already has a layout"
         # causé par deleteLater() asynchrone sur l'ancien layout.
@@ -1112,7 +1120,8 @@ class QualifController:
             for key, meta in merged.items():
                 if key in _HIDDEN_SURVEY_KEYS:
                     continue
-                display_name = meta.get("name_fr", key).capitalize()
+                name_key = "name_fr" if self.current_language == 'fr' else "name"
+                display_name = str(meta.get(name_key) or meta.get("name_fr", key)).capitalize()
                 if display_name.lower() in _HIDDEN_SURVEY_LABELS:
                     continue
                 value_str = str(meta.get("value") or "")
@@ -1139,7 +1148,8 @@ class QualifController:
             return
 
         fallback_layout = QtWidgets.QVBoxLayout(self.dynamic_form_container)
-        lbl_error = QtWidgets.QLabel("No active campaign data found.")
+        lbl_error = QtWidgets.QLabel(self.translate(
+            "Aucune donnée de campagne active.", "No active campaign data found."))
         lbl_error.setStyleSheet("color: #aaaaaa; font-style: italic; font-size: 11px;")
         lbl_error.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         fallback_layout.addWidget(lbl_error)
@@ -1347,7 +1357,7 @@ class QualifController:
                     color="#2778A2",
                     weight=2.5,
                     opacity=0.85,
-                    tooltip="Tracé GPS (ordre chronologique)",
+                    tooltip=self.translate("Tracé GPS (ordre chronologique)", "GPS track (chronological order)"),
                 ).add_to(m)
 
             for name, coords in valid_coords.items():
@@ -1356,7 +1366,7 @@ class QualifController:
                     f'<div style="font-family:\'Segoe UI\',sans-serif;font-size:12px;'
                     f'min-width:120px;">'
                     f'<b style="font-size:13px;">{name}</b>'
-                    + (f'<br><span style="color:#607080;">GPS Waypoint :</span> '
+                    + (f'<br><span style="color:#607080;">{self.translate("GPS Waypoint :", "GPS Waypoint:")}</span> '
                        f'<b>{wp}</b>' if wp else '')
                     + '</div>'
                 )
@@ -1380,7 +1390,11 @@ class QualifController:
                 m.get_root().html.add_child(folium.Element(js_reg))
 
             if not valid_coords:
-                no_gps_html = """
+                no_gps_text = self.translate(
+                    "Aucune donnée GPS disponible pour cette campagne",
+                    "No GPS data available for this campaign",
+                )
+                no_gps_html = f"""
                 <div style="
                     position: fixed; top: 50%; left: 50%;
                     transform: translate(-50%, -50%);
@@ -1392,7 +1406,7 @@ class QualifController:
                     border: 1px solid #2778A2;
                     z-index: 9999; text-align: center;
                     pointer-events: none;">
-                    Aucune donnée GPS disponible pour cette campagne
+                    {no_gps_text}
                 </div>"""
                 m.get_root().html.add_child(folium.Element(no_gps_html))
 
@@ -1456,7 +1470,9 @@ class QualifController:
         try:
             motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
             if not motor_events:
-                lbl = QtWidgets.QLabel("No motor rotation found in the CSV file.")
+                lbl = QtWidgets.QLabel(self.translate(
+                    "Aucune rotation moteur trouvée dans le fichier CSV.",
+                    "No motor rotation found in the CSV file."))
                 lbl.setStyleSheet("color: white; font-size: 14px;")
                 self.scroll_layout.addWidget(lbl)
                 self.scroll_layout.addStretch()
@@ -1653,7 +1669,9 @@ class QualifController:
         btn_next.setFixedSize(48, 32)
         btn_next.setStyleSheet(_btn_style)
 
-        hint = QtWidgets.QLabel("Échap pour fermer  |  ← →  pour naviguer")
+        hint = QtWidgets.QLabel(self.translate(
+            "Échap pour fermer  |  ← →  pour naviguer",
+            "Escape to close  |  ← →  to navigate"))
         hint.setStyleSheet("color:rgba(255,255,255,60);font-size:10px;background:transparent;")
 
         btn_close = QtWidgets.QPushButton("✕")

@@ -5,27 +5,30 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 APP_VERSION = "1.0.0"
 
 _TECH_STACK = [
-    ("PyQt6",        "Interface graphique — widgets, signaux/slots, MVC"),
-    ("OpenCV",       "Lecture vidéo, extraction de frames, traitement d'image"),
-    ("Matplotlib",   "Histogrammes, graphiques, export PDF"),
-    ("Folium",       "Carte interactive Leaflet (GPS tracks)"),
-    ("pandas",       "Lecture des fichiers CSV de télémétrie"),
-    ("paramiko",     "Transfert SFTP depuis la carte SD KOSMOS"),
-    ("NumPy",        "Calculs vectorisés (histogramme, luminosité)"),
+    ("PyQt6",        "Interface graphique — widgets, signaux/slots, MVC",
+                      "Graphical interface — widgets, signals/slots, MVC"),
+    ("OpenCV",       "Lecture vidéo, extraction de frames, traitement d'image",
+                      "Video reading, frame extraction, image processing"),
+    ("Matplotlib",   "Histogrammes, graphiques, export PDF",
+                      "Histograms, charts, PDF export"),
+    ("Folium",       "Carte interactive Leaflet (GPS tracks)",
+                      "Interactive Leaflet map (GPS tracks)"),
+    ("pandas",       "Lecture des fichiers CSV de télémétrie",
+                      "Reading telemetry CSV files"),
+    ("paramiko",     "Transfert SFTP depuis la carte SD KOSMOS",
+                      "SFTP transfer from the KOSMOS SD card"),
+    ("NumPy",        "Calculs vectorisés (histogramme, luminosité)",
+                      "Vectorized computations (histogram, brightness)"),
 ]
 
 _TEAM = [
-    ("Léo Bultel",          "Développement logiciel, IMT Atlantique"),
-    ("Équipe KOSMOS",       "Conception système, IMT Atlantique"),
-    ("Institut Mines-Télécom Atlantique", "Partenaire scientifique"),
+    ("Léo Bultel",          "Développement logiciel, IMT Atlantique",
+                             "Software development, IMT Atlantique"),
+    ("Équipe KOSMOS",       "Conception système, IMT Atlantique",
+                             "System design, IMT Atlantique"),
+    ("Institut Mines-Télécom Atlantique", "Partenaire scientifique",
+                                          "Scientific partner"),
 ]
-
-_DESCRIPTION = (
-    "KOSMOS IHM est l'interface de qualification et d'analyse des vidéos collectées "
-    "par les robots sous-marins KOSMOS. Elle permet d'ouvrir une campagne, de visionner "
-    "chaque vidéo, de saisir des métadonnées de terrain, d'annoter des événements biologiques "
-    "sur la timeline, d'exporter des segments ou captures, et de générer un rapport de campagne."
-)
 
 
 class AProposController:
@@ -33,10 +36,15 @@ class AProposController:
 
     def __init__(self, widget: QtWidgets.QWidget, *args, **kwargs):
         self.widget = widget
+        self.current_language = 'fr'
         self._build_ui()
 
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
+
     def set_language(self, language: str):
-        pass   # page statique — pas de traduction pour l'instant
+        self.current_language = language
+        self._build_ui()
 
     # ── Construction de l'UI ──────────────────────────────────────────────────
 
@@ -73,9 +81,18 @@ class AProposController:
         layout.addSpacing(36)
 
         # ── Description ──────────────────────────────────────────────────────
-        layout.addWidget(self._section_title("Présentation"))
+        layout.addWidget(self._section_title(self.translate("Présentation", "Overview")))
         layout.addSpacing(10)
-        layout.addWidget(self._paragraph(_DESCRIPTION))
+        layout.addWidget(self._paragraph(self.translate(
+            "KOSMOS IHM est l'interface de qualification et d'analyse des vidéos collectées "
+            "par les robots sous-marins KOSMOS. Elle permet d'ouvrir une campagne, de visionner "
+            "chaque vidéo, de saisir des métadonnées de terrain, d'annoter des événements biologiques "
+            "sur la timeline, d'exporter des segments ou captures, et de générer un rapport de campagne.",
+            "KOSMOS IHM is the interface for qualifying and analyzing videos collected "
+            "by the KOSMOS underwater robots. It allows you to open a campaign, view "
+            "each video, enter field metadata, annotate biological events "
+            "on the timeline, export segments or captures, and generate a campaign report."
+        )))
         layout.addSpacing(28)
 
         # ── Technologies ─────────────────────────────────────────────────────
@@ -85,20 +102,22 @@ class AProposController:
         layout.addSpacing(28)
 
         # ── Équipe ───────────────────────────────────────────────────────────
-        layout.addWidget(self._section_title("Équipe & Institution"))
+        layout.addWidget(self._section_title(self.translate("Équipe & Institution", "Team & Institution")))
         layout.addSpacing(10)
-        for name, role in _TEAM:
-            layout.addWidget(self._team_row(name, role))
+        for name, role_fr, role_en in _TEAM:
+            layout.addWidget(self._team_row(name, self.translate(role_fr, role_en)))
             layout.addSpacing(4)
         layout.addSpacing(28)
 
         # ── Licence & contact ─────────────────────────────────────────────────
-        layout.addWidget(self._section_title("Licence & Contact"))
+        layout.addWidget(self._section_title(self.translate("Licence & Contact", "License & Contact")))
         layout.addSpacing(10)
-        layout.addWidget(self._paragraph(
+        layout.addWidget(self._paragraph(self.translate(
             "Logiciel développé dans le cadre du projet KOSMOS — IMT Atlantique.\n"
-            "Utilisation interne et scientifique."
-        ))
+            "Utilisation interne et scientifique.",
+            "Software developed as part of the KOSMOS project — IMT Atlantique.\n"
+            "Internal and scientific use."
+        )))
         layout.addSpacing(28)
 
         # ── Pied de page ─────────────────────────────────────────────────────
@@ -135,7 +154,10 @@ class AProposController:
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
         )
 
-        lbl_sub = QtWidgets.QLabel("Interface de qualification des vidéos sous-marines")
+        lbl_sub = QtWidgets.QLabel(self.translate(
+            "Interface de qualification des vidéos sous-marines",
+            "Interface for qualifying underwater videos"
+        ))
         lbl_sub.setStyleSheet(
             "color: #7ec8e3; font-size: 14px; font-family: 'Segoe UI', sans-serif;"
         )
@@ -185,7 +207,7 @@ class AProposController:
         layout.addLayout(_row("Version", APP_VERSION, "#F2BFB4"))
         layout.addLayout(_row("PyQt6", "6.x"))
         layout.addLayout(_row("Python", "3.11+"))
-        layout.addLayout(_row("Plateforme", "Windows"))
+        layout.addLayout(_row(self.translate("Plateforme", "Platform"), "Windows"))
         return frame
 
     def _section_title(self, text: str) -> QtWidgets.QWidget:
@@ -226,13 +248,13 @@ class AProposController:
         grid.setHorizontalSpacing(28)
         grid.setVerticalSpacing(8)
 
-        for row, (lib, desc) in enumerate(_TECH_STACK):
+        for row, (lib, desc_fr, desc_en) in enumerate(_TECH_STACK):
             lbl_lib = QtWidgets.QLabel(lib)
             lbl_lib.setStyleSheet(
                 "color: #7ec8e3; font-weight: bold; font-size: 12px;"
                 " font-family: 'Segoe UI', sans-serif; background: transparent;"
             )
-            lbl_desc = QtWidgets.QLabel(desc)
+            lbl_desc = QtWidgets.QLabel(self.translate(desc_fr, desc_en))
             lbl_desc.setStyleSheet(
                 "color: #6a9ab0; font-size: 11px; font-family: 'Segoe UI', sans-serif;"
                 " background: transparent;"

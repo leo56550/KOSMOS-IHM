@@ -1349,3 +1349,43 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-25 12:01:59.675319
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "C:\KOSMOS_IHM\main.py", line 49, in main
+    window.controller = AppController(window)
+                        ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 56, in __init__
+    self.evenements_ctrl = EvenementsController(
+                           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 109, in __init__
+    self.set_language(self.current_language)
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 206, in set_language
+    self.charger_evenements_du_json()
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 1641, in charger_evenements_du_json
+    self.combo_type_event.blockSignals(True)
+    ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'EvenementsController' object has no attribute 'combo_type_event'
+
+============================================================
+2026-08-25 12:02:04.449538
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "C:\KOSMOS_IHM\main.py", line 49, in main
+    window.controller = AppController(window)
+                        ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 56, in __init__
+    self.evenements_ctrl = EvenementsController(
+                           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 109, in __init__
+    self.set_language(self.current_language)
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 206, in set_language
+    self.charger_evenements_du_json()
+  File "C:\KOSMOS_IHM\controllers\evenements_controller.py", line 1641, in charger_evenements_du_json
+    self.combo_type_event.blockSignals(True)
+    ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'EvenementsController' object has no attribute 'combo_type_event'

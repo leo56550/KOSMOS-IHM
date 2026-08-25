@@ -475,6 +475,10 @@ class ValidationController:
         self.current_language = language
         if hasattr(self, 'player'):
             self.player.set_language(language)
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_language(language)
+            if self.video_tree:
+                self.video_tree.viewport().update()
         self._retranslate_ui()
         if self.current_json_path and os.path.exists(self.current_json_path):
             self.refresh_combobox_values()
@@ -494,6 +498,18 @@ class ValidationController:
             current = self._status_badge.text()
             if current in ("Aucune sélection", "No selection"):
                 self._status_badge.setText(self.translate("Aucune sélection", "No selection"))
+            elif current in ("Non renseigné", "Not set"):
+                self._status_badge.setText(self.translate("Non renseigné", "Not set"))
+        if hasattr(self, 'player') and hasattr(self.player, 'btn_ardoise'):
+            self.player.btn_ardoise.setToolTip(self.translate(
+                "Saisir l'ardoise à la position courante",
+                "Record slate at current position"
+            ))
+        if hasattr(self, 'player') and hasattr(self.player, 'btn_ardoise_manquante'):
+            self.player.btn_ardoise_manquante.setToolTip(self.translate(
+                "Signaler l'absence d'ardoise dans cette vidéo",
+                "Flag missing slate for this video"
+            ))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle source du proxy après un changement de campagne."""

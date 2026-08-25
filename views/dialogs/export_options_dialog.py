@@ -146,6 +146,10 @@ class ExportOptionsDialog(QtWidgets.QDialog):
         self.check_dh.setText(self.translate("Suppression de la brume / flou (Dehaze)", "Haze / Blur Removal (Dehaze)"))
         self.check_water.setText(self.translate("Mode sous-marin (Option Dehaze)", "Underwater Mode (Dehaze Option)"))
         self.chk_rectify.setText(self.translate("Rectifier les images (Stéréo)", "Rectify images (Stereo)"))
+        self.chk_rectify.setToolTip(self.translate(
+            "Nécessite matrices.json et les fichiers .txt de synchro",
+            "Requires matrices.json and the sync .txt files"
+        ))
         self.chk_include_images.setText(self.translate("Exporter le lot d'images", "Export image batch"))
         self.event_types_group.setTitle(self.translate("Types d'événements à exporter", "Event types to export"))
         self.check_deployment.setText(self.translate("Déploiement", "Deployment"))

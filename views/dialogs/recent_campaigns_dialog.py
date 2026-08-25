@@ -15,9 +15,10 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
 
     campaign_selected = QtCore.pyqtSignal(str, str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, language: str = 'fr'):
         super().__init__(parent)
-        self.setWindowTitle("Ouvrir une campagne récente")
+        self.current_language = language
+        self.setWindowTitle(self.translate("Ouvrir une campagne récente", "Open a recent campaign"))
         self.setModal(True)
         self.setMinimumSize(720, 440)
         self.resize(860, 520)
@@ -25,6 +26,9 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
 
         self._recents = load_recents()
         self._build_ui()
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
 
     # ── Construction ──────────────────────────────────────────────────────────
 
@@ -42,14 +46,16 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         w.setStyleSheet("background-color: #111f2e; border-bottom: 1px solid #2778A2;")
         lay = QtWidgets.QHBoxLayout(w)
         lay.setContentsMargins(16, 10, 16, 10)
-        lbl = QtWidgets.QLabel("Campagnes récentes")
+        lbl = QtWidgets.QLabel(self.translate("Campagnes récentes", "Recent campaigns"))
         lbl.setStyleSheet(
             "color: #F2BFB4; font-size: 14px; font-weight: bold;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
         )
         lay.addWidget(lbl)
         lay.addStretch()
-        count_lbl = QtWidgets.QLabel(f"{len(self._recents)} entrée(s)")
+        count_lbl = QtWidgets.QLabel(self.translate(
+            f"{len(self._recents)} entrée(s)", f"{len(self._recents)} entry(ies)"
+        ))
         count_lbl.setStyleSheet("color: #3a5568; font-size: 11px; font-family: 'Segoe UI', sans-serif;")
         lay.addWidget(count_lbl)
         return w
@@ -62,7 +68,7 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
         lay.setSpacing(0)
 
         if not self._recents:
-            empty = QtWidgets.QLabel("Aucune campagne récente")
+            empty = QtWidgets.QLabel(self.translate("Aucune campagne récente", "No recent campaigns"))
             empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             empty.setStyleSheet("color: #3a5568; font-size: 13px; font-family: 'Segoe UI', sans-serif;")
             lay.addWidget(empty)
@@ -118,9 +124,9 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
             " QPushButton:disabled { color: #3a5568; border-color: #1a2e40; }"
         )
 
-        self.btn_remove = QtWidgets.QPushButton("Retirer de la liste")
-        self.btn_open   = QtWidgets.QPushButton("Ouvrir")
-        btn_close       = QtWidgets.QPushButton("Fermer")
+        self.btn_remove = QtWidgets.QPushButton(self.translate("Retirer de la liste", "Remove from list"))
+        self.btn_open   = QtWidgets.QPushButton(self.translate("Ouvrir", "Open"))
+        btn_close       = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
 
         self.btn_remove.setStyleSheet(_base)
         btn_close.setStyleSheet(_base)
@@ -177,15 +183,18 @@ class RecentCampaignsDialog(QtWidgets.QDialog):
             _LABEL_STYLE + " color: #F2BFB4; font-size: 12px; font-weight: bold;"
         )
 
-        raw_lbl = QtWidgets.QLabel(f"Dossier brut  :  {raw}")
+        raw_lbl = QtWidgets.QLabel(self.translate(f"Dossier brut  :  {raw}", f"Raw folder  :  {raw}"))
         raw_lbl.setStyleSheet(_LABEL_STYLE + " color: #6a8fa8; font-size: 10px;")
         raw_lbl.setWordWrap(True)
 
-        out_lbl = QtWidgets.QLabel(f"Dossier sortie :  {out}")
+        out_lbl = QtWidgets.QLabel(self.translate(f"Dossier sortie :  {out}", f"Output folder :  {out}"))
         out_lbl.setStyleSheet(_LABEL_STYLE + " color: #6a8fa8; font-size: 10px;")
         out_lbl.setWordWrap(True)
 
-        meta_lbl = QtWidgets.QLabel(f"Dérusher : {derus}   •   Ouvert le : {opened}")
+        meta_lbl = QtWidgets.QLabel(self.translate(
+            f"Dérusher : {derus}   •   Ouvert le : {opened}",
+            f"Derusher: {derus}   •   Opened on: {opened}"
+        ))
         meta_lbl.setStyleSheet(_LABEL_STYLE + " color: #3a5568; font-size: 10px;")
 
         lay.addWidget(name_lbl)

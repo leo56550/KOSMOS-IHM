@@ -656,9 +656,20 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "Haze reduction (CLAHE on L channel)"))
         self.lbl_contrast_lbl.setText(self.translate("Contraste :", "Contrast:"))
         self.lbl_brightness_lbl.setText(self.translate("Luminosité :", "Brightness:"))
+        self.btn_reset_corr.setText(self.translate("Réinitialiser", "Reset"))
         self.btn_reset_corr.setToolTip(self.translate(
             "Réinitialiser toutes les corrections", "Reset all corrections"))
         self.lbl_pause_hint.setText(self.translate("⏸ pause pour activer", "⏸ pause to activate"))
+        self.btn_telemetry.setText(self.translate("Télémétrie", "Telemetry"))
+        self.btn_telemetry.setToolTip(self.translate(
+            "Afficher / masquer le graphe de télémétrie", "Show / hide the telemetry graph"))
+        self.btn_ardoise.setToolTip(self.translate(
+            "Saisir l'ardoise à la position courante", "Record the slate at the current position"))
+        self.btn_ardoise_manquante.setToolTip(self.translate(
+            "Signaler l'absence d'ardoise dans cette vidéo", "Flag this video as missing its slate"))
+        if hasattr(self, '_ardoise_missing_lbl'):
+            self._ardoise_missing_lbl.setText(
+                self.translate("⛔  ARDOISE MANQUANTE", "⛔  MISSING SLATE"))
         if hasattr(self, 'telemetry_dialog'):
             self.telemetry_dialog.set_language(language)
         self.update_top_time_label(self.player.position(), self.player.duration())
@@ -765,6 +776,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def _enter_fullscreen(self):
         win = _FullscreenWindow()
+        win._hint.setText(self.translate(
+            "Double-clic ou Échap pour quitter le plein écran",
+            "Double-click or Escape to exit fullscreen"))
         win.exit_requested.connect(self._exit_fullscreen)
         win.step_frame.connect(self._step_frame)
         win.toggle_play.connect(self._toggle_play_pause)
@@ -993,11 +1007,12 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
 
     def update_frame_label(self, position_ms: int):
         """Met à jour le label de numéro de frame courant."""
+        prefix = self.translate("Image", "Frame")
         if self.video_fps and self.video_fps > 0:
             self.lbl_frame_number.setText(
-                f"Frame: {int(position_ms * self.video_fps / 1000.0) + 1}")
+                f"{prefix}: {int(position_ms * self.video_fps / 1000.0) + 1}")
         else:
-            self.lbl_frame_number.setText("Frame: -")
+            self.lbl_frame_number.setText(f"{prefix}: -")
 
     def _get_video_fps(self, video_path: str) -> float:
         """Lit le FPS de video_path via OpenCV, retourne 0.0 en cas d'échec."""

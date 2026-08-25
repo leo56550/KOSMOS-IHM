@@ -37,15 +37,18 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
     video_selected = QtCore.pyqtSignal(int)   # index dans video_model
 
     def __init__(self, campaign_folder: str, video_model: QtGui.QStandardItemModel,
-                 parent=None):
+                 parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowFlags(
             QtCore.Qt.WindowType.Window |
             QtCore.Qt.WindowType.WindowCloseButtonHint |
             QtCore.Qt.WindowType.WindowMaximizeButtonHint
         )
-        name = os.path.basename(os.path.normpath(campaign_folder))
-        self.setWindowTitle(f"Vision globale — {name}")
+        self._campaign_name = os.path.basename(os.path.normpath(campaign_folder))
+        self.setWindowTitle(self.translate(
+            f"Vision globale — {self._campaign_name}", f"Global view — {self._campaign_name}"
+        ))
         self.setMinimumSize(900, 420)
         self.resize(1150, 560)
         self.setStyleSheet("QDialog { background-color: #0d1b2a; }")
@@ -54,7 +57,34 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
         entries = self._build_entries(video_model)
         self._overview = CampaignOverviewWidget(entries)
 
-        self._build_ui(name, entries)
+        self._build_ui(self._campaign_name, entries)
+
+    def translate(self, fr: str, en: str) -> str:
+        return fr if self.current_language == 'fr' else en
+
+    def set_language(self, language: str):
+        """Met à jour la langue et retraduit les libellés statiques (le dialog reste ouvert)."""
+        self.current_language = language
+        self.setWindowTitle(self.translate(
+            f"Vision globale — {self._campaign_name}", f"Global view — {self._campaign_name}"
+        ))
+        if hasattr(self, '_lbl_title'):
+            self._lbl_title.setText(self.translate(
+                f"Vision globale — {self._campaign_name}", f"Global view — {self._campaign_name}"
+            ))
+        if hasattr(self, '_lbl_zoom'):
+            self._lbl_zoom.setText(self.translate("Zoom :", "Zoom:"))
+        if hasattr(self, '_btn_fit'):
+            self._btn_fit.setText(self.translate("Ajuster", "Fit"))
+        if hasattr(self, '_lbl_hint'):
+            self._lbl_hint.setText(self.translate(
+                "Molette : zoom  —  Clic sur une ligne : ouvrir la vidéo",
+                "Wheel: zoom  —  Click a row: open the video"
+            ))
+        if hasattr(self, '_btn_close'):
+            self._btn_close.setText(self.translate("Fermer", "Close"))
+        if self._video_model is not None:
+            self.refresh(self._video_model)
 
     # ── Construction UI ───────────────────────────────────────────────────────
 
@@ -74,12 +104,12 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
         lay.setContentsMargins(16, 8, 16, 8)
         lay.setSpacing(12)
 
-        lbl = QtWidgets.QLabel(f"Vision globale — {name}")
-        lbl.setStyleSheet(
+        self._lbl_title = QtWidgets.QLabel(self.translate(f"Vision globale — {name}", f"Global view — {name}"))
+        self._lbl_title.setStyleSheet(
             "color: #F2BFB4; font-size: 14px; font-weight: bold;"
             " font-family: 'Segoe UI Black', 'Segoe UI', sans-serif;"
         )
-        lay.addWidget(lbl)
+        lay.addWidget(self._lbl_title)
 
         # Stats rapides
         n = len(entries)
@@ -89,9 +119,10 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
         m, s      = divmod(rem, 60)
         dur_str   = f"{h}h {m:02d}m" if h else f"{m}m {s:02d}s"
 
-        info = QtWidgets.QLabel(
-            f"{n} vidéo{'s' if n != 1 else ''}  ·  {dur_str}  ·  {validated}/{n} exploitabilité définie"
-        )
+        info = QtWidgets.QLabel(self.translate(
+            f"{n} vidéo{'s' if n != 1 else ''}  ·  {dur_str}  ·  {validated}/{n} exploitabilité définie",
+            f"{n} video{'s' if n != 1 else ''}  ·  {dur_str}  ·  {validated}/{n} exploitability set"
+        ))
         info.setStyleSheet("color: #7ec8e3; font-size: 10px; margin-left: 16px;")
         lay.addWidget(info)
         lay.addStretch()
@@ -126,9 +157,9 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
         lay.setContentsMargins(16, 6, 16, 6)
         lay.setSpacing(6)
 
-        lbl = QtWidgets.QLabel("Zoom :")
-        lbl.setStyleSheet("color: #7ec8e3; font-size: 10px;")
-        lay.addWidget(lbl)
+        self._lbl_zoom = QtWidgets.QLabel(self.translate("Zoom :", "Zoom:"))
+        self._lbl_zoom.setStyleSheet("color: #7ec8e3; font-size: 10px;")
+        lay.addWidget(self._lbl_zoom)
 
         def _tbtn(text, slot):
             b = QtWidgets.QToolButton()
@@ -137,19 +168,23 @@ class CampaignOverviewDialog(QtWidgets.QDialog):
             b.clicked.connect(slot)
             return b
 
-        lay.addWidget(_tbtn("−",       lambda: self._overview.set_zoom(self._overview._zoom / 1.5)))
-        lay.addWidget(_tbtn("Ajuster", self._fit))
-        lay.addWidget(_tbtn("+",       lambda: self._overview.set_zoom(self._overview._zoom * 1.5)))
+        lay.addWidget(_tbtn("−", lambda: self._overview.set_zoom(self._overview._zoom / 1.5)))
+        self._btn_fit = _tbtn(self.translate("Ajuster", "Fit"), self._fit)
+        lay.addWidget(self._btn_fit)
+        lay.addWidget(_tbtn("+", lambda: self._overview.set_zoom(self._overview._zoom * 1.5)))
 
-        hint = QtWidgets.QLabel("Molette : zoom  —  Clic sur une ligne : ouvrir la vidéo")
-        hint.setStyleSheet("color: #3a5a72; font-size: 10px; margin-left: 14px;")
-        lay.addWidget(hint)
+        self._lbl_hint = QtWidgets.QLabel(self.translate(
+            "Molette : zoom  —  Clic sur une ligne : ouvrir la vidéo",
+            "Wheel: zoom  —  Click a row: open the video"
+        ))
+        self._lbl_hint.setStyleSheet("color: #3a5a72; font-size: 10px; margin-left: 14px;")
+        lay.addWidget(self._lbl_hint)
         lay.addStretch()
 
-        btn_close = QtWidgets.QPushButton("Fermer")
-        btn_close.setStyleSheet(_CLOSE_STYLE)
-        btn_close.clicked.connect(self.close)
-        lay.addWidget(btn_close)
+        self._btn_close = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
+        self._btn_close.setStyleSheet(_CLOSE_STYLE)
+        self._btn_close.clicked.connect(self.close)
+        lay.addWidget(self._btn_close)
 
         return w
 

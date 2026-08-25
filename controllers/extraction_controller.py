@@ -84,6 +84,10 @@ class ExtractionController:
         self.current_language = language
         if hasattr(self, 'video_player'):
             self.video_player.set_language(language)
+        if hasattr(self, '_bar_delegate'):
+            self._bar_delegate.set_language(language)
+            if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
+                self.tree_videos_2.viewport().update()
         self._retranslate_ui()
 
     def _retranslate_ui(self):

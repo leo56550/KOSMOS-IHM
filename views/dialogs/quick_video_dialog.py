@@ -10,11 +10,13 @@ from views.widgets.embedded_player import EmbeddedVideoPlayer
 class QuickVideoDialog(QtWidgets.QDialog):
     """Dialog de lecture d'un fichier MP4 standalone, sans campagne ouverte."""
 
-    def __init__(self, video_path: str, parent=None):
+    def __init__(self, video_path: str, parent=None, language: str = 'fr'):
         super().__init__(parent)
+        self.current_language = language
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle(f"Lecture — {os.path.basename(video_path)}")
+        title_prefix = "Lecture" if language == 'fr' else "Playback"
+        self.setWindowTitle(f"{title_prefix} — {os.path.basename(video_path)}")
         self.resize(1140, 700)
         self.setStyleSheet("background-color: #111820;")
 
@@ -23,6 +25,8 @@ class QuickVideoDialog(QtWidgets.QDialog):
         layout.setSpacing(0)
 
         self.player = EmbeddedVideoPlayer(parent=self)
+        if hasattr(self.player, 'set_language'):
+            self.player.set_language(language)
         layout.addWidget(self.player)
 
         is_stereo, video_to_load = check_stereo_status(video_path)

@@ -258,7 +258,7 @@ class CampagneDialog(QtWidgets.QDialog):
                 try:
                     os.makedirs(wd, exist_ok=True)
                 except OSError as e:
-                    QtWidgets.QMessageBox.critical(self, "Erreur", str(e))
+                    QtWidgets.QMessageBox.critical(self, self._t("Erreur", "Error"), str(e))
                     return
             else:
                 return
