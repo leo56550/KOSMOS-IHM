@@ -140,10 +140,10 @@ class EvenementsController:
 
             self.event_player.btn_ardoise.setVisible(False)
             self.event_player.btn_ardoise_manquante.setVisible(False)
-            self.event_player.btn_debut_annotation.clicked.connect(self._saisir_debut_annotation)
-            self.event_player.btn_fin_annotation.clicked.connect(self._saisir_fin_annotation)
-            self.event_player.btn_debut_annotation.setVisible(True)
-            self.event_player.btn_fin_annotation.setVisible(True)
+            # Boutons annotation déplacés dans le panneau "Sélection d'événement" (sous
+            # Atterrissage/Décollage/Rotation moteur) : ceux du player restent cachés.
+            self.event_player.btn_debut_annotation.setVisible(False)
+            self.event_player.btn_fin_annotation.setVisible(False)
 
             self.event_player.timeline.eventResized.connect(self.refresh_event_list)
             if hasattr(self.event_player.timeline, 'eventMoved'):
@@ -883,6 +883,30 @@ class EvenementsController:
         self._btn_decollage = btn_dec
         self._btn_rotation_moteur = btn_rot
 
+        # --- Boutons dédiés Début / Fin annotation — sous Atterrissage/Décollage/Rotation ---
+        annot_row_w = QtWidgets.QWidget()
+        annot_row_w.setStyleSheet("background: transparent;")
+        annot_row_l = QtWidgets.QHBoxLayout(annot_row_w)
+        annot_row_l.setContentsMargins(0, 0, 0, 0)
+        annot_row_l.setSpacing(4)
+
+        btn_debut_annot = QtWidgets.QPushButton(self.translate("Début annotation", "Annotation start"))
+        btn_debut_annot.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self._apply_evt_btn_style(btn_debut_annot, s_dep, "normal")
+        btn_debut_annot.clicked.connect(self._saisir_debut_annotation)
+        annot_row_l.addWidget(btn_debut_annot)
+
+        btn_fin_annot = QtWidgets.QPushButton(self.translate("Fin annotation", "Annotation end"))
+        btn_fin_annot.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+        self._apply_evt_btn_style(btn_fin_annot, s_dep, "normal")
+        btn_fin_annot.clicked.connect(self._saisir_fin_annotation)
+        annot_row_l.addWidget(btn_fin_annot)
+
+        layout.insertWidget(layout.count() - 1, annot_row_w)
+
+        self._btn_debut_annotation = btn_debut_annot
+        self._btn_fin_annotation = btn_fin_annot
+
         gap0 = QtWidgets.QWidget()
         gap0.setFixedHeight(6)
         gap0.setStyleSheet("background: transparent;")
@@ -1363,14 +1387,14 @@ class EvenementsController:
         """Capture un événement début annotation à la position courante."""
         self._saisir_annotation_event(
             "début annotation", "annotation start",
-            self.event_player.btn_debut_annotation
+            getattr(self, '_btn_debut_annotation', None)
         )
 
     def _saisir_fin_annotation(self):
         """Capture un événement fin annotation à la position courante."""
         self._saisir_annotation_event(
             "fin annotation", "annotation end",
-            self.event_player.btn_fin_annotation
+            getattr(self, '_btn_fin_annotation', None)
         )
 
     def _saisir_annotation_event(self, value_fr: str, value_en: str, button=None):
@@ -1436,9 +1460,10 @@ class EvenementsController:
             self._active_event_btn = None
         if hasattr(self, 'btn_finir'):
             self.btn_finir.setVisible(False)
-        if hasattr(self, 'event_player') and self.event_player:
-            self.event_player.btn_debut_annotation.setEnabled(True)
-            self.event_player.btn_fin_annotation.setEnabled(True)
+        if getattr(self, '_btn_debut_annotation', None):
+            self._btn_debut_annotation.setEnabled(True)
+        if getattr(self, '_btn_fin_annotation', None):
+            self._btn_fin_annotation.setEnabled(True)
 
         self.charger_evenements_du_json()
         self._nettoyer_json_misplaced_events()
