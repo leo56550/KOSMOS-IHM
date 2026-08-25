@@ -21,6 +21,13 @@ from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
+# Bruitage dédié pour certaines valeurs d'événement "Faune / Animal" (poisson/oiseau/tortue).
+_ANIMAL_SOUND_MAP = {
+    "poisson": "fish", "fish": "fish",
+    "oiseau":  "bird", "bird": "bird",
+    "tortue":  "turtle", "turtle": "turtle",
+}
+
 
 class _EventTypeDelegate(QtWidgets.QStyledItemDelegate):
     """QComboBox en ligne pour éditer le type d'événement (colonne 2) dans l'arbre."""
@@ -1373,6 +1380,10 @@ class EvenementsController:
         }
         self.event_player.timeline.events.append(new_evt)
         self.event_player.timeline.update()
+
+        animal_sound = _ANIMAL_SOUND_MAP.get(current_value.strip().lower())
+        if animal_sound:
+            get_sound_service().play(animal_sound)
 
         if hasattr(self, 'tree_captures') and self.tree_captures:
             tree_item = QtWidgets.QTreeWidgetItem(

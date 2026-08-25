@@ -271,12 +271,17 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                     legacy_key_map=_RAW_TO_TEMPLATE_SYSTEM)]
                 mapped += [f"survey.{c}" for c in _merge_raw_block(
                     data.setdefault("survey", {}), raw.get("survey", {}))]
+                # video_observation : ne copie que les champs déjà présents dans le template
+                # (donc jamais les champs propres à l'IHM, absents du JSON brut d'acquisition) —
+                # notamment "time" (heure RTC), nécessaire au nom de dossier d'export.
+                mapped += [f"video_observation.{c}" for c in _merge_raw_block(
+                    data.setdefault("video_observation", {}), raw.get("video_observation", {}))]
                 if mapped:
                     print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:
                         print(f"            {entry}")
             except Exception as e_raw:
-                print(f"[INIT] Impossible de lire {stem}.json pour system/survey : {e_raw}")
+                print(f"[INIT] Impossible de lire {stem}.json pour system/survey/video_observation : {e_raw}")
 
         with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -343,10 +348,16 @@ def update_temp_json_paths(video_path: str) -> None:
                     legacy_key_map=_RAW_TO_TEMPLATE_SYSTEM, only_if_empty=True)
                 surv_changed = _merge_raw_block(
                     data.setdefault("survey", {}), raw.get("survey", {}), only_if_empty=True)
-                if sys_changed or surv_changed:
+                # video_observation : idem, seulement les champs vides (ex. "time" — heure RTC —
+                # nécessaire au nom de dossier d'export), ne touche jamais une saisie IHM existante.
+                vob_changed = _merge_raw_block(
+                    data.setdefault("video_observation", {}), raw.get("video_observation", {}),
+                    only_if_empty=True)
+                if sys_changed or surv_changed or vob_changed:
                     modified = True
                 mapped += [f"system.{c}" for c in sys_changed]
                 mapped += [f"survey.{c}" for c in surv_changed]
+                mapped += [f"video_observation.{c}" for c in vob_changed]
                 if mapped:
                     print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:

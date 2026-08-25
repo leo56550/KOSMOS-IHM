@@ -12,6 +12,9 @@ _SOUND_FILES = {
     "campaign_open":    "campaign_open.wav",
     "keep":             "keep.wav",
     "discard":          "discard.wav",
+    "fish":             "fish.wav",
+    "bird":             "bird.wav",
+    "turtle":           "turtle.wav",
 }
 
 
