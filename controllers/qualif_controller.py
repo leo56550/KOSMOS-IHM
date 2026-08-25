@@ -197,6 +197,7 @@ class QualifController:
         self._configure_left_splitter()
         self._init_minimap()
         self._init_miniature_area()
+        self._set_default_left_panel_width()
         self.set_language(self.current_language)
 
     # --- Language ---
@@ -316,6 +317,26 @@ class QualifController:
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 2)
         splitter.setStretchFactor(2, 0)  # container poubelle masqué
+
+    def _set_default_left_panel_width(self):
+        """Fixe une largeur par défaut confortable pour le panneau gauche (propriétés +
+        liste vidéo) au démarrage de l'IHM, et une largeur minimale plancher en dessous de
+        laquelle le splitter ne peut pas descendre — pour que GARDER/JETER restent toujours
+        visibles, même si l'utilisateur redimensionne la fenêtre/le splitter.
+
+        Largeur mini mesurée (via minimumSizeHint réel de _build_video_row_widget, labels
+        compressés à 1px) : ligne vidéo ≈ 253px + marges du conteneur scrollable (8)
+        + barre de défilement verticale (~20) + marges du layout de frame_gauche (~18)
+        ≈ 299px → 320px avec marge de sécurité.
+        """
+        frame_gauche = self.widget.findChild(QtWidgets.QFrame, "frame_gauche")
+        if isinstance(frame_gauche, QtWidgets.QFrame):
+            frame_gauche.setMinimumWidth(320)
+
+        splitter = self.widget.findChild(QtWidgets.QSplitter, "splitter")
+        if not isinstance(splitter, QtWidgets.QSplitter):
+            return
+        splitter.setSizes([620, 10000])
 
     def _reset_left_splitter_sizes(self):
         """Réinitialise les tailles du splitter gauche après chargement de campagne (fenêtre visible)."""
@@ -544,7 +565,9 @@ class QualifController:
         # Autorise le label à se comprimer sous sa largeur naturelle : sur un panneau
         # étroit, ça laisse la priorité aux boutons GARDER/JETER plutôt que de forcer
         # toute la ligne à déborder (et donc nécessiter un défilement horizontal).
-        lbl_name.setMinimumWidth(0)
+        # Note : setMinimumWidth(0) est un no-op pour Qt (0 = "non défini", donc ignoré
+        # par le calcul de taille minimale du layout) — il faut une valeur non nulle.
+        lbl_name.setMinimumWidth(1)
 
         time_label = self.translate("Heure de prise", "Recording time")
         dur_label = self.translate("Durée", "Duration")
@@ -562,7 +585,7 @@ class QualifController:
         )
         lbl_info.setStyleSheet("color: #90b8d0; font-size: 10px; background: transparent;")
         lbl_info.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        lbl_info.setMinimumWidth(0)
+        lbl_info.setMinimumWidth(1)
 
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_info)
@@ -1493,7 +1516,7 @@ class QualifController:
             slot_id = 0
             rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
 
-            for index_rot, rotation_events in enumerate(rotation_groups):
+            for rotation_events in rotation_groups:
                 frame_rotation = QtWidgets.QFrame()
                 frame_rotation.setFixedHeight(230)
                 frame_rotation.setStyleSheet(
@@ -1502,12 +1525,6 @@ class QualifController:
                 hbox = QtWidgets.QHBoxLayout(frame_rotation)
                 hbox.setContentsMargins(15, 10, 15, 10)
                 hbox.setSpacing(15)
-
-                title_lbl = QtWidgets.QLabel(f"Rotation\n#{index_rot + 1}\n(360°)")
-                title_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 13px;")
-                title_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                title_lbl.setFixedWidth(90)
-                hbox.addWidget(title_lbl)
 
                 for evt in rotation_events:
                     ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]

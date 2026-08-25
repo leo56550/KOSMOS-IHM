@@ -46,7 +46,7 @@ QLabel#titre_campagne {
           <widget class="QFrame" name="frame_gauche">
            <property name="minimumSize">
             <size>
-             <width>200</width>
+             <width>320</width>
              <height>0</height>
             </size>
            </property>
@@ -200,7 +200,7 @@ QPushButton[actif=&quot;true&quot;] {
           <widget class="QFrame" name="frame_miniature">
            <property name="minimumSize">
             <size>
-             <width>1250</width>
+             <width>200</width>
              <height>0</height>
             </size>
            </property>
