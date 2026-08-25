@@ -173,6 +173,36 @@ _TEXT_STYLE   = ("QPlainTextEdit { background-color: #162433; color: #F2BFB4;"
                  " font-family: 'Segoe UI', sans-serif; }")
 
 
+class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
+    """Ctrl+Entrée pendant l'édition d'une cellule applique sa valeur à toute la sélection
+    courante du tableau (comme Excel : sélectionner plusieurs cellules, taper une valeur
+    dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée)."""
+
+    def createEditor(self, parent, option, index):
+        editor = super().createEditor(parent, option, index)
+        if editor is not None:
+            # Installation explicite : ne pas dépendre du comportement implicite de Qt qui
+            # branche (ou non) le délégué comme event filter selon la version/le style.
+            editor.installEventFilter(self)
+        return editor
+
+    def eventFilter(self, editor, event):
+        if (event.type() == QtCore.QEvent.Type.KeyPress
+                and event.key() in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter)
+                and event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
+            table = self.parent()
+            index = table.currentIndex()
+            value = editor.text() if hasattr(editor, 'text') else None
+            self.commitData.emit(editor)
+            self.closeEditor.emit(editor)
+            if value is not None:
+                for sel_index in table.selectedIndexes():
+                    if sel_index.column() == index.column() and sel_index != index:
+                        table.model().setData(sel_index, value, QtCore.Qt.ItemDataRole.EditRole)
+            return True
+        return super().eventFilter(editor, event)
+
+
 class MetadonneesController:
     """Contrôleur de la page Métadonnées : affichage et édition des JSON vidéo, météo et statistiques."""
 
@@ -431,8 +461,23 @@ class MetadonneesController:
         self._ft_table.verticalHeader().hide()
         self._ft_table.setAlternatingRowColors(False)
         self._ft_table.setSelectionBehavior(
-            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems)
+        self._ft_table.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        # AnyKeyPressed : taper directement sur une cellule sélectionnée (sans double-clic)
+        # entre en édition sans perdre la sélection multiple — double-cliquer, lui, la
+        # réduit à la seule cellule cliquée (comportement Qt normal), ce qui empêche
+        # ensuite tout remplissage groupé par Ctrl+Entrée.
+        self._ft_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
+            | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed
+            | QtWidgets.QAbstractItemView.EditTrigger.AnyKeyPressed
+        )
         self._ft_table.setSortingEnabled(True)
+        # Ctrl+Entrée en fin d'édition applique la valeur à toute la sélection (comme Excel) :
+        # sélectionner plusieurs cellules (Ctrl/Shift-clic) d'une même colonne, éditer l'une
+        # d'elles, puis Ctrl+Entrée au lieu d'Entrée.
+        self._ft_table.setItemDelegate(_FillSelectionDelegate(self._ft_table))
         self._ft_table.setStyleSheet("""
             QTableWidget {
                 background-color: #111820; alternate-background-color: #0d1620;
