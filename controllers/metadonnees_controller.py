@@ -60,6 +60,40 @@ def _load_infostation_schema() -> list[tuple]:
     return result
 
 
+def _load_field_types() -> dict:
+    """Lit template.json et retourne {(section, field_key): {"type": ..., "authorized_values": [...]}}.
+
+    "type" vient tel quel du template ("str", "int", "float"...) — sert à borner la saisie
+    dans le tableau Infostation aux valeurs permises par le schéma.
+    """
+    try:
+        with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as f:
+            template = json.load(f)
+    except Exception as e:
+        print(f"[SCHEMA] Impossible de lire template.json : {e}")
+        return {}
+
+    result = {}
+    for section_name, section in template.items():
+        if not isinstance(section, dict):
+            continue
+        for field_key, field_def in section.items():
+            if not isinstance(field_def, dict):
+                continue
+            authorized = (field_def.get("authorized_values_fr")
+                          or field_def.get("authorized_values_en")
+                          or field_def.get("authorized_values"))
+            result[(section_name, field_key)] = {
+                "type": field_def.get("type") or "str",
+                "authorized_values": ([str(v) for v in authorized]
+                                       if isinstance(authorized, list) else None),
+            }
+    return result
+
+
+# {(section, field_key): {"type", "authorized_values"}} — validation de saisie du tableau
+_FIELD_TYPES: dict = _load_field_types()
+
 # Schéma complet (section, field_key, name_fr, read_only) pour tous les champs infoStation
 _INFOSTATION_SCHEMA: list[tuple] = _load_infostation_schema()
 
@@ -176,7 +210,9 @@ _TEXT_STYLE   = ("QPlainTextEdit { background-color: #162433; color: #F2BFB4;"
 class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
     """Ctrl+Entrée pendant l'édition d'une cellule applique sa valeur à toute la sélection
     courante du tableau (comme Excel : sélectionner plusieurs cellules, taper une valeur
-    dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée)."""
+    dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée). Borne aussi la saisie au type déclaré
+    dans template.json pour chaque colonne (int/float acceptent uniquement des nombres,
+    str reste libre)."""
 
     def createEditor(self, parent, option, index):
         editor = super().createEditor(parent, option, index)
@@ -184,7 +220,32 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
             # Installation explicite : ne pas dépendre du comportement implicite de Qt qui
             # branche (ou non) le délégué comme event filter selon la version/le style.
             editor.installEventFilter(self)
+            if isinstance(editor, QtWidgets.QLineEdit):
+                self._apply_type_validator(editor, index.column())
         return editor
+
+    @staticmethod
+    def _apply_type_validator(editor: QtWidgets.QLineEdit, col: int):
+        """Restreint la saisie au type déclaré dans template.json pour cette colonne."""
+        if not (0 <= col < len(_FT_TABLE_COLS)):
+            return
+        _label, section, field_key, _read_only = _FT_TABLE_COLS[col]
+        if not section or not field_key:
+            return
+        info = _FIELD_TYPES.get((section, field_key))
+        if not info:
+            return
+        ftype = info.get("type")
+        if ftype == "int":
+            editor.setValidator(QtGui.QIntValidator(editor))
+        elif ftype == "float":
+            validator = QtGui.QDoubleValidator(editor)
+            validator.setNotation(QtGui.QDoubleValidator.Notation.StandardNotation)
+            # Le tableau affiche les décimaux avec une virgule (convention française déjà
+            # utilisée pour Latitude/Longitude/Profondeur ailleurs dans ce fichier).
+            validator.setLocale(QtCore.QLocale(QtCore.QLocale.Language.French))
+            editor.setValidator(validator)
+        # "str" (et types inconnus) : pas de restriction, saisie libre.
 
     def eventFilter(self, editor, event):
         if (event.type() == QtCore.QEvent.Type.KeyPress
@@ -658,7 +719,7 @@ class MetadonneesController:
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             if self._on_metadata_saved:
-                self._on_metadata_saved()
+                self._on_metadata_saved(video_path)
         except Exception as e:
             print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
 
@@ -2350,7 +2411,7 @@ class MetadonneesController:
                 with open(self.current_template_json, 'w', encoding='utf-8') as f:
                     json.dump(self._json_data, f, indent=4, ensure_ascii=False)
                 if self._on_metadata_saved:
-                    self._on_metadata_saved()
+                    self._on_metadata_saved(self.current_video_path)
                 pass  # CSV généré uniquement via le bouton Qualifier
             except Exception as e:
                 print(f"[ERROR] Failed writing JSON: {e}")

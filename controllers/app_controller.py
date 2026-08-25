@@ -9,7 +9,7 @@ from views.dialogs.notes_dialog import NotesDialog
 from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
 from services.report_service import generate_pdf_report
 from controllers.accueil_controller import AccueilController
-from controllers.qualif_controller import QualifController
+from controllers.qualif_controller import QualifController, _get_point_name
 from controllers.validation_controller import ValidationController
 from controllers.evenements_controller import EvenementsController
 from controllers.metadonnees_controller import MetadonneesController
@@ -233,16 +233,32 @@ class AppController(QtCore.QObject):
         # Synchroniser tous les fichiers compagnon maintenant que le répertoire est connu
         self._sync_all_to_working_dir()
 
-    def _on_metadata_saved(self):
-        """Reconstruit la minimap et rafraîchit l'indicateur de complétion de la vidéo courante."""
+    def _on_metadata_saved(self, video_path: str = None):
+        """Reconstruit la minimap et rafraîchit l'indicateur de complétion + le n° de point
+        de la vidéo modifiée, sans attendre un clic pour que la page Validation le reflète."""
         if self.qualif_ctrl.map_dialog.isVisible():
             self.qualif_ctrl.map_initialized = False
             self.qualif_ctrl.update_minimap(self.qualif_ctrl.selected_video_name)
         else:
             self.qualif_ctrl.map_initialized = False
-        vp = self.metadonnees_ctrl.current_video_path
+        vp = video_path or self.metadonnees_ctrl.current_video_path
         if vp:
             self.qualif_ctrl.refresh_completion_color_for_video(vp)
+            self._refresh_point_name_for_video(vp)
+
+    def _refresh_point_name_for_video(self, video_path: str):
+        """Recalcule le n° de point (UserRole+3) et le repropage sur le modèle vidéo partagé.
+
+        Le n° de point est affiché via cette donnée sur plusieurs pages (ex: page Validation) ;
+        sans ce refresh, une édition faite sur la page Métadonnées n'apparaissait qu'après avoir
+        cliqué sur la vidéo (ce qui réécrivait UserRole+3 en passant).
+        """
+        new_val = _get_point_name(video_path, self.working_dir)
+        for model in (self.qualif_ctrl.video_model, self.qualif_ctrl.trash_model):
+            for row in range(model.rowCount()):
+                item = model.item(row, 0)
+                if item and str(item.data(QtCore.Qt.ItemDataRole.UserRole)) == str(video_path):
+                    item.setData(new_val, QtCore.Qt.ItemDataRole.UserRole + 3)
 
     def _open_single_video(self):
         """Ouvre un fichier MP4 standalone dans un player complet, sans campagne."""
