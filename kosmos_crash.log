@@ -1461,3 +1461,27 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-26 09:29:12.933963
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\main.py", line 59, in <module>
+    main()
+  File "C:\KOSMOS_IHM\main.py", line 49, in main
+    window.controller = AppController(window)
+                        ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 41, in __init__
+    self.qualif_ctrl = QualifController(
+                       ^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\controllers\qualif_controller.py", line 198, in __init__
+    self._init_minimap()
+  File "C:\KOSMOS_IHM\controllers\qualif_controller.py", line 727, in _init_minimap
+    self.map_dialog = MapDialog(self.bridge, self.channel, parent=self.widget, language=self.current_language)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\KOSMOS_IHM\views\dialogs\map_dialog.py", line 30, in __init__
+    self.map_view.page().setWebChannel(self.channel)
+    ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\enum.py", line 720, in __call__
+    def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
+    
+KeyboardInterrupt

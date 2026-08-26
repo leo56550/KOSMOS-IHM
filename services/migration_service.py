@@ -164,13 +164,16 @@ _RAW_TO_TEMPLATE_SYSTEM = {
 
 
 def _merge_raw_block(temp_block: dict, raw_block: dict, legacy_key_map: dict | None = None,
-                      only_if_empty: bool = False) -> list:
+                      only_if_empty: bool = False, exclude_keys: set | None = None) -> list:
     """Copie les valeurs non vides de raw_block dans temp_block pour les clés communes.
 
     Le JSON brut <stem>.json est aujourd'hui au même format riche que template.json,
     donc pour la plupart des champs (dont tout le bloc "survey") la clé est identique
     des deux côtés — une simple correspondance directe suffit. legacy_key_map ne sert
     que de repli pour d'anciens JSON "system" à plat avec des noms de clés différents.
+    exclude_keys : clés jamais copiées depuis le brut, même si only_if_empty=False —
+    pour les champs strictement décidés par l'IHM (ex. "exploitable") qu'un JSON brut
+    ne doit jamais pouvoir écraser, peu importe ce qu'il contient.
     Retourne la liste des "clé = valeur" effectivement copiés (pour le log appelant).
     """
     if not isinstance(raw_block, dict) or not isinstance(temp_block, dict):
@@ -178,6 +181,8 @@ def _merge_raw_block(temp_block: dict, raw_block: dict, legacy_key_map: dict | N
     changed = []
     for tmpl_key, entry in temp_block.items():
         if not isinstance(entry, dict) or "value" not in entry:
+            continue
+        if exclude_keys and tmpl_key in exclude_keys:
             continue
         if only_if_empty and entry.get("value"):
             continue
@@ -256,6 +261,12 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         if "qualifiable" in vo:
             vo["qualifiable"]["value"] = "yes"
 
+        # exploitable → "?" par défaut (statut pas encore déterminé, à distinguer d'un
+        # champ simplement vide) — convention déjà utilisée partout dans l'IHM (badges,
+        # couleurs de la liste vidéo, légende de la vue globale).
+        if "exploitable" in vo:
+            vo["exploitable"]["value"] = "?"
+
         # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
         # video_observation.video_path / video_number déjà remplis ci-dessus.
 
@@ -274,8 +285,14 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                 # video_observation : ne copie que les champs déjà présents dans le template
                 # (donc jamais les champs propres à l'IHM, absents du JSON brut d'acquisition) —
                 # notamment "time" (heure RTC), nécessaire au nom de dossier d'export.
+                # exploitable/qualifiable exclus : ce sont des décisions IHM (qualification/
+                # validation), jamais des champs d'acquisition — un JSON brut qui contiendrait
+                # une valeur (ex. un vieux "oui" résiduel) ne doit jamais les écraser.
+                # point_name/station_number exclus aussi : ne doivent JAMAIS être auto-remplis
+                # depuis le brut — uniquement saisis via l'ardoise en page Validation.
                 mapped += [f"video_observation.{c}" for c in _merge_raw_block(
-                    data.setdefault("video_observation", {}), raw.get("video_observation", {}))]
+                    data.setdefault("video_observation", {}), raw.get("video_observation", {}),
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number"})]
                 if mapped:
                     print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:
@@ -332,6 +349,15 @@ def update_temp_json_paths(video_path: str) -> None:
                     vo[field] = entry
                     modified = True
 
+        # exploitable → "?" si encore vide (anciens _temp.json créés avant l'ajout de ce
+        # défaut) — ne touche jamais un statut déjà qualifié ("oui"/"non"/"?"/etc.).
+        if "exploitable" in vo:
+            entry = vo["exploitable"] if isinstance(vo["exploitable"], dict) else {}
+            if not entry.get("value"):
+                entry["value"] = "?"
+                vo["exploitable"] = entry
+                modified = True
+
         # Pas de survey.datawork_folder / survey.video_subfolder : redondants avec
         # video_observation.video_path / video_number déjà mis à jour ci-dessus.
 
@@ -350,9 +376,13 @@ def update_temp_json_paths(video_path: str) -> None:
                     data.setdefault("survey", {}), raw.get("survey", {}), only_if_empty=True)
                 # video_observation : idem, seulement les champs vides (ex. "time" — heure RTC —
                 # nécessaire au nom de dossier d'export), ne touche jamais une saisie IHM existante.
+                # exploitable/qualifiable toujours exclus (décisions IHM, jamais depuis le brut).
+                # point_name/station_number exclus aussi : ne doivent JAMAIS être auto-remplis
+                # depuis le brut — uniquement saisis via l'ardoise en page Validation.
                 vob_changed = _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
-                    only_if_empty=True)
+                    only_if_empty=True,
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number"})
                 if sys_changed or surv_changed or vob_changed:
                     modified = True
                 mapped += [f"system.{c}" for c in sys_changed]
