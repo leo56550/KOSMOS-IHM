@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import csv
 import json
 import math
@@ -14,7 +15,7 @@ from PyQt6.QtWebChannel import QWebChannel
 
 from services.video_service import get_all_mp4_files, get_sequential_segments, check_stereo_status, get_system_name
 from services.campaign_service import (
-    get_video_gps_coords, get_working_video_json_path,
+    get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
     get_temp_json_path,
 )
@@ -142,7 +143,6 @@ class QualifController:
         self._video_row_widgets: dict = {}
         self._miniature_pixmaps: list = []   # pixmaps de la vue courante (None = en cours de chargement)
         self._camera_slot_labels: dict = {}  # slot_id → (QFrame, QLabel_img, angle, ts)
-        self.all_coords = {}
         self.campaign_fields = {}
         self._working_dir = ""
         self.current_campaign_folder = None
@@ -724,6 +724,7 @@ class QualifController:
         self.channel = QWebChannel()
         self.channel.registerObject("backend", self.bridge)
         self.bridge.videoSelected.connect(self.select_video_by_name)
+        self.bridge.markerMoved.connect(self._on_marker_moved)
         self.map_dialog = MapDialog(self.bridge, self.channel, parent=self.widget, language=self.current_language)
         self.map_initialized = False
 
@@ -799,7 +800,6 @@ class QualifController:
         self.video_model.removeRows(0, self.video_model.rowCount())
         if self.trash_video_tree:
             self.trash_model.removeRows(0, self.trash_model.rowCount())
-        self.all_coords.clear()
         self.map_initialized = False
         self._start_watching_campaign(directory)
 
@@ -842,10 +842,6 @@ class QualifController:
             else:
                 col_name.setText(video["name"] + f"  {sys_name} · MONO")
             self.video_model.appendRow([col_name, col_dur, col_size, col_date])
-
-            coords = get_video_gps_coords(video["path"])
-            if coords:
-                self.all_coords[video["name"]] = coords
 
         self.update_minimap(self.selected_video_name, show_dialog=False)
         self._start_thumbnail_generation()
@@ -1082,9 +1078,6 @@ class QualifController:
                     QtGui.QStandardItem(video.get("size", "--")),
                     QtGui.QStandardItem(video.get("date", "")),
                 ])
-                coords = get_video_gps_coords(video["path"])
-                if coords:
-                    self.all_coords[video["name"]] = coords
 
         self._start_watching_campaign(self.current_campaign_folder)
         self._rebuild_video_rows()
@@ -1283,6 +1276,74 @@ class QualifController:
 
     # --- Minimap ---
 
+    # Couleurs des marqueurs carte selon le statut d'exploitabilité — même convention
+    # que le reste de l'IHM (badges, liste vidéo, légende de la vue globale).
+    _MARKER_COLORS = {
+        "oui": "#4CAF50", "yes": "#4CAF50",
+        "non": "#D94F38", "no": "#D94F38",
+        "habitat": "#E8A838", "communication": "#E8A838",
+    }
+    _MARKER_DEFAULT_COLOR = "#6a8fa8"  # statut "?" ou non renseigné
+
+    @staticmethod
+    def _marker_filter_group(exploitable: str) -> str:
+        """Regroupe le statut d'exploitabilité en 4 catégories filtrables sur la carte —
+        habitat/communication partagent la même couleur de marqueur, donc le même filtre."""
+        if exploitable in ("oui", "yes"):
+            return "oui"
+        if exploitable in ("non", "no"):
+            return "non"
+        if exploitable in ("habitat", "communication"):
+            return "habitat_comm"
+        return "other"
+
+    @staticmethod
+    def _spread_overlapping_coords(coords_map: dict) -> dict:
+        """Écarte légèrement (en éventail) les points GPS quasi identiques (~1m près)
+        pour que les vidéos tournées au même point restent toutes visibles/cliquables
+        sur la carte au lieu de s'empiler exactement au même pixel."""
+        groups: dict[tuple, list[str]] = {}
+        for name, coords in coords_map.items():
+            key = (round(coords[0], 5), round(coords[1], 5))
+            groups.setdefault(key, []).append(name)
+
+        OFFSET_DEG = 0.00004  # ≈ 4 m
+        display: dict[str, list] = {}
+        for names in groups.values():
+            n = len(names)
+            base_lat, base_lon = coords_map[names[0]]
+            if n == 1:
+                display[names[0]] = [base_lat, base_lon]
+                continue
+            lon_scale = max(math.cos(math.radians(base_lat)), 0.2)
+            for i, name in enumerate(names):
+                angle = 2 * math.pi * i / n
+                display[name] = [
+                    base_lat + OFFSET_DEG * math.sin(angle),
+                    base_lon + (OFFSET_DEG * math.cos(angle)) / lon_scale,
+                ]
+        return display
+
+    @staticmethod
+    def _compute_codestation(survey: dict, obs: dict) -> str:
+        """Code station affiché au-dessus du marqueur : codeObs si déjà calculé,
+        sinon reconstruit depuis zone + 2 derniers chiffres de l'année + n° du point."""
+        code = (obs.get("codeObs") or {}).get("value")
+        if code:
+            return str(code)
+        zone_v = str((survey.get("zone") or {}).get("value") or "").strip()
+        date_v = str((survey.get("date") or {}).get("value") or "").strip()
+        year_2d = re.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+        pname = str((obs.get("point_name") or {}).get("value")
+                    or (obs.get("station_number") or {}).get("value") or "").strip()
+        if not pname:
+            return ""
+        try:
+            station_idx = f"{int(pname):04d}"
+        except ValueError:
+            station_idx = pname.zfill(4)[:4]
+        return f"{zone_v}{year_2d}{station_idx}" if zone_v and year_2d else ""
+
     def update_minimap(self, selected_name=None, show_dialog=False):
         """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge.
 
@@ -1290,23 +1351,14 @@ class QualifController:
         lors d'un clic explicite sur une vidéo).  Les autres appels passent False pour ne pas
         forcer la réouverture.
         """
-        valid_coords = {}
-        if self.all_coords:
-            for name, coords in self.all_coords.items():
-                if coords and len(coords) >= 2:
-                    lat, lon = coords[0], coords[1]
-                    if lat is not None and lon is not None:
-                        try:
-                            if not (math.isnan(float(lat)) or math.isnan(float(lon))):
-                                valid_coords[name] = [float(lat), float(lon)]
-                        except (ValueError, TypeError):
-                            pass
-
-        center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
-
-        # --- Lire les infos survey + waypoints depuis les JSON ---
+        # --- Lire les infos survey + coordonnées + waypoints + statut/codestation ---
+        # Tout est relu ici à chaque appel, directement depuis chaque _temp.json, pour que
+        # la carte reflète toujours l'état actuel — notamment un import GPX ou une correction
+        # manuelle faits après l'ouverture initiale de la campagne.
         survey_name, zone, site = "", "", ""
+        valid_coords: dict[str, list] = {}
         waypoints: dict[str, str] = {}
+        marker_meta: dict[str, dict] = {}
         for row in range(self.video_model.rowCount()):
             item = self.video_model.item(row, 0)
             if not item:
@@ -1320,19 +1372,50 @@ class QualifController:
             try:
                 with open(jpath, 'r', encoding='utf-8') as f:
                     jdata = json.load(f)
+                sv = jdata.get("survey", {})
                 if not survey_name:
-                    sv = jdata.get("survey", {})
                     survey_name = (sv.get("survey_name") or {}).get("value") or ""
                     zone        = (sv.get("zone")        or {}).get("value") or ""
                     site        = (sv.get("site")        or {}).get("value") or ""
-                wp = (jdata.get("video_observation", {}).get("gps_waypoint") or {}).get("value")
+                obs = jdata.get("video_observation", {})
+
+                lat = (obs.get("latitude") or {}).get("value")
+                lon = (obs.get("longitude") or {}).get("value")
+                if lat not in (None, "") and lon not in (None, ""):
+                    try:
+                        lat_f = float(str(lat).replace(",", "."))
+                        lon_f = float(str(lon).replace(",", "."))
+                        if not (math.isnan(lat_f) or math.isnan(lon_f)):
+                            valid_coords[item.text()] = [lat_f, lon_f]
+                    except (ValueError, TypeError):
+                        pass
+
+                wp = (obs.get("gps_waypoint") or {}).get("value")
                 waypoints[item.text()] = str(wp) if wp is not None else ""
+                marker_meta[item.text()] = {
+                    "exploitable": str((obs.get("exploitable") or {}).get("value") or "").strip().lower(),
+                    "codestation": self._compute_codestation(sv, obs),
+                }
             except Exception:
                 pass
+
+        center = list(valid_coords.values())[0] if valid_coords else [48.356, -4.571]
+
+        # Plusieurs vidéos tournées au même point (même station) ont souvent des coordonnées
+        # quasi identiques : sans décalage, leurs marqueurs s'empilent exactement au même
+        # pixel et seul le dernier posé reste cliquable/visible. On calcule donc des positions
+        # d'affichage légèrement écartées en éventail (valid_coords, lui, reste inchangé pour
+        # le tracé GPS chronologique).
+        marker_display_coords = self._spread_overlapping_coords(valid_coords)
 
         if not getattr(self, 'map_initialized', False):
             m = folium.Map(location=center, zoom_start=17, tiles=None)
             folium.TileLayer(tiles="openstreetmap", name="OpenStreetMap", max_zoom=19).add_to(m)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                attr="Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+                name=self.translate("Satellite", "Satellite"), max_zoom=19
+            ).add_to(m)
             folium.TileLayer(
                 tiles="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png",
                 attr="Map data: &copy; OpenSeaMap contributors",
@@ -1354,12 +1437,71 @@ class QualifController:
                 )
                 m.get_root().html.add_child(folium.Element(header_html))
 
+            # --- Panneau de filtres par statut d'exploitabilité ---
+            _filter_row_style = (
+                "display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;"
+            )
+            filter_rows = "".join(
+                f'<label style="{_filter_row_style}">'
+                f'<input type="checkbox" checked onchange="toggleStatusFilterJS(\'{key}\', this.checked)">'
+                f'<span style="width:10px;height:10px;border-radius:50%;background:{swatch};'
+                f'display:inline-block;flex-shrink:0;"></span>'
+                f'<span>{label}</span></label>'
+                for key, swatch, label in [
+                    ("oui", self._MARKER_COLORS["oui"], self.translate("Oui", "Yes")),
+                    ("non", self._MARKER_COLORS["non"], self.translate("Non", "No")),
+                    ("habitat_comm", self._MARKER_COLORS["habitat"],
+                     self.translate("Habitat / Communication", "Habitat / Communication")),
+                    ("other", self._MARKER_DEFAULT_COLOR,
+                     self.translate("Non renseigné (?)", "Not set (?)")),
+                ]
+            )
+            filter_panel_html = (
+                '<div style="position:fixed;top:100px;left:10px;z-index:9999;'
+                'background:rgba(13,27,42,0.92);color:#d4e8f5;'
+                'font-family:\'Segoe UI\',sans-serif;font-size:11px;'
+                'border:1px solid #2778A2;border-radius:6px;padding:8px 10px;">'
+                f'<div style="font-weight:bold;color:#F2BFB4;margin-bottom:4px;">'
+                f'{self.translate("Filtrer par statut", "Filter by status")}</div>'
+                + filter_rows +
+                '</div>'
+            )
+            m.get_root().html.add_child(folium.Element(filter_panel_html))
+
             m.get_root().header.add_child(
                 folium.Element('<script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>')
             )
+            marker_style = """
+            <style>
+                .kosmos-marker-icon { background: transparent; border: none; }
+                .kosmos-dot { transition: width .12s, height .12s, box-shadow .12s; }
+                .kosmos-marker-icon.kosmos-selected { z-index: 1000 !important; }
+                .kosmos-marker-icon.kosmos-selected .kosmos-dot {
+                    width: 22px !important; height: 22px !important;
+                    border-color: #F2BFB4 !important;
+                    box-shadow: 0 0 0 5px rgba(242,191,180,0.35), 0 2px 6px rgba(0,0,0,0.7) !important;
+                }
+                .kosmos-marker-icon.kosmos-selected .kosmos-label {
+                    border-color: #F2BFB4 !important; color: #F2BFB4 !important;
+                }
+            </style>"""
+            m.get_root().header.add_child(folium.Element(marker_style))
             main_script = """
             <script>
                 var qtBackend = null; var allMarkers = {}; var lastRedMarker = null;
+                var statusFilters = {oui: true, non: true, habitat_comm: true, other: true};
+                function applyStatusFiltersJS() {
+                    for (var key in allMarkers) {
+                        var mk = allMarkers[key];
+                        var visible = statusFilters[mk._kosmosStatus || 'other'];
+                        var el = mk.getElement();
+                        if (el) { el.style.display = visible ? '' : 'none'; }
+                    }
+                }
+                function toggleStatusFilterJS(status, checked) {
+                    statusFilters[status] = checked;
+                    applyStatusFiltersJS();
+                }
                 document.addEventListener("DOMContentLoaded", function() {
                     if (typeof qt !== 'undefined' && qt.webChannelTransport) {
                         new QWebChannel(qt.webChannelTransport, function (channel) {
@@ -1370,16 +1512,34 @@ class QualifController:
                 function notifyPython(videoName) { if (qtBackend) { qtBackend.select_video(videoName); } }
                 function changeMarkerColorJS(videoName) {
                     if (lastRedMarker && allMarkers[lastRedMarker]) {
-                        allMarkers[lastRedMarker].setIcon(L.AwesomeMarkers.icon({icon: 'camera', prefix: 'fa', markerColor: 'blue'}));
+                        var prevEl = allMarkers[lastRedMarker].getElement();
+                        if (prevEl) prevEl.classList.remove('kosmos-selected');
                         allMarkers[lastRedMarker].closePopup();
                     }
                     if (allMarkers[videoName]) {
                         var mNew = allMarkers[videoName];
-                        mNew.setIcon(L.AwesomeMarkers.icon({icon: 'camera', prefix: 'fa', markerColor: 'red'}));
+                        var el = mNew.getElement();
+                        if (el) el.classList.add('kosmos-selected');
                         mNew.setZIndexOffset(1000); lastRedMarker = videoName;
                         setTimeout(function() { mNew.openPopup(); }, 50);
                         if (window.leafletMap) { window.leafletMap.panTo(mNew.getLatLng()); }
                     }
+                }
+                function updateMarkerStatusJS(videoName, color, codestation, filterGroup) {
+                    if (!allMarkers[videoName]) { return; }
+                    var mk = allMarkers[videoName];
+                    var el = mk.getElement();
+                    if (!el) { return; }
+                    var dot = el.querySelector('.kosmos-dot');
+                    var label = el.querySelector('.kosmos-label');
+                    if (dot) { dot.style.background = color; }
+                    if (label) {
+                        label.style.color = color;
+                        label.style.borderColor = color;
+                        if (codestation !== null) { label.textContent = codestation; }
+                    }
+                    if (filterGroup) { mk._kosmosStatus = filterGroup; }
+                    applyStatusFiltersJS();
                 }
             </script>"""
             m.get_root().html.add_child(folium.Element(main_script))
@@ -1391,40 +1551,57 @@ class QualifController:
             </script>"""
             m.get_root().html.add_child(folium.Element(js_map_linkage))
 
-            sorted_names = sorted(valid_coords.keys())
-            polyline_coords = [valid_coords[n] for n in sorted_names]
-            if len(polyline_coords) >= 2:
-                folium.PolyLine(
-                    locations=polyline_coords,
-                    color="#2778A2",
-                    weight=2.5,
-                    opacity=0.85,
-                    tooltip=self.translate("Tracé GPS (ordre chronologique)", "GPS track (chronological order)"),
-                ).add_to(m)
-
-            for name, coords in valid_coords.items():
+            for name, coords in marker_display_coords.items():
                 wp = waypoints.get(name, "")
+                meta = marker_meta.get(name, {})
+                color = self._MARKER_COLORS.get(meta.get("exploitable", ""), self._MARKER_DEFAULT_COLOR)
+                codestation = meta.get("codestation") or ""
+                filter_group = self._marker_filter_group(meta.get("exploitable", ""))
                 popup_html = (
                     f'<div style="font-family:\'Segoe UI\',sans-serif;font-size:12px;'
                     f'min-width:120px;">'
                     f'<b style="font-size:13px;">{name}</b>'
                     + (f'<br><span style="color:#607080;">{self.translate("GPS Waypoint :", "GPS Waypoint:")}</span> '
                        f'<b>{wp}</b>' if wp else '')
+                    + f'<br><span style="color:#607080;">{self.translate("Exploitabilité :", "Exploitability:")}</span> '
+                      f'<b style="color:{color};">{meta.get("exploitable") or "?"}</b>'
                     + '</div>'
                 )
                 popup = folium.Popup(popup_html, max_width=220,
                                      auto_close=False, close_on_click=False)
-                marker = folium.Marker(location=coords, popup=popup,
-                                       icon=folium.Icon(color='blue', icon='camera', prefix='fa'))
+                marker_html = f"""
+                <div style="display:flex;flex-direction:column;align-items:center;width:76px;">
+                    <div class="kosmos-label" style="background:#0d1b2a;color:{color};
+                        font-family:'Segoe UI',sans-serif;font-size:10px;font-weight:bold;
+                        padding:2px 6px;border-radius:4px;border:1px solid {color};
+                        white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.5);margin-bottom:3px;">
+                        {codestation}
+                    </div>
+                    <div class="kosmos-dot" style="width:16px;height:16px;border-radius:50%;
+                        background:{color};border:2px solid #ffffff;
+                        box-shadow:0 1px 3px rgba(0,0,0,0.6);flex-shrink:0;"></div>
+                </div>"""
+                icon = folium.DivIcon(
+                    html=marker_html, icon_size=(76, 40), icon_anchor=(38, 26),
+                    class_name="kosmos-marker-icon",
+                )
+                marker = folium.Marker(location=coords, popup=popup, icon=icon, draggable=True)
                 marker.add_to(m)
+                js_name = name.replace("\\", "\\\\").replace('"', '\\"')
                 js_reg = f"""
                 <script>
                     document.addEventListener("DOMContentLoaded", function() {{
                         setTimeout(function() {{
                             var mInstance = {marker.get_name()};
                             if (mInstance) {{
-                                allMarkers["{name}"] = mInstance;
-                                mInstance.on('click', function(e) {{ notifyPython("{name}"); }});
+                                allMarkers["{js_name}"] = mInstance;
+                                mInstance._kosmosStatus = "{filter_group}";
+                                mInstance.on('click', function(e) {{ notifyPython("{js_name}"); }});
+                                mInstance.on('dragend', function(e) {{
+                                    var pos = e.target.getLatLng();
+                                    if (qtBackend) {{ qtBackend.update_coords("{js_name}", pos.lat, pos.lng); }}
+                                }});
+                                if (typeof applyStatusFiltersJS === 'function') {{ applyStatusFiltersJS(); }}
                             }}
                         }}, 150);
                     }});
@@ -1454,17 +1631,105 @@ class QualifController:
 
             data = io.BytesIO()
             m.save(data, close_file=False)
-            self.map_dialog.map_view.setHtml(data.getvalue().decode())
+            self._map_html_cache = data.getvalue().decode()
+            self.map_dialog.map_view.setHtml(self._map_html_cache)
             self.map_initialized = True
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
+                self._refresh_map_on_first_show()
             if selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(600, lambda: self.apply_red_marker_js(selected_name))
         else:
             if show_dialog and not self.map_dialog.isVisible():
                 self.map_dialog.show()
+                self._refresh_map_on_first_show()
             if self.map_dialog.isVisible() and selected_name and selected_name in valid_coords:
                 QtCore.QTimer.singleShot(80, lambda: self.apply_red_marker_js(selected_name))
+
+    def _refresh_map_on_first_show(self):
+        """Repousse le HTML de la carte juste après le tout premier .show() du dialogue.
+
+        QWebEngineView peut ne jamais peindre un setHtml() reçu pendant qu'il est encore
+        caché (surface de rendu Chromium pas encore réalisée) — ce qui produit une carte
+        vide/qui ne s'ouvre pas la première fois, mais fonctionne ensuite une fois le
+        widget déjà réalisé. On garantit ici un setHtml() une fois le dialogue visible.
+        """
+        if getattr(self, '_map_shown_once', False):
+            return
+        self._map_shown_once = True
+        if getattr(self, '_map_html_cache', None):
+            QtCore.QTimer.singleShot(
+                0, lambda: self.map_dialog.map_view.setHtml(self._map_html_cache)
+            )
+
+    def _on_marker_moved(self, video_name: str, lat: float, lon: float):
+        """Écrit la nouvelle position (marqueur déplacé à la main sur la carte) dans le
+        _temp.json de la vidéo correspondante, et rafraîchit les vues qui affichent ces
+        champs (tableau infostation de la page Métadonnées, notamment)."""
+        video_path = None
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if item and item.text() == video_name:
+                video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                break
+        if not video_path:
+            return
+
+        json_path = get_temp_json_path(str(video_path))
+        if not os.path.isfile(json_path):
+            return
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs.setdefault("latitude", {})["value"] = round(lat, 6)
+            obs.setdefault("longitude", {})["value"] = round(lon, 6)
+            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.latitude/"
+                  f"longitude = ({lat:.6f}, {lon:.6f}) [déplacement carte]")
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[MAP] Erreur écriture coordonnées déplacées : {e}")
+            return
+
+        if self._on_qualification_changed:
+            self._on_qualification_changed()
+
+    def refresh_map_marker_colors(self):
+        """Met à jour en direct la couleur/le code station des marqueurs carte selon le
+        statut d'exploitabilité actuel de chaque vidéo — sans reconstruire toute la carte
+        (léger : quelques appels JS ciblés). À appeler à chaque changement d'exploitabilité
+        ou de numéro de point ; la carte ne se régénère sinon qu'une fois par campagne."""
+        if not getattr(self, 'map_initialized', False) or not hasattr(self, 'map_dialog'):
+            return
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            vpath = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if not vpath:
+                continue
+            jpath = get_temp_json_path(vpath)
+            if not os.path.isfile(jpath):
+                continue
+            try:
+                with open(jpath, 'r', encoding='utf-8') as f:
+                    jdata = json.load(f)
+            except Exception:
+                continue
+            sv = jdata.get("survey", {})
+            obs = jdata.get("video_observation", {})
+            expl = str((obs.get("exploitable") or {}).get("value") or "").strip().lower()
+            color = self._MARKER_COLORS.get(expl, self._MARKER_DEFAULT_COLOR)
+            codestation = self._compute_codestation(sv, obs)
+            filter_group = self._marker_filter_group(expl)
+            name = item.text().replace("\\", "\\\\").replace("'", "\\'")
+            code_js = json.dumps(codestation)
+            script = (
+                "if (typeof updateMarkerStatusJS === 'function') { "
+                f"updateMarkerStatusJS('{name}', '{color}', {code_js}, '{filter_group}'); }}"
+            )
+            self.map_dialog.map_view.page().runJavaScript(script)
 
     def apply_red_marker_js(self, selected_name: str):
         """Exécute le JS changeMarkerColorJS pour passer le marqueur selected_name en rouge."""

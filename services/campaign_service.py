@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import shutil
@@ -8,7 +9,12 @@ from services.migration_service import _build_base_template
 
 
 def get_video_gps_coords(video_path: str) -> tuple:
-    """Extrait les coordonnées GPS depuis le CSV compagnon d'une vidéo.
+    """Extrait les coordonnées GPS d'une vidéo.
+
+    Source prioritaire : _temp.json (video_observation.latitude/longitude) — la copie de
+    travail IHM, modifiable/corrigeable via la page Métadonnées (import GPX, saisie
+    manuelle...). Repli sur le CSV de télémétrie brute uniquement si le _temp.json n'a
+    rien d'exploitable, pour ne jamais perdre une position déjà disponible.
 
     Args:
         video_path: Chemin vers le fichier MP4.
@@ -16,6 +22,22 @@ def get_video_gps_coords(video_path: str) -> tuple:
     Returns:
         Tuple (latitude, longitude) ou None si absent/corrompu.
     """
+    temp_json_path = get_temp_json_path(video_path)
+    if os.path.isfile(temp_json_path):
+        try:
+            with open(temp_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.get("video_observation", {})
+            lat = (obs.get("latitude") or {}).get("value")
+            lon = (obs.get("longitude") or {}).get("value")
+            if lat not in (None, "") and lon not in (None, ""):
+                lat_f = float(str(lat).replace(",", "."))
+                lon_f = float(str(lon).replace(",", "."))
+                if not (math.isnan(lat_f) or math.isnan(lon_f)):
+                    return lat_f, lon_f
+        except Exception as e:
+            print(f"Erreur lecture GPS depuis _temp.json : {e}")
+
     gps_csv_path = video_path.replace(".mp4", ".csv")
     if os.path.exists(gps_csv_path):
         try:

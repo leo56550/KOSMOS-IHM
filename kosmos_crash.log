@@ -1485,3 +1485,11 @@ Traceback (most recent call last):
     def __call__(cls, value, names=_not_given, *values, module=None, qualname=None, type=None, start=1, boundary=None):
     
 KeyboardInterrupt
+
+============================================================
+2026-08-26 10:17:51.232405
+Traceback (most recent call last):
+  File "C:\KOSMOS_IHM\controllers\app_controller.py", line 740, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

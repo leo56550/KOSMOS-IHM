@@ -3,14 +3,20 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 
 class MapBridge(QtCore.QObject):
-    """Pont JS↔Python pour recevoir les clics sur la carte Folium."""
+    """Pont JS↔Python pour recevoir les clics et déplacements de marqueur sur la carte Folium."""
 
     videoSelected = QtCore.pyqtSignal(str)
+    markerMoved = QtCore.pyqtSignal(str, float, float)
 
     @QtCore.pyqtSlot(str)
     def select_video(self, video_name: str):
         print(f"-> [BRIDGE] Clic carte reçu pour : {video_name}")
         self.videoSelected.emit(video_name)
+
+    @QtCore.pyqtSlot(str, float, float)
+    def update_coords(self, video_name: str, lat: float, lon: float):
+        print(f"-> [BRIDGE] Marqueur déplacé pour {video_name} : ({lat}, {lon})")
+        self.markerMoved.emit(video_name, lat, lon)
 
 
 class MapDialog(QtWidgets.QDialog):

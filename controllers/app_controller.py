@@ -346,6 +346,7 @@ class AppController(QtCore.QObject):
         self.refresh_status_bar()
         self._do_refresh_overview()  # immédiat — un seul clic, pas besoin de debounce
         self.metadonnees_ctrl.refresh_feuille_terrain()
+        self.qualif_ctrl.refresh_map_marker_colors()
 
     def _on_events_changed(self, *_):
         """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés.
