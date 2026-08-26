@@ -1206,6 +1206,14 @@ class QualifController:
             if item:
                 count += 1
         print(f"[CAMPAIGN] {len(self.campaign_fields)} champs sauvegardés dans {count} vidéos")
+
+        # Propage vers les autres pages (notamment le tableau infostation de la page
+        # Métadonnées, qui affiche ces mêmes champs survey pour chaque vidéo) — sans ça,
+        # les _temp.json sont bien à jour sur disque mais l'affichage reste périmé tant
+        # qu'on ne change pas de page ou qu'on ne recharge pas manuellement.
+        if self._on_qualification_changed:
+            self._on_qualification_changed()
+
         if hasattr(self, 'btn_save_campaign'):
             self.btn_save_campaign.setText(self.translate("✓ Sauvegardé", "✓ Saved"))
             QtCore.QTimer.singleShot(2000, lambda: self.btn_save_campaign.setText(
