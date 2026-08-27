@@ -344,6 +344,11 @@ class MetadonneesController:
         ]
 
         self._infostation_widgets: dict[str, QtWidgets.QWidget] = {}
+        # Référence vers l'item colonne 0 de la ligne actuellement surlignée dans le tableau
+        # infostation (pas un simple index de ligne : le tri par en-tête de colonne est
+        # activé sur ce tableau, donc l'item — qui suit sa ligne lors d'un tri — est la
+        # seule façon fiable de retrouver la bonne ligne à dé-surligner ensuite).
+        self._ft_highlighted_item0: QtWidgets.QTableWidgetItem | None = None
         self._ft_table_video_paths: list = []
         self._working_dir: str = ""
 
@@ -668,6 +673,7 @@ class MetadonneesController:
 
         self._ft_table.cellChanged.connect(self._on_ft_table_cell_changed)
         self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
+        self._ft_table.currentCellChanged.connect(self._on_ft_current_cell_changed)
 
         # Touche Suppr : efface le contenu de la/les cellule(s) sélectionnée(s)
         del_shortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Delete), self._ft_table)
@@ -679,6 +685,12 @@ class MetadonneesController:
         self.refresh_statistics()
 
     # ── Tableau feuille terrain ───────────────────────────────────────────
+
+    # Rôle personnalisé stockant la couleur de fond "de base" (système) de chaque cellule,
+    # pour pouvoir la restaurer après un surlignage de ligne — stockée sur l'item lui-même
+    # (et non indexée par numéro de ligne) car elle doit rester valide après un tri par
+    # en-tête de colonne, qui déplace les items d'une ligne à l'autre.
+    _FT_BASE_BG_ROLE = QtCore.Qt.ItemDataRole.UserRole + 5
 
     # Palette de couleurs de fond par système (fond sombre, lisible)
     _SYSTEM_COLORS = [
@@ -700,6 +712,7 @@ class MetadonneesController:
         self._ft_table.setSortingEnabled(False)
         self._ft_table.blockSignals(True)
         self._ft_table.setRowCount(0)
+        self._ft_highlighted_item0 = None
 
         _ro_flags = (QtCore.Qt.ItemFlag.ItemIsSelectable |
                      QtCore.Qt.ItemFlag.ItemIsEnabled)
@@ -752,6 +765,7 @@ class MetadonneesController:
                     QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
                 cell.setFlags(_ro_flags if read_only else _rw_flags)
                 cell.setBackground(QtGui.QBrush(row_bg))
+                cell.setData(self._FT_BASE_BG_ROLE, QtGui.QColor(row_bg))
                 if read_only:
                     cell.setForeground(QtGui.QBrush(QtGui.QColor("#7a9aaa")))
                 if col_i == 0:
@@ -935,6 +949,47 @@ class MetadonneesController:
             self.current_video_path = str(video_path)
             self.load_all_data(json_path)
             self._load_infostation_fields(str(video_path))
+
+    def _on_ft_current_cell_changed(self, current_row, _current_col, previous_row, _previous_col):
+        """Surligne toute la ligne courante du tableau infostation au clic (la sélection
+        reste par cellule — SelectItems — pour ne pas casser le remplissage/incrémentation
+        multi-cellules ; ce surlignage est purement visuel, superposé à la couleur système)."""
+        if previous_row == current_row:
+            return
+        if self._ft_highlighted_item0 is not None:
+            # .row() suit l'item même s'il a été déplacé par un tri entre-temps.
+            old_row = self._ft_highlighted_item0.row()
+            if old_row >= 0:
+                self._set_ft_row_highlighted(old_row, False)
+            self._ft_highlighted_item0 = None
+        if current_row >= 0:
+            self._set_ft_row_highlighted(current_row, True)
+            self._ft_highlighted_item0 = self._ft_table.item(current_row, 0)
+
+    def _set_ft_row_highlighted(self, row: int, highlighted: bool):
+        # setBackground() déclenche dataChanged/cellChanged comme une vraie édition ; sans
+        # blockSignals ici, chaque clic de ligne relançait une lecture+écriture disque du
+        # JSON pour chaque colonne éditable de la ligne (ralentissement + logs en rafale).
+        self._ft_table.blockSignals(True)
+        try:
+            for col in range(self._ft_table.columnCount()):
+                item = self._ft_table.item(row, col)
+                if not item:
+                    continue
+                base = item.data(self._FT_BASE_BG_ROLE)
+                if base is None:
+                    continue
+                if highlighted:
+                    color = QtGui.QColor(
+                        min(255, base.red() + 55),
+                        min(255, base.green() + 65),
+                        min(255, base.blue() + 75),
+                    )
+                else:
+                    color = base
+                item.setBackground(QtGui.QBrush(color))
+        finally:
+            self._ft_table.blockSignals(False)
 
     # ── Public interface ─────────────────────────────────────────────────
 
