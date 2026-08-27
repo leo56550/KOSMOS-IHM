@@ -350,17 +350,6 @@ class SftpDialog(QtWidgets.QDialog):
         sep2.setStyleSheet("background:#1e3448; border:none; max-height:1px;")
         lay.addWidget(sep2)
 
-        lbl_tot = QtWidgets.QLabel(self.translate("Progression totale", "Total progress"))
-        lbl_tot.setStyleSheet("color:#7ec8e3; font-size:10px; font-weight:bold;")
-        lay.addWidget(lbl_tot)
-
-        self.pb_total = QtWidgets.QProgressBar()
-        self.pb_total.setRange(0, 1000)
-        self.pb_total.setValue(0)
-        self.pb_total.setFixedHeight(18)
-        self.pb_total.setFormat("0 %")
-        lay.addWidget(self.pb_total)
-
         row_tot = QtWidgets.QHBoxLayout()
         self.lbl_total_bytes = QtWidgets.QLabel("0 B / 0 B")
         self.lbl_total_bytes.setStyleSheet("color:#a0b8cc; font-size:10px;")
@@ -377,11 +366,9 @@ class SftpDialog(QtWidgets.QDialog):
         lay.addWidget(self.lbl_dl_status)
 
         # Masquer le panneau de progression au départ
-        for w in [sep1, lbl_cur, self.lbl_file_name, self.pb_file,
-                  sep2, lbl_tot, self.pb_total]:
+        for w in [sep1, lbl_cur, self.lbl_file_name, self.pb_file, sep2]:
             w.setVisible(False)
-        self._dl_progress_widgets = [sep1, lbl_cur, self.lbl_file_name,
-                                     self.pb_file, sep2, lbl_tot, self.pb_total]
+        self._dl_progress_widgets = [sep1, lbl_cur, self.lbl_file_name, self.pb_file, sep2]
         self._dl_detail_rows = [row_file, row_tot]  # layouts — masqués via labels
 
         return grp
@@ -659,7 +646,6 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_cancel_dl.setEnabled(True)
         self._set_dl_panel_visible(True)
         self.pb_file.setValue(0)
-        self.pb_total.setValue(0)
         self.lbl_file_name.setText(self.translate("Récupération des tailles…", "Fetching sizes…"))
         self.lbl_file_bytes.setText("")
         self.lbl_speed.setText("")
@@ -695,11 +681,6 @@ class SftpDialog(QtWidgets.QDialog):
         self.lbl_speed.setText(self._fmt_speed(speed) if speed > 0 else "")
 
         # Total
-        if total_size > 0:
-            pct = int(total_done * 1000 / total_size)
-            self.pb_total.setValue(pct)
-            pct_disp = pct // 10
-            self.pb_total.setFormat(f"{pct_disp} %")
         self.lbl_total_bytes.setText(
             f"{_fmt_size(total_done)} / {_fmt_size(total_size)}"
             f"  —  {file_idx + 1}/{file_total} fichiers")
@@ -713,8 +694,6 @@ class SftpDialog(QtWidgets.QDialog):
 
     def _on_dl_finished(self, count: int, total_bytes: int):
         self.pb_file.setValue(1000)
-        self.pb_total.setValue(1000)
-        self.pb_total.setFormat("100 %")
         self.btn_download.setEnabled(True)
         self.btn_cancel_dl.setVisible(False)
         self.lbl_speed.setText("")
