@@ -8,6 +8,65 @@ import pandas as pd
 from services.migration_service import _build_base_template
 
 
+def compute_codestation(survey: dict, obs: dict) -> str:
+    """Code station : codeObs si déjà calculé, sinon reconstruit depuis zone + 2 derniers
+    chiffres de l'année + n° du point. Partagé entre la carte de campagne (qualif_controller)
+    et le planificateur de déploiement (comparaison avec les points d'une campagne)."""
+    code = (obs.get("codeObs") or {}).get("value")
+    if code:
+        return str(code)
+    zone_v = str((survey.get("zone") or {}).get("value") or "").strip()
+    date_v = str((survey.get("date") or {}).get("value") or "").strip()
+    year_2d = re.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+    pname = str((obs.get("point_name") or {}).get("value")
+                or (obs.get("station_number") or {}).get("value") or "").strip()
+    if not pname:
+        return ""
+    try:
+        station_idx = f"{int(pname):04d}"
+    except ValueError:
+        station_idx = pname.zfill(4)[:4]
+    return f"{zone_v}{year_2d}{station_idx}" if zone_v and year_2d else ""
+
+
+def find_campaign_gps_points(campaign_folder: str) -> list:
+    """Scanne un dossier de campagne (récursivement) à la recherche de tous les _temp.json
+    et retourne leurs points GPS au format attendu par la carte Leaflet du planificateur
+    de déploiement (lat/lng/code/nom/date) — utilisé par "Comparer avec campagne"."""
+    points = []
+    if not campaign_folder or not os.path.isdir(campaign_folder):
+        return points
+    for root, _dirs, files in os.walk(campaign_folder):
+        for fname in files:
+            if not fname.endswith("_temp.json"):
+                continue
+            jpath = os.path.join(root, fname)
+            try:
+                with open(jpath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                survey = data.get("survey", {})
+                obs = data.get("video_observation", {})
+                lat = (obs.get("latitude") or {}).get("value")
+                lon = (obs.get("longitude") or {}).get("value")
+                if lat in (None, "") or lon in (None, ""):
+                    continue
+                lat_f = float(str(lat).replace(",", "."))
+                lon_f = float(str(lon).replace(",", "."))
+                if math.isnan(lat_f) or math.isnan(lon_f):
+                    continue
+                nom = str((obs.get("point_name") or {}).get("value")
+                          or (obs.get("station_number") or {}).get("value") or "").strip()
+                date_v = str((survey.get("date") or {}).get("value") or "").strip()
+                points.append({
+                    "lat": lat_f, "lng": lon_f,
+                    "code": compute_codestation(survey, obs),
+                    "nom": nom, "date": date_v,
+                })
+            except (ValueError, TypeError, OSError, json.JSONDecodeError):
+                continue
+    return points
+
+
 def get_video_gps_coords(video_path: str) -> tuple:
     """Extrait les coordonnées GPS d'une vidéo.
 

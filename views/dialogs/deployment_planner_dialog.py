@@ -9,6 +9,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebChannel import QWebChannel
 
+from services.campaign_service import find_campaign_gps_points
+
 
 def _resource(rel: str) -> str:
     """Chemin absolu d'un asset — compatible dev et PyInstaller (sys._MEIPASS)."""
@@ -184,6 +186,17 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
         btn_load_info.clicked.connect(self._load_infostation)
         rl.addWidget(btn_load_info)
 
+        btn_compare_campaign = QtWidgets.QPushButton(
+            self.translate("Comparer avec campagne", "Compare with campaign"))
+        btn_compare_campaign.setStyleSheet(
+            "QPushButton { background-color: #2a1a3a; color: #b98ce6;"
+            " border: 1px solid #9B59B6; border-radius: 4px;"
+            " padding: 6px 14px; font-size: 11px; font-weight: bold; }"
+            " QPushButton:hover { background-color: #9B59B6; color: #fff; }"
+        )
+        btn_compare_campaign.clicked.connect(self._compare_with_campaign)
+        rl.addWidget(btn_compare_campaign)
+
         self._lbl_infostation_info = QtWidgets.QLabel("")
         self._lbl_infostation_info.setWordWrap(True)
         self._lbl_infostation_info.setStyleSheet(
@@ -358,6 +371,39 @@ class DeploymentPlannerDialog(QtWidgets.QDialog):
     def _clear_infostation(self):
         self._map_view.page().runJavaScript("clearInfostationMarkers();")
         self._lbl_infostation_info.setText("")
+
+    def _compare_with_campaign(self):
+        """Choisit un dossier de campagne et affiche ses points GPS (issus des _temp.json
+        de chaque vidéo) sur la carte, avec les mêmes marqueurs que "CHARGER infostation" —
+        pour comparer visuellement les points prévus (posés à la main) aux points réellement
+        filmés."""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self, self.translate("Choisir un dossier de campagne", "Choose a campaign folder")
+        )
+        if not folder:
+            return
+
+        points = find_campaign_gps_points(folder)
+        if not points:
+            QtWidgets.QMessageBox.warning(
+                self, self.translate("Aucun point", "No points"),
+                self.translate(
+                    "Aucune vidéo avec coordonnées GPS trouvée dans ce dossier de campagne.",
+                    "No video with GPS coordinates found in this campaign folder."
+                ))
+            return
+
+        self._map_view.page().runJavaScript(
+            f"loadInfostationPoints({json.dumps(points)});"
+        )
+
+        info = self.translate(
+            f"{len(points)} point(s) de campagne chargé(s)",
+            f"{len(points)} campaign point(s) loaded"
+        )
+        info += self.translate(f"\nDossier : {os.path.basename(folder)}",
+                               f"\nFolder: {os.path.basename(folder)}")
+        self._lbl_infostation_info.setText(info)
 
     # ── Gestion des points ────────────────────────────────────────────────────
 

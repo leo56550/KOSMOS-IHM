@@ -37,10 +37,13 @@ function _infoIcon(code) {
   });
 }
 
-function loadInfostationPoints(jsonStr) {
+function loadInfostationPoints(data) {
   clearInfostationMarkers();
-  var points;
-  try { points = JSON.parse(jsonStr); } catch(e) { return; }
+  var points = data;
+  if (typeof data === 'string') {
+    try { points = JSON.parse(data); } catch(e) { return; }
+  }
+  if (!Array.isArray(points)) { return; }
   points.forEach(function (p) {
     if (p.lat == null || p.lng == null) return;
     var m = L.marker([p.lat, p.lng], { icon: _infoIcon(p.code || '?') })

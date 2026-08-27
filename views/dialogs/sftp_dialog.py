@@ -198,6 +198,20 @@ class SftpDialog(QtWidgets.QDialog):
         ))
         self.edit_remote.returnPressed.connect(self._on_refresh_remote)
         row2.addWidget(self.edit_remote)
+
+        self.btn_path_sd = QtWidgets.QPushButton(self.translate("SD locale", "Local SD"))
+        self.btn_path_sd.setToolTip("/home/kosmos/kosmos_local_sd")
+        self.btn_path_sd.clicked.connect(lambda: self._set_remote_path("/home/kosmos/kosmos_local_sd"))
+        row2.addWidget(self.btn_path_sd)
+
+        self.btn_path_usb = QtWidgets.QPushButton(self.translate("Clé USB", "USB key"))
+        self.btn_path_usb.setToolTip(self.translate(
+            "/media/kosmos/ — liste les clés USB actuellement branchées",
+            "/media/kosmos/ — lists currently plugged-in USB keys"
+        ))
+        self.btn_path_usb.clicked.connect(lambda: self._set_remote_path("/media/kosmos/"))
+        row2.addWidget(self.btn_path_usb)
+
         self.btn_refresh_remote = QtWidgets.QPushButton(self.translate("Actualiser", "Refresh"))
         self.btn_refresh_remote.setToolTip(self.translate(
             "Relister le dossier distant (chemin modifiable même après connexion)",
@@ -436,6 +450,13 @@ class SftpDialog(QtWidgets.QDialog):
         self.btn_connect.setEnabled(True)
         self.lbl_conn_status.setText(self.translate(f"Erreur : {msg}", f"Error: {msg}"))
         self.lbl_conn_status.setStyleSheet("color: #D94F38; font-weight: bold;")
+
+    def _set_remote_path(self, path: str):
+        """Raccourci pour basculer entre la carte SD locale et une clé USB branchée —
+        les données KOSMOS se trouvent tantôt sur l'une, tantôt sur l'autre."""
+        self.edit_remote.setText(path)
+        if self.btn_refresh_remote.isEnabled():
+            self._on_refresh_remote()
 
     def _on_refresh_remote(self):
         """Reliste le dossier distant avec le chemin saisi, sans rouvrir la session credentials."""

@@ -1,6 +1,5 @@
 import os
 import io
-import re
 import csv
 import json
 import math
@@ -17,7 +16,7 @@ from services.video_service import get_all_mp4_files, get_sequential_segments, c
 from services.campaign_service import (
     get_working_video_json_path,
     get_working_video_dir, sync_video_to_working_dir, resolve_video_json_path,
-    get_temp_json_path,
+    get_temp_json_path, compute_codestation,
 )
 from services.migration_service import initialise_temp_json_if_needed, update_temp_json_paths
 from services.motor_service import get_motor_stable_timestamps
@@ -1324,25 +1323,6 @@ class QualifController:
                 ]
         return display
 
-    @staticmethod
-    def _compute_codestation(survey: dict, obs: dict) -> str:
-        """Code station affiché au-dessus du marqueur : codeObs si déjà calculé,
-        sinon reconstruit depuis zone + 2 derniers chiffres de l'année + n° du point."""
-        code = (obs.get("codeObs") or {}).get("value")
-        if code:
-            return str(code)
-        zone_v = str((survey.get("zone") or {}).get("value") or "").strip()
-        date_v = str((survey.get("date") or {}).get("value") or "").strip()
-        year_2d = re.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
-        pname = str((obs.get("point_name") or {}).get("value")
-                    or (obs.get("station_number") or {}).get("value") or "").strip()
-        if not pname:
-            return ""
-        try:
-            station_idx = f"{int(pname):04d}"
-        except ValueError:
-            station_idx = pname.zfill(4)[:4]
-        return f"{zone_v}{year_2d}{station_idx}" if zone_v and year_2d else ""
 
     def update_minimap(self, selected_name=None, show_dialog=False):
         """Initialise ou rafraîchit la carte Folium et surligne le marqueur de selected_name en rouge.
@@ -1394,7 +1374,7 @@ class QualifController:
                 waypoints[item.text()] = str(wp) if wp is not None else ""
                 marker_meta[item.text()] = {
                     "exploitable": str((obs.get("exploitable") or {}).get("value") or "").strip().lower(),
-                    "codestation": self._compute_codestation(sv, obs),
+                    "codestation": compute_codestation(sv, obs),
                 }
             except Exception:
                 pass
@@ -1721,7 +1701,7 @@ class QualifController:
             obs = jdata.get("video_observation", {})
             expl = str((obs.get("exploitable") or {}).get("value") or "").strip().lower()
             color = self._MARKER_COLORS.get(expl, self._MARKER_DEFAULT_COLOR)
-            codestation = self._compute_codestation(sv, obs)
+            codestation = compute_codestation(sv, obs)
             filter_group = self._marker_filter_group(expl)
             name = item.text().replace("\\", "\\\\").replace("'", "\\'")
             code_js = json.dumps(codestation)
