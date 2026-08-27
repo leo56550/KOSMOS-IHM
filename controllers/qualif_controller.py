@@ -30,11 +30,30 @@ _STATION_TIME_SORT_MISSING = "99:99"
 
 
 def _get_station_time(video_path: str, cache: dict) -> str:
-    """Retourne 'HH:MM' depuis systemEvent.csv du dossier vidéo, '99:99' si absent."""
+    """Retourne 'HH:MM' — priorité à video_observation.time du _temp.json (heure RTC
+    saisie par le système d'acquisition à l'enregistrement) ; repli sur systemEvent.csv
+    si absent. Le CSV reflète parfois le moment où l'événement a été journalisé (ex. à la
+    conversion h264→mp4) plutôt que l'heure réelle de prise, d'où la priorité au JSON."""
     folder = os.path.dirname(video_path)
     if folder in cache:
         return cache[folder]
     result = _STATION_TIME_SORT_MISSING
+
+    json_path = get_temp_json_path(video_path)
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            t_val = str((data.get("video_observation", {}).get("time") or {}).get("value") or "").strip()
+            if t_val:
+                parts = t_val.replace("h", ":").replace("H", ":").split(":")
+                if len(parts) >= 2:
+                    result = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                    cache[folder] = result
+                    return result
+        except Exception:
+            pass
+
     csv_path = os.path.join(folder, "systemEvent.csv")
     if os.path.exists(csv_path):
         for enc in ("utf-8", "cp1252"):

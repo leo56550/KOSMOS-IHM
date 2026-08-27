@@ -256,9 +256,11 @@ _TEXT_STYLE   = ("QPlainTextEdit { background-color: #162433; color: #F2BFB4;"
 class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
     """Ctrl+Entrée pendant l'édition d'une cellule applique sa valeur à toute la sélection
     courante du tableau (comme Excel : sélectionner plusieurs cellules, taper une valeur
-    dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée). Borne aussi la saisie au type déclaré
-    dans template.json pour chaque colonne (int/float acceptent uniquement des nombres,
-    str reste libre)."""
+    dans l'une d'elles, Ctrl+Entrée au lieu d'Entrée). Le remplissage incrémental (183, 184,
+    185...) se fait lui via le bouton "Incrémenter ↓" de la barre d'outils (voir
+    _increment_fill_selection), plus simple à découvrir qu'un raccourci clavier. Borne aussi
+    la saisie au type déclaré dans template.json pour chaque colonne (int/float acceptent
+    uniquement des nombres, str reste libre)."""
 
     def createEditor(self, parent, option, index):
         editor = super().createEditor(parent, option, index)
@@ -302,10 +304,13 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
             value = editor.text() if hasattr(editor, 'text') else None
             self.commitData.emit(editor)
             self.closeEditor.emit(editor)
-            if value is not None:
-                for sel_index in table.selectedIndexes():
-                    if sel_index.column() == index.column() and sel_index != index:
-                        table.model().setData(sel_index, value, QtCore.Qt.ItemDataRole.EditRole)
+            if value is None:
+                return True
+
+            for sel_index in table.selectedIndexes():
+                if sel_index.column() != index.column() or sel_index == index:
+                    continue
+                table.model().setData(sel_index, value, QtCore.Qt.ItemDataRole.EditRole)
             return True
         return super().eventFilter(editor, event)
 
@@ -488,6 +493,22 @@ class MetadonneesController:
         self._btn_web.setEnabled(False)
         self._btn_web.clicked.connect(self.action_compare_weather_web)
         tb_row.addWidget(self._btn_web)
+
+        self._btn_incrementer = QtWidgets.QPushButton(
+            self.translate("Incrémenter ↓", "Increment ↓"))
+        self._btn_incrementer.setToolTip(self.translate(
+            "Sélectionnez la cellule de départ (avec sa valeur) et les cellules à "
+            "remplir en dessous dans la même colonne, puis cliquez ici.",
+            "Select the starting cell (with its value) and the cells to fill below "
+            "it in the same column, then click here."))
+        self._btn_incrementer.setStyleSheet(
+            "QPushButton{background:#3a2a1a;color:#e8c080;border:1px solid #8a5a2a;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#8a5a2a;color:white;}"
+        )
+        self._btn_incrementer.clicked.connect(self._increment_fill_selection)
+        tb_row.addWidget(self._btn_incrementer)
 
         self._btn_gpx = QtWidgets.QPushButton(self.translate("IMPORT GPX", "IMPORT GPX"))
         self._btn_gpx.setStyleSheet(
@@ -754,6 +775,63 @@ class MetadonneesController:
             item = self._ft_table.item(index.row(), col)
             if item and item.text():
                 item.setText("")
+
+    def _increment_fill_selection(self):
+        """Incrémente une colonne du tableau infostation à partir de sa valeur la plus haute
+        (bouton "Incrémenter ↓" de la barre d'outils). Sélectionner la cellule de départ
+        (contenant la valeur initiale, ex. 180) et les cellules à remplir en dessous dans
+        la même colonne, puis cliquer sur le bouton : la ligne du haut garde sa valeur, les
+        suivantes reçoivent 181, 182... (comportement type "poignée de recopie" Excel)."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        sel = self._ft_table.selectedIndexes()
+        if not sel:
+            QtWidgets.QMessageBox.information(
+                self.widget,
+                self.translate("Incrémenter", "Increment"),
+                self.translate(
+                    "Sélectionnez d'abord la cellule de départ (avec sa valeur) et les "
+                    "cellules à remplir en dessous, dans une même colonne.",
+                    "First select the starting cell (with its value) and the cells to "
+                    "fill below it, in a single column."))
+            return
+
+        cols = {idx.column() for idx in sel}
+        if len(cols) != 1:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Incrémenter", "Increment"),
+                self.translate("La sélection doit porter sur une seule colonne.",
+                                "The selection must be within a single column."))
+            return
+        col = cols.pop()
+        if not (0 <= col < len(_FT_TABLE_COLS)) or _FT_TABLE_COLS[col][3]:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Incrémenter", "Increment"),
+                self.translate("Cette colonne n'est pas modifiable.",
+                                "This column is not editable."))
+            return
+
+        anchor_row = min(idx.row() for idx in sel)
+        anchor_item = self._ft_table.item(anchor_row, col)
+        base_text = anchor_item.text().strip() if anchor_item else ""
+        try:
+            base_int = int(base_text)
+        except ValueError:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Incrémenter", "Increment"),
+                self.translate(
+                    f"La première cellule de la sélection (ligne du haut) doit contenir "
+                    f"un nombre entier de départ (valeur actuelle : « {base_text} »).",
+                    f"The first (topmost) selected cell must contain a starting integer "
+                    f"(current value: “{base_text}”)."))
+            return
+
+        for idx in sel:
+            fill_value = str(base_int + (idx.row() - anchor_row))
+            self._ft_table.model().setData(idx, fill_value, QtCore.Qt.ItemDataRole.EditRole)
 
     def _on_ft_table_cell_changed(self, row: int, col: int):
         """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
@@ -1617,6 +1695,12 @@ class MetadonneesController:
                 _target = os.path.abspath(video_path).replace('"', '""')
                 _label = val.replace('"', '""')
                 val = f'=LIEN_HYPERTEXTE("{_target}";"{_label}")'
+
+            # video_number est un nom de dossier ("0181"), pas un nombre : sans ce forçage,
+            # Excel réinterprète automatiquement la cellule CSV comme un entier et perd le
+            # zéro de tête ("0181" → 181).
+            if for_csv and field_key == "video_number" and val:
+                val = f'="{val}"'
 
             row.append(val)
 

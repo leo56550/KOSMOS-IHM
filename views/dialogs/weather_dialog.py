@@ -1,5 +1,30 @@
 from PyQt6 import QtWidgets, QtCore
 
+def _read_edited_values(original: dict, edits: dict) -> dict:
+    """Relit les QLineEdit après édition manuelle, en essayant de préserver le type
+    d'origine (int/float) de chaque valeur — repli sur la chaîne telle que saisie
+    si la conversion échoue, plutôt que de bloquer l'application."""
+    updated = {}
+    for key, original_value in original.items():
+        edit = edits.get(key)
+        text = edit.text().strip() if edit else (str(original_value) if original_value is not None else "")
+        if not text:
+            updated[key] = None
+            continue
+        try:
+            if isinstance(original_value, bool):
+                updated[key] = text
+            elif isinstance(original_value, int):
+                updated[key] = int(text)
+            elif isinstance(original_value, float):
+                updated[key] = float(text.replace(",", "."))
+            else:
+                updated[key] = text
+        except ValueError:
+            updated[key] = text
+    return updated
+
+
 _FIELD_LABELS = {
     "airTemp": {"fr": "Température Air (°C)", "en": "Air Temperature (°C)"},
     "wind": {"fr": "Vent (Beaufort)", "en": "Wind (Beaufort)"},
@@ -80,6 +105,7 @@ class WeatherWebDialog(QtWidgets.QDialog):
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setSpacing(8)
 
+        self._field_edits: dict = {}
         for key, value in self.web_data.items():
             row_widget = QtWidgets.QWidget()
             h_layout = QtWidgets.QHBoxLayout(row_widget)
@@ -93,7 +119,9 @@ class WeatherWebDialog(QtWidgets.QDialog):
 
             line_edit = QtWidgets.QLineEdit()
             line_edit.setText(str(value) if value is not None else "")
-            line_edit.setReadOnly(True)
+            # Modifiable avant application : les valeurs Open-Meteo peuvent nécessiter
+            # une correction manuelle (ex. relevé local plus précis) avant d'être écrites.
+            self._field_edits[key] = line_edit
             h_layout.addWidget(line_edit, 2)
 
             form_layout.addWidget(row_widget)
@@ -120,8 +148,9 @@ class WeatherWebDialog(QtWidgets.QDialog):
         main_layout.addLayout(btn_layout)
 
     def _apply(self):
-        if self._on_apply:
-            self._on_apply(self.web_data)
+        if not self._on_apply:
+            return
+        self._on_apply(_read_edited_values(self.web_data, self._field_edits))
 
 
 class WeatherWebMultiDialog(QtWidgets.QDialog):
@@ -236,6 +265,7 @@ class WeatherWebMultiDialog(QtWidgets.QDialog):
         lay = QtWidgets.QVBoxLayout(grp)
         lay.setSpacing(4)
 
+        field_edits: dict = {}
         if not web_data:
             lbl_empty = QtWidgets.QLabel(self._t("Aucune donnée trouvée.", "No data found."))
             lbl_empty.setStyleSheet("color: #6a8fa8; font-weight: normal; border: none;")
@@ -254,10 +284,12 @@ class WeatherWebMultiDialog(QtWidgets.QDialog):
 
                 line_edit = QtWidgets.QLineEdit()
                 line_edit.setText(str(value) if value is not None else "")
-                line_edit.setReadOnly(True)
+                # Modifiable avant application (voir WeatherWebDialog._apply).
+                field_edits[key] = line_edit
                 h_layout.addWidget(line_edit, 2)
 
                 lay.addWidget(row_widget)
+        entry["_field_edits"] = field_edits
 
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
@@ -273,7 +305,8 @@ class WeatherWebMultiDialog(QtWidgets.QDialog):
         if not self._on_apply_one:
             return
         video_path = entry.get("video_path")
-        self._on_apply_one(entry.get("web_data") or {}, video_path)
+        web_data = _read_edited_values(entry.get("web_data") or {}, entry.get("_field_edits") or {})
+        self._on_apply_one(web_data, video_path)
         self._applied_paths.add(video_path)
         btn.setEnabled(False)
         btn.setText(self._t("✓ Appliqué", "✓ Applied"))
