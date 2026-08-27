@@ -397,6 +397,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         sys_style = QtWidgets.QApplication.style()
         self.btn_play_pause = QtWidgets.QPushButton()
         self.btn_play_pause.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaPlay))
+        self.btn_goto_start = QtWidgets.QPushButton()
+        self.btn_goto_start.setIcon(sys_style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MediaSkipBackward))
+        self.btn_goto_start.setToolTip("Retour au début de la vidéo")
         self.btn_m10 = QtWidgets.QPushButton("-10s")
         self.btn_m5  = QtWidgets.QPushButton("-5s")
         self.btn_p5  = QtWidgets.QPushButton("+5s")
@@ -406,11 +409,21 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_x5 = QtWidgets.QPushButton("x5")
         self.btn_x10 = QtWidgets.QPushButton("x10")
 
-        for btn in [self.btn_play_pause,
-                    self.btn_m10, self.btn_m5, self.btn_p5, self.btn_p10,
-                    self.btn_x1, self.btn_x2, self.btn_x5, self.btn_x10]:
+        for btn in [self.btn_play_pause, self.btn_goto_start,
+                    self.btn_m10, self.btn_m5, self.btn_p5, self.btn_p10]:
             btn.setStyleSheet(_BTN_STYLE)
             buttons_layout.addWidget(btn)
+
+        # Boutons de vitesse : checkable + exclusifs, pour que celui actif reste
+        # visuellement distingué (au lieu de rester tous identiques en permanence).
+        self._speed_btn_group = QtWidgets.QButtonGroup(self)
+        self._speed_btn_group.setExclusive(True)
+        for btn in [self.btn_x1, self.btn_x2, self.btn_x5, self.btn_x10]:
+            btn.setStyleSheet(_TOGGLE_STYLE)
+            btn.setCheckable(True)
+            self._speed_btn_group.addButton(btn)
+            buttons_layout.addWidget(btn)
+        self.btn_x1.setChecked(True)
 
         buttons_layout.addStretch()
 
@@ -562,6 +575,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # ── Signals ───────────────────────────────────────────────────────
         self.btn_play_pause.clicked.connect(self._toggle_play_pause)
         self.player.playbackStateChanged.connect(self._update_play_pause_icon)
+        self.btn_goto_start.clicked.connect(self._goto_start)
         self.btn_m10.clicked.connect(lambda: self.jump_time_offset(-10000))
         self.btn_m5.clicked.connect(lambda: self.jump_time_offset(-5000))
         self.btn_p5.clicked.connect(lambda: self.jump_time_offset(5000))
@@ -643,6 +657,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.current_language = language
         self.lbl_zoom.setText(self.translate("Zoom :", "Zoom:"))
         self.btn_play_pause.setToolTip(self.translate("LIRE / PAUSE", "PLAY / PAUSE"))
+        self.btn_goto_start.setToolTip(self.translate(
+            "Retour au début de la vidéo", "Jump to the start of the video"))
         self.btn_cam_L.setText(self.translate("Cam G", "Cam L"))
         self.btn_cam_L.setToolTip(self.translate("Afficher/masquer caméra gauche", "Show/hide left camera"))
         self.btn_cam_R.setText(self.translate("Cam D", "Cam R"))
@@ -804,13 +820,23 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._fs_window = None
 
     def _on_corr_he_toggled(self, checked: bool):
-        """Active/désactive l'égalisation d'histogramme et rafraîchit la frame."""
+        """Active/désactive l'égalisation d'histogramme et rafraîchit la frame.
+
+        Les corrections ne peuvent s'appliquer qu'en pause (rendu OpenCV image par
+        image, trop lourd pour du temps réel) — on met donc en pause automatiquement
+        si l'utilisateur active la correction pendant la lecture, plutôt que de la
+        laisser silencieusement sans effet."""
+        if checked and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.pause()
         self._corr_he = checked
         self._refresh_corrections()
         self.corrections_changed.emit()
 
     def _on_corr_dehaze_toggled(self, checked: bool):
-        """Active/désactive le débrumage et rafraîchit la frame."""
+        """Active/désactive le débrumage et rafraîchit la frame (met en pause si besoin,
+        voir _on_corr_he_toggled)."""
+        if checked and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.pause()
         self._corr_dehaze = checked
         self._refresh_corrections()
         self.corrections_changed.emit()
@@ -850,10 +876,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self._refresh_corrections()
 
     def _update_corrections_enabled(self, is_playing: bool):
-        """Active/grise les contrôles de correction selon l'état de lecture."""
+        """Active/grise les contrôles de correction selon l'état de lecture.
+
+        HE et Dehaze restent cliquables même en lecture : les activer met
+        automatiquement en pause (voir _on_corr_he_toggled / _on_corr_dehaze_toggled)
+        plutôt que de rester inertes tant qu'on ne grise pas explicitement le bouton."""
         enabled = not is_playing
-        for w in [self.btn_corr_he, self.btn_corr_dehaze,
-                  self.slider_contrast, self.slider_brightness, self.btn_reset_corr]:
+        for w in [self.slider_contrast, self.slider_brightness, self.btn_reset_corr]:
             w.setEnabled(enabled)
         self.lbl_pause_hint.setVisible(is_playing)
 
@@ -943,6 +972,13 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.player.setPosition(target)
         if self.is_stereo:
             self.player_R.setPosition(target)
+
+    def _goto_start(self):
+        """Retourne au tout début de la vidéo."""
+        self.player.setPosition(0)
+        if self.is_stereo:
+            self.player_R.setPosition(0)
+        self.center_scroll_on_cursor()
 
     def on_timeline_pressed(self, target_ms: int):
         """Met le lecteur en pause au début du drag timeline et se positionne sur target_ms."""

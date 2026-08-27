@@ -7,6 +7,7 @@ from services.motor_service import get_motor_stable_timestamps
 from services.video_service import check_stereo_status
 from services.campaign_service import get_video_json_path, resolve_video_json_path
 from services.sound_service import get_sound_service
+from controllers.qualif_controller import _CameraFrameWorker
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from models.video_model import VideoFilterProxyModel
@@ -140,6 +141,38 @@ class ValidationController:
             # Cacher les boutons ardoise originaux du player
             self.player.btn_ardoise.setVisible(False)
             self.player.btn_ardoise_manquante.setVisible(False)
+
+            # ── Bascule lecteur / vue des secteurs ────────────────────────────
+            # Workflow : on cherche l'ardoise en mode lecteur, puis une fois le
+            # numéro de point saisi, on bascule sur les photos de rotation moteur
+            # (même grille que la page Qualification) sans quitter la vidéo.
+            self._sector_pixmaps: list = []
+            self._sector_slot_labels: dict = {}
+            self._sector_worker = None
+            self._sector_view_active = False
+
+            toggle_row = QtWidgets.QWidget()
+            toggle_row.setStyleSheet("background: transparent;")
+            toggle_layout = QtWidgets.QHBoxLayout(toggle_row)
+            toggle_layout.setContentsMargins(0, 0, 0, 4)
+            toggle_layout.addStretch()
+            self.btn_toggle_sector_view = QtWidgets.QPushButton(
+                self.translate("📷 Vue des secteurs", "📷 Sector view"))
+            self.btn_toggle_sector_view.setStyleSheet(BTN_PRIMARY)
+            self.btn_toggle_sector_view.clicked.connect(self._toggle_sector_view)
+            toggle_layout.addWidget(self.btn_toggle_sector_view)
+            layout.insertWidget(0, toggle_row)
+
+            self._sector_scroll = QtWidgets.QScrollArea()
+            self._sector_scroll.setWidgetResizable(True)
+            self._sector_scroll.setStyleSheet("background-color: #111820; border: none;")
+            _sector_content = QtWidgets.QWidget()
+            self._sector_layout = QtWidgets.QVBoxLayout(_sector_content)
+            self._sector_layout.setContentsMargins(10, 10, 10, 10)
+            self._sector_layout.setSpacing(15)
+            self._sector_scroll.setWidget(_sector_content)
+            self._sector_scroll.setVisible(False)
+            layout.addWidget(self._sector_scroll)
 
         main_splitter = self.page.findChild(QtWidgets.QSplitter, "splitter_3")
         if main_splitter:
@@ -632,6 +665,283 @@ class ValidationController:
         except Exception:
             pass
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
+
+        # Nouvelle vidéo : toujours repartir en mode lecteur (recherche de l'ardoise)
+        # à vitesse x1, et précharger la vue des secteurs pour qu'elle soit prête
+        # dès que l'utilisateur bascule dessus.
+        if self._sector_view_active:
+            self._toggle_sector_view()
+        self.player.set_playback_rate_all(1.0)
+        if hasattr(self.player, 'btn_x1'):
+            self.player.btn_x1.setChecked(True)
+        if os.path.exists(csv_system):
+            self._load_sector_view(selected_video_path, csv_system)
+        else:
+            while self._sector_layout.count():
+                item = self._sector_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+    def _toggle_sector_view(self):
+        """Alterne entre le lecteur vidéo et la vue des secteurs (photos de rotation moteur)."""
+        self._sector_view_active = not self._sector_view_active
+        self.player.setVisible(not self._sector_view_active)
+        self._sector_scroll.setVisible(self._sector_view_active)
+        self.btn_toggle_sector_view.setText(
+            self.translate("🎬 Lecteur", "🎬 Player") if self._sector_view_active
+            else self.translate("📷 Vue des secteurs", "📷 Sector view")
+        )
+        if self._sector_view_active:
+            self.player.pause()
+
+    def _load_sector_view(self, video_path: str, csv_path: str):
+        """Construit la grille de photos de rotation moteur — même logique que la page
+        Qualification (update_camera_views), adaptée à la page Validation."""
+        while self._sector_layout.count():
+            item = self._sector_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._sector_pixmaps.clear()
+        self._sector_slot_labels.clear()
+
+        if self._sector_worker and self._sector_worker.isRunning():
+            self._sector_worker.requestInterruption()
+            self._sector_worker.wait(400)
+
+        try:
+            motor_events = get_motor_stable_timestamps(csv_path, delay=6.0)
+            if not motor_events:
+                lbl = QtWidgets.QLabel(self.translate(
+                    "Aucune rotation moteur trouvée dans le fichier CSV.",
+                    "No motor rotation found in the CSV file."))
+                lbl.setStyleSheet("color: white; font-size: 14px;")
+                self._sector_layout.addWidget(lbl)
+                self._sector_layout.addStretch()
+                return
+
+            tasks = []
+            slot_id = 0
+            rotation_groups = [motor_events[i:i + 6] for i in range(0, len(motor_events), 6)]
+
+            for rotation_events in rotation_groups:
+                frame_rotation = QtWidgets.QFrame()
+                frame_rotation.setFixedHeight(230)
+                frame_rotation.setStyleSheet(
+                    "background-color: #20415d; border-radius: 8px; border: 1px solid #3d3d3d;"
+                )
+                hbox = QtWidgets.QHBoxLayout(frame_rotation)
+                hbox.setContentsMargins(15, 10, 15, 10)
+                hbox.setSpacing(15)
+
+                for evt in rotation_events:
+                    ts, angle, evt_type = evt["timestamp"], evt["angle"], evt["type"]
+                    is_360 = evt_type == "rotation_360"
+                    fw, fh = (248, 188) if is_360 else (240, 180)
+                    border = "3px solid #ff3333" if is_360 else "1px solid #555555"
+
+                    w_photo = QtWidgets.QFrame()
+                    w_photo.setFixedSize(fw, fh)
+                    w_photo.setStyleSheet(
+                        f"background-color: #111a24; border-radius: 6px; border: {border};"
+                    )
+                    ph_layout = QtWidgets.QVBoxLayout(w_photo)
+                    ph_layout.setContentsMargins(0, 0, 0, 0)
+                    ph_lbl = QtWidgets.QLabel("⏳")
+                    ph_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                    ph_lbl.setStyleSheet("color: #405060; font-size: 22px; background: transparent;")
+                    ph_layout.addWidget(ph_lbl)
+
+                    self._sector_pixmaps.append(None)
+                    self._sector_slot_labels[slot_id] = (w_photo, angle, ts)
+                    tasks.append((slot_id, video_path, ts))
+                    slot_id += 1
+                    hbox.addWidget(w_photo)
+
+                if len(rotation_events) < 6:
+                    for _ in range(6 - len(rotation_events)):
+                        hbox.addSpacing(240)
+                hbox.addStretch()
+                self._sector_layout.addWidget(frame_rotation)
+
+            self._sector_layout.addStretch()
+
+            if tasks:
+                self._sector_worker = _CameraFrameWorker(tasks)
+                self._sector_worker.frame_ready.connect(self._on_sector_frame_ready)
+                self._sector_worker.start()
+        except Exception as e:
+            print(f"[VALIDATION] Erreur vue des secteurs : {e}")
+
+    def _on_sector_frame_ready(self, slot_id: int, frame_data):
+        """Remplace le placeholder par la frame extraite (identique à la page Qualification)."""
+        if frame_data is None or slot_id not in self._sector_slot_labels:
+            return
+        w_photo, angle, ts = self._sector_slot_labels[slot_id]
+
+        h_f, w_f, ch = frame_data.shape
+        q_img = QtGui.QImage(frame_data.tobytes(), w_f, h_f, ch * w_f, QtGui.QImage.Format.Format_RGB888)
+        pixmap = QtGui.QPixmap.fromImage(q_img)
+        self._sector_pixmaps[slot_id] = pixmap
+
+        old = w_photo.layout()
+        if old:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            QtWidgets.QWidget().setLayout(old)
+
+        new_layout = QtWidgets.QVBoxLayout(w_photo)
+        new_layout.setContentsMargins(0, 0, 0, 0)
+        lbl = QtWidgets.QLabel(w_photo)
+        lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl.setPixmap(pixmap.scaled(
+            w_photo.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        ))
+        new_layout.addWidget(lbl)
+
+        minutes = int(ts // 60)
+        seconds_i = int(ts % 60)
+        ms = int((ts - int(ts)) * 1000)
+
+        angle_lbl = QtWidgets.QLabel(f" {angle}° ", lbl)
+        angle_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #55ff55;"
+            " font-weight: bold; border-radius: 3px; font-size: 10px;"
+        )
+        angle_lbl.adjustSize()
+        angle_lbl.move(5, 5)
+        angle_lbl.show()
+
+        time_lbl = QtWidgets.QLabel(f" {minutes:02d}:{seconds_i:02d}.{ms:03d} ", lbl)
+        time_lbl.setStyleSheet(
+            "background-color: rgba(0,0,0,160); color: #ffffff;"
+            " font-weight: bold; border-radius: 3px; font-size: 10px;"
+        )
+        time_lbl.adjustSize()
+        time_lbl.move(w_photo.width() - time_lbl.width() - 5, 5)
+        time_lbl.show()
+
+        # Clic simple → plein écran (même comportement que la page Qualification)
+        for target in (w_photo, lbl):
+            target.mousePressEvent = lambda _e, i=slot_id: self._show_fullscreen_image(i)
+            target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+    def _show_fullscreen_image(self, idx: int = 0):
+        """Affiche une photo de secteur en plein écran avec navigation ← → (flèches clavier
+        + boutons) — identique à la vue des secteurs de la page Qualification."""
+        valid = [(i, p) for i, p in enumerate(self._sector_pixmaps) if p is not None]
+        if not valid:
+            return
+
+        cur = 0
+        for j, (orig_i, _) in enumerate(valid):
+            if orig_i >= idx:
+                cur = j
+                break
+
+        screen = QtWidgets.QApplication.primaryScreen().size()
+
+        dlg = QtWidgets.QDialog(self.page)
+        dlg.setWindowFlags(
+            QtCore.Qt.WindowType.Window |
+            QtCore.Qt.WindowType.FramelessWindowHint
+        )
+        dlg.setStyleSheet("background-color: black;")
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        outer = QtWidgets.QVBoxLayout(dlg)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        lbl_img = QtWidgets.QLabel()
+        lbl_img.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        lbl_img.setStyleSheet("background-color: black;")
+        outer.addWidget(lbl_img, 1)
+
+        bar = QtWidgets.QWidget()
+        bar.setFixedHeight(44)
+        bar.setStyleSheet("background-color: rgba(0,0,0,180);")
+        bar_layout = QtWidgets.QHBoxLayout(bar)
+        bar_layout.setContentsMargins(16, 0, 16, 0)
+        bar_layout.setSpacing(12)
+
+        _btn_style = (
+            "QPushButton{background:rgba(255,255,255,15);color:white;"
+            "border:1px solid rgba(255,255,255,40);border-radius:5px;"
+            "font-size:16px;font-weight:bold;padding:4px 14px;}"
+            "QPushButton:hover{background:rgba(255,255,255,35);}"
+            "QPushButton:disabled{color:rgba(255,255,255,30);border-color:rgba(255,255,255,15);}"
+        )
+
+        btn_prev = QtWidgets.QPushButton("←")
+        btn_prev.setFixedSize(48, 32)
+        btn_prev.setStyleSheet(_btn_style)
+
+        lbl_counter = QtWidgets.QLabel()
+        lbl_counter.setStyleSheet(
+            "color:rgba(255,255,255,160);font-size:12px;background:transparent;"
+        )
+        lbl_counter.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        btn_next = QtWidgets.QPushButton("→")
+        btn_next.setFixedSize(48, 32)
+        btn_next.setStyleSheet(_btn_style)
+
+        hint = QtWidgets.QLabel(self.translate(
+            "Échap pour fermer  |  ← →  pour naviguer",
+            "Escape to close  |  ← →  to navigate"))
+        hint.setStyleSheet("color:rgba(255,255,255,60);font-size:10px;background:transparent;")
+
+        btn_close = QtWidgets.QPushButton("✕")
+        btn_close.setFixedSize(32, 32)
+        btn_close.setStyleSheet(_btn_style)
+        btn_close.clicked.connect(dlg.close)
+
+        bar_layout.addWidget(btn_prev)
+        bar_layout.addWidget(lbl_counter)
+        bar_layout.addWidget(btn_next)
+        bar_layout.addStretch()
+        bar_layout.addWidget(hint)
+        bar_layout.addWidget(btn_close)
+        outer.addWidget(bar)
+
+        state = {"cur": cur}
+
+        def _show(j):
+            j = max(0, min(j, len(valid) - 1))
+            state["cur"] = j
+            _, pix = valid[j]
+            scaled = pix.scaled(
+                screen,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            lbl_img.setPixmap(scaled)
+            lbl_counter.setText(f"{j + 1} / {len(valid)}")
+            btn_prev.setEnabled(j > 0)
+            btn_next.setEnabled(j < len(valid) - 1)
+
+        btn_prev.clicked.connect(lambda: _show(state["cur"] - 1))
+        btn_next.clicked.connect(lambda: _show(state["cur"] + 1))
+
+        def _key(event):
+            k = event.key()
+            if k == QtCore.Qt.Key.Key_Escape:
+                dlg.close()
+            elif k == QtCore.Qt.Key.Key_Left:
+                _show(state["cur"] - 1)
+            elif k == QtCore.Qt.Key.Key_Right:
+                _show(state["cur"] + 1)
+
+        dlg.keyPressEvent = _key
+        # Pas de mousePressEvent sur lbl_img : évite de fermer par erreur au lieu de naviguer
+
+        _show(state["cur"])
+        dlg.showFullScreen()
+        dlg.setFocus()  # indispensable avec FramelessWindowHint pour recevoir les touches
 
     def refresh_combobox_values(self):
         """Recharge les valeurs autorisées et reconstruit les boutons toggle depuis le JSON."""
