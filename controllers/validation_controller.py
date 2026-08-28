@@ -1099,6 +1099,9 @@ class ValidationController:
                         it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
                         break
                 self.video_tree.viewport().update()
+
+            if station_num and not self._sector_view_active:
+                self._toggle_sector_view()
         except Exception as e:
             print(f"[VALIDATION] Erreur saisie point_name : {e}")
 
@@ -1245,6 +1248,11 @@ class ValidationController:
                 tmp_label = (f"✓ N°{station_num}"
                              if station_num else f"✓ {self.translate('Ardoise', 'Slate')}")
                 self._flash_ardoise()
+
+            # Numéro de point renseigné (saisie initiale ou modification) : bascule
+            # automatiquement en vue des secteurs (workflow demandé).
+            if station_num and not self._sector_view_active:
+                self._toggle_sector_view()
 
             self.player.btn_ardoise.setText(tmp_label)
             self.player.btn_ardoise.setEnabled(False)
