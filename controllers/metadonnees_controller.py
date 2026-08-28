@@ -12,7 +12,7 @@ from services.weather_service import WeatherWorker
 from services.thumbnail_service import THUMB_W, THUMB_H
 from services.campaign_service import (
     get_video_json_path, _find_first_json_in_folder,
-    get_video_gps_coords,
+    get_video_gps_coords, year_2d_from_date,
     get_working_video_dir, get_infostation_path,
     resolve_video_json_path, get_working_video_json_path,
     get_temp_json_path,
@@ -1693,10 +1693,9 @@ class MetadonneesController:
 
             elif field_key == "codeObs" and not val:
                 # Reconstruction dynamique : zone + 2 derniers chiffres de l'année + n° point 0000
-                import re as _re2
                 zone_v   = self._v(surv, "zone").strip()
                 date_v   = self._v(surv, "date").strip()
-                year_2d  = _re2.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+                year_2d  = year_2d_from_date(date_v)
                 pname_v  = (self._v(obs, "point_name") or self._v(obs, "station_number")).strip()
                 if pname_v:
                     try:

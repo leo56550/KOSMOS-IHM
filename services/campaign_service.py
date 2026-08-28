@@ -8,6 +8,19 @@ import pandas as pd
 from services.migration_service import _build_base_template
 
 
+def year_2d_from_date(date_v: str) -> str:
+    """Extrait les 2 derniers chiffres de l'année depuis une date stockée en YYYYMMDD
+    (8 chiffres, format actuel de template.json) ou, par rétrocompatibilité, en YYMMDD
+    (6 chiffres, ancien format) : la position de l'année dans la chaîne diffère selon
+    la longueur, donc une simple découpe positionnelle fixe ne suffit pas."""
+    digits = re.sub(r"[^0-9]", "", date_v or "")
+    if len(digits) >= 8:
+        return digits[2:4]
+    if len(digits) == 6:
+        return digits[0:2]
+    return ""
+
+
 def compute_codestation(survey: dict, obs: dict) -> str:
     """Code station : codeObs si déjà calculé, sinon reconstruit depuis zone + 2 derniers
     chiffres de l'année + n° du point. Partagé entre la carte de campagne (qualif_controller)
@@ -17,7 +30,7 @@ def compute_codestation(survey: dict, obs: dict) -> str:
         return str(code)
     zone_v = str((survey.get("zone") or {}).get("value") or "").strip()
     date_v = str((survey.get("date") or {}).get("value") or "").strip()
-    year_2d = re.sub(r"[^0-9]", "", date_v)[2:4] if date_v else ""
+    year_2d = year_2d_from_date(date_v)
     pname = str((obs.get("point_name") or {}).get("value")
                 or (obs.get("station_number") or {}).get("value") or "").strip()
     if not pname:
