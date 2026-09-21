@@ -220,7 +220,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_sftp        = _btn("KOSMOS Connexion", "Connexion SFTP / Planification déploiement",     "btn_sftp")
         self.btn_notes       = _btn("Notes",            "Notes de session — mémo libre de la campagne",   "btn_notes",       enabled=False)
         self.btn_load_history = _btn("Données historiques", "Charger les données historiques depuis le serveur", "btn_load_history")
-        self.btn_delete_temp  = _btn("Supprimer temp.json", "Supprimer tous les _temp.json de la campagne courante", "btn_delete_temp", enabled=False)
+        self.btn_delete_temp  = _btn("Supprimer temp.json", "Supprimer tous les _temp.json d'un dossier choisi", "btn_delete_temp")
+
+        self.btn_generate_temp = QtWidgets.QToolButton()
+        self.btn_generate_temp.setText("GÉNÉRER TEMP.JSON")
+        self.btn_generate_temp.setToolTip("Générer les _temp.json pour les vidéos d'un dossier à partir du tableau CSV chargé")
+        self.btn_generate_temp.setObjectName("btn_generate_temp")
+        self.btn_generate_temp.setStyleSheet(
+            "QToolButton { background-color: #1a5c2a; color: #d0f0d8; font-weight: bold;"
+            " font-size: 12px; border: 1px solid #2e9e4a; border-radius: 4px; padding: 4px 12px; }"
+            " QToolButton:hover { background-color: #227a38; }"
+            " QToolButton:pressed { background-color: #145220; }"
+        )
 
         # Boutons regroupés dans une zone défilable horizontalement : sur petit écran,
         # le chevron d'overflow natif de QToolBar gère mal les widgets ajoutés via
@@ -257,6 +268,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.action_toolbar.addWidget(buttons_scroll)
         self.action_toolbar.addWidget(self.btn_load_history)
         self.action_toolbar.addWidget(self.btn_delete_temp)
+        self.action_toolbar.addWidget(self.btn_generate_temp)
 
         self.action_toolbar.setStyleSheet("""
             QToolBar {
@@ -472,6 +484,7 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_notes':            ("Notes",              "Notes de session — mémo libre de la campagne"),
             'btn_load_history':     ("Données historiques",  "Charger les données historiques depuis le serveur"),
             'btn_delete_temp':      ("Supprimer temp.json", "Supprimer tous les _temp.json de la campagne courante"),
+            'btn_generate_temp':    ("GÉNÉRER TEMP.JSON",  "Générer les _temp.json pour les vidéos d'un dossier à partir du tableau CSV chargé"),
         },
         'en': {
             'btn_recent_campaigns': ("Recent campaigns",   "Open a recent campaign"),
@@ -480,6 +493,7 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_notes':            ("Notes",              "Session notes — free memo for the campaign"),
             'btn_load_history':     ("Historical data",    "Load historical data from the server"),
             'btn_delete_temp':      ("Delete temp.json",   "Delete all _temp.json files from the current campaign"),
+            'btn_generate_temp':    ("GENERATE TEMP.JSON", "Generate _temp.json files for videos in a folder from the loaded CSV table"),
         },
     }
 

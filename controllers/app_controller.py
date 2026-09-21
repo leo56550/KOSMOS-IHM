@@ -116,6 +116,9 @@ class AppController(QtCore.QObject):
         if hasattr(window, 'btn_delete_temp'):
             window.btn_delete_temp.clicked.connect(self._delete_temp_jsons)
 
+        if hasattr(window, 'btn_generate_temp'):
+            window.btn_generate_temp.clicked.connect(self._generate_temp_jsons)
+
         # Boutons QUALIFIER / VALIDER retirés : la navigation entre pages n'est plus
         # conditionnée à un clic explicite, seule une campagne chargée est nécessaire.
         btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
@@ -336,12 +339,17 @@ class AppController(QtCore.QObject):
         )
 
     def _delete_temp_jsons(self):
-        """Supprime tous les _temp.json du dossier campagne brut courant après confirmation."""
-        campaign_folder = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
-        if not campaign_folder or not os.path.isdir(campaign_folder):
+        """Supprime tous les _temp.json d'un dossier choisi par l'utilisateur après confirmation."""
+        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le dossier", "Choose folder"),
+            start_dir,
+        )
+        if not folder or not os.path.isdir(folder):
             return
         import glob as _glob
-        temp_files = _glob.glob(os.path.join(campaign_folder, "**", "*_temp.json"), recursive=True)
+        temp_files = _glob.glob(os.path.join(folder, "**", "*_temp.json"), recursive=True)
         if not temp_files:
             QtWidgets.QMessageBox.information(
                 self.window,
@@ -354,8 +362,12 @@ class AppController(QtCore.QObject):
             self.window,
             self.translate("Confirmer la suppression", "Confirm deletion"),
             self.translate(
-                f"{len(temp_files)} fichier(s) _temp.json vont être supprimés.\nCette action est irréversible.\nContinuer ?",
-                f"{len(temp_files)} _temp.json file(s) will be deleted.\nThis action cannot be undone.\nContinue?"
+                f"⚠️ Attention : vous allez perdre toutes vos métadonnées !\n\n"
+                f"{len(temp_files)} fichier(s) _temp.json vont être supprimés.\n"
+                f"Cette action est irréversible.\n\nContinuer ?",
+                f"⚠️ Warning: you will lose all your metadata!\n\n"
+                f"{len(temp_files)} _temp.json file(s) will be deleted.\n"
+                f"This action cannot be undone.\n\nContinue?"
             ),
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No,
@@ -382,17 +394,73 @@ class AppController(QtCore.QObject):
                                f"{len(temp_files)} _temp.json deleted.")
             )
 
+        # Rafraîchir la page métadonnées pour refléter la suppression
+        if hasattr(self.metadonnees_ctrl, '_rebuild_ft_table'):
+            self.metadonnees_ctrl._rebuild_ft_table()
+
     def _load_historical_data(self):
-        """Déclenche le chargement des données historiques (back-end à implémenter)."""
-        # TODO: implémenter la logique de chargement historique
-        QtWidgets.QMessageBox.information(
+        """Ouvre un CSV/XLSX infostation et l'affiche directement dans le tableau métadonnées."""
+        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.window,
-            self.translate("Données historiques", "Historical data"),
-            self.translate(
-                "Chargement des données historiques — fonctionnalité à venir.",
-                "Loading historical data — feature coming soon."
-            )
+            self.translate("Charger données historiques", "Load historical data"),
+            start_dir,
+            "Infostation (*.csv *.xlsx);;CSV (*.csv);;Excel (*.xlsx);;Tous les fichiers (*.*)",
         )
+        if not path:
+            return
+        self.switch_page(self.window.page_metadonnees)
+        self.metadonnees_ctrl.load_csv_into_table(path)
+
+    def _generate_temp_jsons(self):
+        """Choisit un dossier, puis génère les _temp.json pour chaque vidéo matchée dans le tableau."""
+        if self.metadonnees_ctrl._ft_table.rowCount() == 0:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Tableau vide", "Empty table"),
+                self.translate(
+                    "Chargez d'abord un fichier CSV via 'Données historiques'.",
+                    "Please load a CSV file via 'Historical data' first.",
+                ),
+            )
+            return
+
+        start_dir = getattr(self.qualif_ctrl, 'current_campaign_folder', '') or self.working_dir or ""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self.window,
+            self.translate("Choisir le dossier contenant les vidéos", "Choose the folder containing videos"),
+            start_dir,
+        )
+        if not folder:
+            return
+
+        generated, total, failures = self.metadonnees_ctrl.generate_temp_from_table(folder)
+
+        skipped = total - generated
+        summary = self.translate(
+            f"{generated} temp.json générés sur {total} ligne(s).",
+            f"{generated} temp.json generated out of {total} row(s).",
+        )
+
+        if failures:
+            detail_lines = "\n".join(
+                f"  • {name} → {reason}" for name, reason in failures
+            )
+            detail = self.translate(
+                f"\n\n⚠️ {skipped} ligne(s) non traitée(s) :\n{detail_lines}",
+                f"\n\n⚠️ {skipped} row(s) not processed:\n{detail_lines}",
+            )
+            QtWidgets.QMessageBox.warning(
+                self.window,
+                self.translate("Génération terminée avec avertissements", "Generation complete with warnings"),
+                summary + detail,
+            )
+        else:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Génération terminée", "Generation complete"),
+                summary,
+            )
 
     # --- Language ---
 
@@ -473,8 +541,6 @@ class AppController(QtCore.QObject):
 
         if hasattr(self.window, 'btn_notes'):
             self.window.btn_notes.setEnabled(True)
-        if hasattr(self.window, 'btn_delete_temp'):
-            self.window.btn_delete_temp.setEnabled(True)
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session
@@ -636,7 +702,7 @@ class AppController(QtCore.QObject):
     def switch_page(self, page):
         """Bascule vers page si le workflow le permet, arrête les lecteurs de la page courante."""
         w = self.window
-        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction]
+        free_pages = [w.page_accueil, w.page_apropos, w.page_extraction, w.page_metadonnees]
 
         self._stop_background_players(page)
 

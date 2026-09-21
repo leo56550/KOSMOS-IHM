@@ -97,6 +97,14 @@ _FIELD_TYPES: dict = _load_field_types()
 # Schéma complet (section, field_key, name_fr, read_only) pour tous les champs infoStation
 _INFOSTATION_SCHEMA: list[tuple] = _load_infostation_schema()
 
+# Contenu brut de template.json — sert de base pour générer les _temp.json
+try:
+    with open(_TEMPLATE_JSON_PATH, 'r', encoding='utf-8') as _f:
+        _TEMPLATE_BASE: dict = json.load(_f)
+except Exception as _e:
+    print(f"[SCHEMA] Erreur chargement template.json base : {_e}")
+    _TEMPLATE_BASE: dict = {}
+
 # Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
 # section=None → champ calculé ou non mappé (toujours vide)
@@ -1864,6 +1872,258 @@ class MetadonneesController:
             row.append(val)
 
         return row
+
+    # ── Chargement direct CSV/XLSX dans le tableau ───────────────────────
+
+    def load_csv_into_table(self, file_path: str):
+        """Charge un CSV ou XLSX infostation et l'affiche directement dans le tableau (lecture seule)."""
+        # ── Lecture du fichier ────────────────────────────────────────────
+        try:
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext == '.xlsx':
+                import openpyxl as _opxl
+                wb = _opxl.load_workbook(file_path, data_only=True)
+                ws = wb.active
+                headers = [str(c.value or '').strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+                rows = []
+                for ws_row in ws.iter_rows(min_row=2, values_only=True):
+                    rows.append({headers[i]: (str(v) if v is not None else '') for i, v in enumerate(ws_row)})
+            else:
+                with open(file_path, 'r', encoding='utf-8-sig') as f:
+                    sample = f.read(2048)
+                sep = ';' if sample.count(';') >= sample.count(',') else ','
+                rows = []
+                with open(file_path, 'r', encoding='utf-8-sig', newline='') as f:
+                    reader = csv.DictReader(f, delimiter=sep)
+                    for r in reader:
+                        rows.append({k.strip(): (v or '').strip() for k, v in r.items()})
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate(f"Impossible de lire le fichier :\n{e}", f"Cannot read file:\n{e}"),
+            )
+            return
+
+        # ── Remplissage du tableau ────────────────────────────────────────
+        self._ft_table.blockSignals(True)
+        self._ft_table.setSortingEnabled(False)
+        self._ft_table.setRowCount(0)
+        self._ft_table_video_paths = []
+
+        import unicodedata as _ud
+
+        def _norm(s: str) -> str:
+            return _ud.normalize('NFD', s).encode('ascii', 'ignore').decode().strip().lower()
+
+        for row_dict in rows:
+            # Ignorer les lignes entièrement vides
+            if not any(v for v in row_dict.values()):
+                continue
+            norm_row = {_norm(k): v for k, v in row_dict.items()}
+            trow = self._ft_table.rowCount()
+            self._ft_table.insertRow(trow)
+            for col_i, (col_label, _, _, _) in enumerate(_FT_TABLE_COLS):
+                val = (norm_row.get(_norm(col_label)) or '').strip()
+                # Nettoyer les formules Excel (=LIEN_HYPERTEXTE...)
+                if val.startswith('='):
+                    import re as _re_csv
+                    m = _re_csv.search(r'"([^"]*)"[;,]\s*"([^"]*)"', val)
+                    val = m.group(2) if m else ''
+                cell = QtWidgets.QTableWidgetItem(val)
+                cell.setFlags(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled)
+                self._ft_table.setItem(trow, col_i, cell)
+
+        self._ft_table.blockSignals(False)
+        self._ft_table.setSortingEnabled(True)
+
+    def generate_temp_from_table(self, folder_path: str) -> tuple[int, int, list[tuple[str, str]]]:
+        """Génère les _temp.json pour les vidéos de folder_path à partir du tableau chargé.
+
+        Chaque _temp.json est initialisé depuis template.json (structure complète), puis les
+        valeurs du tableau viennent écraser les champs correspondants.
+        Matching : colonne 'video_number' (sans extension, insensible à la casse).
+        Retourne (nb_générés, nb_lignes_tableau, [(video_name, raison_echec), ...]).
+        """
+        import copy as _copy
+
+        failures: list[tuple[str, str]] = []
+
+        if not _TEMPLATE_BASE:
+            return 0, 0, [("—", "template.json introuvable ou vide")]
+
+        # Index de la colonne "Nom de la video" (video_number)
+        video_name_col = next(
+            (i for i, (_, _, fk, _) in enumerate(_FT_TABLE_COLS) if fk == "video_number"),
+            None,
+        )
+        if video_name_col is None:
+            return 0, 0, [("—", "Colonne 'Nom de la video' introuvable dans le schéma")]
+
+        # Scanner récursivement le dossier pour tous les fichiers vidéo
+        _VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.mts', '.m2ts', '.mpg', '.mpeg', '.m4v'}
+        stem_to_path: dict[str, str] = {}
+        for root, _dirs, files in os.walk(folder_path):
+            for fname in files:
+                if os.path.splitext(fname)[1].lower() in _VIDEO_EXTS:
+                    stem = os.path.splitext(fname)[0].lower()
+                    stem_to_path[stem] = os.path.join(root, fname)
+
+        # Colonnes écrivables : section non-None et champ non calculé
+        writable_cols = [
+            (col_i, sec, fk)
+            for col_i, (_, sec, fk, _) in enumerate(_FT_TABLE_COLS)
+            if sec is not None and fk not in _COMPUTED_FIELDS
+        ]
+
+        total = self._ft_table.rowCount()
+        generated = 0
+
+        for row in range(total):
+            item = self._ft_table.item(row, video_name_col)
+            video_val = item.text().strip() if item else ''
+            if not video_val:
+                failures.append(("(ligne vide)", f"Ligne {row + 1} : nom de vidéo absent"))
+                continue
+
+            stem_key = os.path.splitext(video_val)[0].lower()
+            video_path = stem_to_path.get(stem_key)
+            if not video_path:
+                failures.append((video_val, "Fichier vidéo non trouvé dans le dossier sélectionné"))
+                continue
+
+            temp_path = get_temp_json_path(video_path)
+
+            # Base = copie fraîche de template.json (chargé au niveau module)
+            jdata = _copy.deepcopy(_TEMPLATE_BASE)
+
+            for col_i, sec, fk in writable_cols:
+                titem = self._ft_table.item(row, col_i)
+                val = titem.text().strip() if titem else ''
+                if not val:
+                    continue
+                block = jdata.setdefault(sec, {})
+                if fk in block and isinstance(block[fk], dict):
+                    block[fk]['value'] = val
+                else:
+                    block[fk] = {'value': val}
+
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(jdata, f, indent=4, ensure_ascii=False)
+                generated += 1
+            except Exception as e:
+                failures.append((video_val, f"Erreur écriture : {e}"))
+
+        return generated, total, failures
+
+    # ── Import CSV historique (matching + écriture temp.json) ────────────
+
+    def import_from_infostation_csv(self, csv_path: str) -> tuple[int, int]:
+        """Importe un CSV infostation et écrit les valeurs dans les _temp.json correspondants.
+
+        Retourne (nb_matched, nb_total_rows).
+        Matching : 'Nom de la video' (sans extension) → video_path dans la table courante.
+        """
+        # Index stem → video_path depuis le tableau courant
+        stem_to_path: dict[str, str] = {}
+        for row in range(self._ft_table.rowCount()):
+            item = self._ft_table.item(row, 0)
+            if item is None:
+                continue
+            vp = item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if vp:
+                stem = os.path.splitext(os.path.basename(str(vp)))[0].lower()
+                stem_to_path[stem] = str(vp)
+
+        # Colonnes à écrire : (section, field_key, col_name), skip computed/None
+        writable = [
+            (sec, fk, col)
+            for sec, fk, col in _INFOSTATION_CSV_SCHEMA
+            if sec is not None and fk not in _COMPUTED_FIELDS
+        ]
+
+        # Parse CSV ou XLSX
+        try:
+            ext = os.path.splitext(csv_path)[1].lower()
+            if ext == '.xlsx':
+                import openpyxl as _opxl
+                wb = _opxl.load_workbook(csv_path, data_only=True)
+                ws = wb.active
+                headers = [str(c.value or '').strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+                rows = []
+                for ws_row in ws.iter_rows(min_row=2, values_only=True):
+                    rows.append({headers[i]: (str(v) if v is not None else '') for i, v in enumerate(ws_row)})
+            else:
+                with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                    sample = f.read(2048)
+                sep = ';' if sample.count(';') >= sample.count(',') else ','
+                rows = []
+                with open(csv_path, 'r', encoding='utf-8-sig', newline='') as f:
+                    reader = csv.DictReader(f, delimiter=sep)
+                    for r in reader:
+                        rows.append(r)
+        except Exception as e:
+            print(f"[IMPORT CSV] Erreur lecture : {e}")
+            return 0, 0
+
+        matched = 0
+        for row_dict in rows:
+            # Clé de matching : 'Nom de la video' sans extension
+            video_val = (row_dict.get('Nom de la video') or '').strip()
+            if not video_val:
+                continue
+            stem_key = os.path.splitext(video_val)[0].lower()
+            video_path = stem_to_path.get(stem_key)
+            if not video_path:
+                continue
+
+            temp_path = get_temp_json_path(video_path)
+            raw_path  = get_video_json_path(video_path)
+
+            # Charge ou initialise le temp.json
+            if os.path.isfile(temp_path):
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as f:
+                        jdata = json.load(f)
+                except Exception:
+                    jdata = {}
+            elif os.path.isfile(raw_path):
+                try:
+                    with open(raw_path, 'r', encoding='utf-8') as f:
+                        jdata = json.load(f)
+                except Exception:
+                    jdata = {}
+            else:
+                jdata = {}
+
+            # Écrit chaque champ non-vide
+            changed = False
+            for sec, fk, col in writable:
+                val = (row_dict.get(col) or '').strip()
+                # Ignorer les formules Excel
+                if val.startswith('='):
+                    val = ''
+                if not val:
+                    continue
+                block = jdata.setdefault(sec, {})
+                if fk in block and isinstance(block[fk], dict):
+                    block[fk]['value'] = val
+                else:
+                    block[fk] = {'value': val}
+                changed = True
+
+            if changed:
+                try:
+                    with open(temp_path, 'w', encoding='utf-8') as f:
+                        json.dump(jdata, f, indent=4, ensure_ascii=False)
+                    matched += 1
+                except Exception as e:
+                    print(f"[IMPORT CSV] Erreur écriture {temp_path}: {e}")
+
+        # Rafraîchit le tableau
+        self._rebuild_ft_table()
+        return matched, len(rows)
 
     # ── Feature : vérification cohérence ────────────────────────────────
 
