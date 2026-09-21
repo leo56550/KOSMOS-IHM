@@ -195,6 +195,9 @@ class ExtractionController:
                 except Exception as e:
                     print(f"[MOTEURS] Erreur : {e}")
 
+            if hasattr(self.video_player, 'load_video_and_events'):
+                self.video_player.load_video_and_events(video_payload, motor_events, is_stereo=is_stereo)
+
             csv_telemetry = video_path.replace(".mp4", ".csv")
             if os.path.exists(csv_telemetry):
                 self.video_player.load_dynamic_metadata(csv_telemetry)
@@ -202,9 +205,6 @@ class ExtractionController:
                 self.video_player.df_telemetry = None
                 self.video_player.btn_telemetry.setEnabled(False)
                 self.video_player.btn_telemetry.setChecked(False)
-
-            if hasattr(self.video_player, 'load_video_and_events'):
-                self.video_player.load_video_and_events(video_payload, motor_events, is_stereo=is_stereo)
 
             self.update_segmentation_display()
 

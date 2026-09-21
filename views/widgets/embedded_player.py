@@ -458,12 +458,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         # ── Telemetry dialog ──────────────────────────────────────────────
         self.telemetry_dialog = TelemetryDialog(self)
         self.telemetry_dialog.finished.connect(lambda _: self.btn_telemetry.setChecked(False))
-        self.telemetry_dialog.finished.connect(lambda _: self._sync_telemetry_timer())
-
-        # Timer dédié au curseur télémétrie — découplé du positionChanged vidéo (~10 fps)
-        self._telemetry_timer = QtCore.QTimer(self)
-        self._telemetry_timer.setInterval(100)
-        self._telemetry_timer.timeout.connect(self._tick_telemetry_cursor)
+        self.telemetry_dialog.time_clicked.connect(
+            lambda t_s: self.player.setPosition(int(t_s * 1000)))
 
         # ── Splitter ──────────────────────────────────────────────────────
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -810,23 +806,9 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         """Met en pause le flux principal."""
         self.player.pause()
 
-    def _sync_telemetry_timer(self):
-        """Démarre ou arrête le timer de curseur télémétrie selon l'état lecture + visibilité dialog."""
-        is_playing = self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        if is_playing and self.telemetry_dialog.isVisible():
-            if not self._telemetry_timer.isActive():
-                self._telemetry_timer.start()
-        else:
-            self._telemetry_timer.stop()
-
-    def _tick_telemetry_cursor(self):
-        """Appelé par _telemetry_timer (~10 fps) — met à jour le curseur sans bloquer la vidéo."""
-        self.telemetry_dialog.update_cursor(self.player.position() / 1000.0)
-
     def _on_playback_state_changed(self, state):
         """Met à jour l'état des corrections et émet playback_state_changed lors d'un changement d'état."""
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
-        self._sync_telemetry_timer()
         if is_playing:
             # Reprendre la lecture : repasser au rendu hardware, purger la frame brute
             self.left_display.setCurrentIndex(0)
@@ -888,9 +870,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
                 self.player.pause()
         self.player.setPosition(target_ms)
         self.center_scroll_on_cursor()
-        # Synchroniser le curseur de télémétrie pendant le drag (positionChanged peut être différé)
-        if self.current_video_path and hasattr(self, 'telemetry_dialog') and self.telemetry_dialog.isVisible():
-            self.telemetry_dialog.update_cursor(target_ms / 1000.0)
 
     def on_timeline_released(self, target_ms: int):
         """Reprend la lecture si elle était active avant le drag timeline."""
@@ -974,6 +953,7 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.slider_was_playing = False
         self._last_raw_frame = None
         self.timeline.events = events
+        self.timeline.set_depth_profile([])
 
         has_video = False
 
@@ -1103,6 +1083,21 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.df_telemetry = df
             self.telemetry_dialog.update_data(df)
             self.btn_telemetry.setEnabled(True)
+
+            # Profil de profondeur → timeline
+            if 'profondeur' in df.columns and 'Delta' in df.columns:
+                profile = []
+                for _, row in df.iterrows():
+                    try:
+                        t_ms = int(float(row['Delta']) * 1000)
+                        d = float(row['profondeur'])
+                        if t_ms >= 0 and d >= 0:
+                            profile.append((t_ms, d))
+                    except (TypeError, ValueError):
+                        pass
+                self.timeline.set_depth_profile(profile)
+            else:
+                self.timeline.set_depth_profile([])
         except Exception as e:
             print(f"[Télémétrie] Erreur chargement : {e}")
 
@@ -1111,7 +1106,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.telemetry_dialog.show()
         else:
             self.telemetry_dialog.hide()
-        self._sync_telemetry_timer()
 
     def play_all(self):
         """Lance la lecture sur le flux L et (en stéréo) le flux R."""

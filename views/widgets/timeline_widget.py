@@ -41,6 +41,9 @@ class VideoTimeline(QtWidgets.QWidget):
 
         self.rects_evenements = {}
 
+        self._depth_profile: list = []   # [(time_ms, depth_m), ...]
+        self._depth_max: float = 0.0
+
         self.setMinimumHeight(160)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
@@ -206,6 +209,9 @@ class VideoTimeline(QtWidgets.QWidget):
                 x = self._clamp_int((t / total_duration) * width)
                 painter.drawLine(x, RH, x, H)
                 t += tick_ms
+
+        # ── Profil de profondeur (fond, avant les événements) ─────────────────
+        self._draw_depth_profile(painter, width, RH, H, total_duration)
 
         # ── Segments (atterrissage→décollage) ────────────────────────────────
         self.rects_evenements.clear()
@@ -399,6 +405,69 @@ class VideoTimeline(QtWidgets.QWidget):
             ])
 
         painter.end()
+
+    # ── Profil de profondeur ──────────────────────────────────────────────────
+
+    def set_depth_profile(self, data: list):
+        """Définit le profil de profondeur : liste de (time_ms: int, depth_m: float)."""
+        self._depth_profile = data or []
+        self._depth_max = max((d for _, d in self._depth_profile if d is not None), default=0.0)
+        self.update()
+
+    def _draw_depth_profile(self, painter: QtGui.QPainter, width: int,
+                             RH: int, H: int, total_duration: int):
+        """Dessine le profil de profondeur en fond de timeline (colonne d'eau au-dessus de la caméra)."""
+        if not self._depth_profile or total_duration <= 0 or self._depth_max <= 0:
+            return
+
+        content_h = H - RH
+
+        # ── Polygone : surface → profil → surface (colonne d'eau) ────────────
+        pts = []
+        first_x = self._clamp_int((self._depth_profile[0][0] / total_duration) * width)
+        pts.append(QtCore.QPointF(first_x, RH))
+        for time_ms, depth_m in self._depth_profile:
+            x = self._clamp_int((time_ms / total_duration) * width)
+            y = RH + (max(0.0, depth_m) / self._depth_max) * content_h
+            pts.append(QtCore.QPointF(x, y))
+        last_x = self._clamp_int((self._depth_profile[-1][0] / total_duration) * width)
+        pts.append(QtCore.QPointF(last_x, RH))
+
+        path = QtGui.QPainterPath()
+        path.moveTo(pts[0])
+        for p in pts[1:]:
+            path.lineTo(p)
+        path.closeSubpath()
+
+        grad = QtGui.QLinearGradient(0, RH, 0, H)
+        grad.setColorAt(0.0, QtGui.QColor(0, 200, 255, 55))
+        grad.setColorAt(1.0, QtGui.QColor(0,  60, 140, 90))
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.fillPath(path, grad)
+
+        # ── Ligne de surface (contour du profil) ─────────────────────────────
+        pen_line = QtGui.QPen(QtGui.QColor(0, 210, 255, 180), 1.2)
+        painter.setPen(pen_line)
+        for i in range(1, len(self._depth_profile)):
+            t1, d1 = self._depth_profile[i - 1]
+            t2, d2 = self._depth_profile[i]
+            x1 = self._clamp_int((t1 / total_duration) * width)
+            y1 = RH + (max(0.0, d1) / self._depth_max) * content_h
+            x2 = self._clamp_int((t2 / total_duration) * width)
+            y2 = RH + (max(0.0, d2) / self._depth_max) * content_h
+            painter.drawLine(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2))
+
+        # ── Labels axe profondeur (droite, 4 paliers) ─────────────────────────
+        f_depth = QtGui.QFont("Segoe UI", 7)
+        painter.setFont(f_depth)
+        painter.setPen(QtGui.QColor(0, 200, 255, 120))
+        for i in range(5):
+            depth = self._depth_max * i / 4
+            y = int(RH + (depth / self._depth_max) * content_h)
+            lbl = f"{depth:.1f}m"
+            painter.drawText(width - 40, y - 7, 38, 14,
+                             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                             lbl)
 
     # ── Helpers visuels ───────────────────────────────────────────────────────
 

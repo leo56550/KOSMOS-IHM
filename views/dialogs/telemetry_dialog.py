@@ -21,6 +21,8 @@ _LUX_RGB_COLS = {
 class TelemetryDialog(QtWidgets.QDialog):
     """Dialogue d'analyse télémétrie : graphes pyqtgraph (température, profondeur, exposition, RGB lux)."""
 
+    time_clicked = QtCore.pyqtSignal(float)  # secondes depuis le début de la vidéo
+
     _METRIC_TRANSLATIONS = {
         "température":  ("Température (°C)",       "Temperature (°C)"),
         "profondeur":   ("Profondeur (m)",          "Depth (m)"),
@@ -41,7 +43,6 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.full_df = None
         self.plots        = {}   # key → PlotDataItem
         self.stacks       = {}   # key → QStackedWidget
-        self.v_lines      = []   # InfiniteLines des métriques dynamiques seulement
         self.plot_widgets = {}   # key → PlotWidget (for title updates)
         self.missing_labels = {} # key → QLabel (for "données manquantes" text updates)
         self._lux_rgb_curves = {}  # col → PlotDataItem (RLux, GLux, BLux)
@@ -69,17 +70,8 @@ class TelemetryDialog(QtWidgets.QDialog):
             if key == "profondeur":
                 pw.invertY(True)
             curve = pw.plot(pen=pg.mkPen(color, width=1.5))
-
-            v_line = pg.InfiniteLine(
-                pos=0, angle=90,
-                pen=pg.mkPen('w', width=1,
-                             style=QtCore.Qt.PenStyle.DashLine),
-                label='{value:0.2f}s',
-                labelOpts={'position': 0.1, 'color': 'w',
-                           'fill': (0, 0, 0, 150)}
-            )
-            pw.addItem(v_line)
-            self.v_lines.append(v_line)
+            pw.scene().sigMouseClicked.connect(
+                lambda evt, _pw=pw: self._on_graph_clicked(evt, _pw))
 
             # --- Bandeau "données manquantes" (très compact) ---
             missing_w = QtWidgets.QWidget()
@@ -119,14 +111,8 @@ class TelemetryDialog(QtWidgets.QDialog):
                 pen=pg.mkPen(color, width=1.5), name=name
             )
 
-        v_line_lux = pg.InfiniteLine(
-            pos=0, angle=90,
-            pen=pg.mkPen('w', width=1, style=QtCore.Qt.PenStyle.DashLine),
-            label='{value:0.2f}s',
-            labelOpts={'position': 0.1, 'color': 'w', 'fill': (0, 0, 0, 150)}
-        )
-        pw_lux.addItem(v_line_lux)
-        self.v_lines.append(v_line_lux)
+        pw_lux.scene().sigMouseClicked.connect(
+            lambda evt, _pw=pw_lux: self._on_graph_clicked(evt, _pw))
 
         stack_lux = QtWidgets.QStackedWidget()
         missing_lux = QtWidgets.QWidget()
@@ -148,16 +134,38 @@ class TelemetryDialog(QtWidgets.QDialog):
         self.stacks["lux_rgb"] = stack_lux
         main_layout.addWidget(stack_lux, stretch=3)
 
+        # ── Bouton Réinitialiser ─────────────────────────────────────────────
+        self._btn_reset = QtWidgets.QPushButton("RÉINITIALISER")
+        self._btn_reset.setFixedHeight(28)
+        self._btn_reset.setStyleSheet(
+            "QPushButton { background: #1a3a50; color: #7ec8e3; border: 1px solid #2778A2;"
+            " border-radius: 4px; font-size: 11px; font-family: 'Segoe UI'; padding: 0 12px; }"
+            "QPushButton:hover { background: #2778A2; color: #ffffff; }"
+            "QPushButton:pressed { background: #1a5070; }"
+        )
+        self._btn_reset.clicked.connect(self._reset_all_views)
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(self._btn_reset)
+        main_layout.addLayout(btn_row)
+
     # ── Language ──────────────────────────────────────────────────────────
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne la chaîne fr ou en selon la langue active."""
         return fr if self.current_language == 'fr' else en
 
+    def _reset_all_views(self):
+        """Remet tous les graphes visibles en vue auto (zoom/pan réinitialisé)."""
+        for pw in self.plot_widgets.values():
+            pw.enableAutoRange()
+            pw.autoRange()
+
     def set_language(self, language: str):
         """Met à jour la langue, le titre et les libellés des métriques."""
         self.current_language = language
         self.setWindowTitle(self.translate("Analyse Télémétrie", "Telemetry Analysis"))
+        self._btn_reset.setText(self.translate("RÉINITIALISER", "RESET VIEW"))
         missing_suffix = self.translate("données manquantes", "missing data")
         for key, (fr_label, en_label) in self._METRIC_TRANSLATIONS.items():
             label = fr_label if language == 'fr' else en_label
@@ -221,9 +229,6 @@ class TelemetryDialog(QtWidgets.QDialog):
         else:
             self._show_missing("lux_rgb", self.stacks["lux_rgb"])
 
-        for v_line in self.v_lines:
-            v_line.setValue(0)
-
     def _show_missing(self, key: str, stack: QtWidgets.QStackedWidget):
         """Bascule le stack sur la page 'données manquantes' (bandeau compact)."""
         stack.setCurrentIndex(1)
@@ -234,9 +239,19 @@ class TelemetryDialog(QtWidgets.QDialog):
         stack.setCurrentIndex(0)
         stack.setMaximumHeight(16777215)
 
-    # ── Curseur dynamique (ExpTime + Lux seulement) ───────────────────────
+    def _on_graph_clicked(self, event, pw):
+        """Émet time_clicked (en secondes) quand l'utilisateur clique sur un graphe."""
+        if event.button() != QtCore.Qt.MouseButton.LeftButton:
+            return
+        vb = pw.getViewBox()
+        if vb is None:
+            return
+        mouse_point = vb.mapSceneToView(event.scenePos())
+        t = mouse_point.x()
+        if self.full_df is not None and 'Delta' in self.full_df.columns:
+            t_max = float(self.full_df['Delta'].max())
+            t = max(0.0, min(t, t_max))
+        else:
+            t = max(0.0, t)
+        self.time_clicked.emit(t)
 
-    def update_cursor(self, current_seconds):
-        """Déplace les curseurs verticaux dynamiques à la position temporelle courante."""
-        for v_line in self.v_lines:
-            v_line.setValue(current_seconds)

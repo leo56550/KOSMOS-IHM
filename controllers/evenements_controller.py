@@ -1690,6 +1690,7 @@ class EvenementsController:
             self.tree_captures.blockSignals(False)
 
         if hasattr(self, 'event_player') and self.event_player:
+            self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
             csv_telemetry = self.current_video_path.replace(".mp4", ".csv")
             if os.path.exists(csv_telemetry):
                 self.event_player.load_dynamic_metadata(csv_telemetry)
@@ -1697,7 +1698,6 @@ class EvenementsController:
                 self.event_player.df_telemetry = None
                 self.event_player.btn_telemetry.setEnabled(False)
                 self.event_player.btn_telemetry.setChecked(False)
-            self.event_player.load_video_and_events(video_to_load, timeline_events, is_stereo=is_stereo)
 
     def charger_evenements_du_json(self):
         """Lit le JSON vidéo courant, construit event_dictionary et reconstruit les boutons."""

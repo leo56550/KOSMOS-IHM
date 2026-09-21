@@ -618,14 +618,6 @@ class ValidationController:
             except Exception:
                 pass
 
-        csv_telemetry = selected_video_path.replace(".mp4", ".csv")
-        if os.path.exists(csv_telemetry):
-            self.player.load_dynamic_metadata(csv_telemetry)
-        else:
-            self.player.df_telemetry = None
-            self.player.btn_telemetry.setEnabled(False)
-            self.player.btn_telemetry.setChecked(False)
-
         # Reset ardoise buttons, puis applique l'état réel depuis le JSON
         self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
@@ -665,6 +657,14 @@ class ValidationController:
         except Exception:
             pass
         self.player.load_video_and_events(video_to_load, detected_events, is_stereo=is_stereo)
+
+        csv_telemetry = selected_video_path.replace(".mp4", ".csv")
+        if os.path.exists(csv_telemetry):
+            self.player.load_dynamic_metadata(csv_telemetry)
+        else:
+            self.player.df_telemetry = None
+            self.player.btn_telemetry.setEnabled(False)
+            self.player.btn_telemetry.setChecked(False)
 
         # Nouvelle vidéo : toujours repartir en mode lecteur (recherche de l'ardoise)
         # à vitesse x1, et précharger la vue des secteurs pour qu'elle soit prête
