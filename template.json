@@ -69,7 +69,8 @@
       "acquisition_mode": "Web application - IHM qualification",
       "example": "ATL (pour Atlantique), MED (pour Méditerranée)...",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Region"
     },
     "zone": {
       "name": "Zone",
@@ -166,37 +167,38 @@
       "acquisition_mode": "Web application - IHM qualification",
       "example": "Ifremer, KAL, OFB... ",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Partenaires"
     }
   },
   "video_observation": {
     "video_path": {
       "name": "Video path",
-      "name_fr": "Dossier vidéos",
+      "name_fr": "Dossier vidéo",
       "type": "str",
       "format": "Texte",
       "value": null,
-      "description": "Path towrds the videos file ",
-      "description_fr": "Chemin vers le dossier des vidéos",
+      "description": "Path towrds the video file ",
+      "description_fr": "Chemin vers le dossier de la vidéo",
       "acquisition_mode": "IHM qualification",
-      "example": "260701_ATL_CC_ENEZEG\\260701_SVR_K54",
+      "example": "ATL_CC_260701_ENEZEG\\260701_SVR_K54\\0041",
       "ifdo_id": null,
       "infoStation_visibility": "oui",
       "infoStation_equivalent": "Dossier Datawork"
     },
     "video_number": {
-      "name": "Video number",
-      "name_fr": "Numéro de la vidéo",
+      "name": "Video name",
+      "name_fr": "Nom de la video",
       "type": "str",
-      "format": "4digits",
+      "format": "Texte + extension",
       "value": null,
       "description": "Video number",
-      "description_fr": "Numéro de la vidéo",
+      "description_fr": "Nom de la vidéo",
       "acquisition_mode": "IHM qualification",
-      "example": "0148",
+      "example": "0148.mp4",
       "ifdo_id": null,
       "infoStation_visibility": "oui",
-      "infoStation_equivalent": "sous-dossier video & metadata"
+      "infoStation_equivalent": "Nom de la video"
     },
     "exploitable": {
       "name": "Exploitable",
@@ -262,7 +264,8 @@
       "description_fr": "Time code auquel l'ardoise est la plus visible",
       "acquisition_mode": "IHM validation (video review)",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Ardoise"
     },
     "codeObs": {
       "name": "Station number",
@@ -538,6 +541,7 @@
       "acquisition_mode": "IHM métadonnées (astronomical API)",
       "ifdo_id": null,
       "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Coefficient",
       "example": 85
     },
     "moon": {
@@ -643,7 +647,8 @@
       "description_fr": "Direction du vent",
       "acquisition_mode": "IHM métadonnées (weather API)",
       "ifdo_id": null,
-      "infoStation_visibility": "non",
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Direction",
       "example": "N",
       "authorized_values_en": [
         "N",
@@ -789,7 +794,8 @@
       "acquisition_mode": "IHM metadonnnnées",
       "example": "20190626161037_MED_CB190004",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Nom du fichier"
     },
 
     "timecode_landing": {
@@ -802,7 +808,8 @@
       "description_fr": "Time code de l'atterrissage sur le sol",
       "acquisition_mode": "IHM events",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Atterrissage"
     },
     "timecode_takeoff": {
       "name": "Timecode takeoff",
@@ -814,7 +821,8 @@
       "description_fr": "Time code adu décollage",
       "acquisition_mode": "IHM events",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Decollage"
     },
     "timecode_debut": {
       "name": "Timecode analysis starting",
@@ -826,7 +834,8 @@
       "description_fr": "Time code auquel débute l'annotation",
       "acquisition_mode": "IHM events",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Debut analyse"
     },
     "timecode_end": {
       "name": "Analysis ending timecode",
@@ -838,7 +847,8 @@
       "description_fr": "Time code auquel s'arrête l'annotation, typiquement 3 rotations après son début",
       "acquisition_mode": "IHM events",
       "ifdo_id": null,
-      "infoStation_visibility": "oui"
+      "infoStation_visibility": "oui",
+      "infoStation_equivalent": "Fin analyse"
     },
  
     "estimated_visibility": {

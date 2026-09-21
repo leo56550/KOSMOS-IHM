@@ -220,6 +220,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_sftp        = _btn("KOSMOS Connexion", "Connexion SFTP / Planification déploiement",     "btn_sftp")
         self.btn_notes       = _btn("Notes",            "Notes de session — mémo libre de la campagne",   "btn_notes",       enabled=False)
         self.btn_load_history = _btn("Données historiques", "Charger les données historiques depuis le serveur", "btn_load_history")
+        self.btn_delete_temp  = _btn("Supprimer temp.json", "Supprimer tous les _temp.json de la campagne courante", "btn_delete_temp", enabled=False)
 
         # Boutons regroupés dans une zone défilable horizontalement : sur petit écran,
         # le chevron d'overflow natif de QToolBar gère mal les widgets ajoutés via
@@ -255,6 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.action_toolbar.addWidget(buttons_scroll)
         self.action_toolbar.addWidget(self.btn_load_history)
+        self.action_toolbar.addWidget(self.btn_delete_temp)
 
         self.action_toolbar.setStyleSheet("""
             QToolBar {
@@ -468,7 +470,8 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_open_video':       ("Ouvrir vidéo",       "Ouvrir un fichier MP4 sans charger de campagne"),
             'btn_sftp':             ("KOSMOS Connexion",   "Connexion SFTP / Planification déploiement"),
             'btn_notes':            ("Notes",              "Notes de session — mémo libre de la campagne"),
-            'btn_load_history':     ("Données historiques","Charger les données historiques depuis le serveur"),
+            'btn_load_history':     ("Données historiques",  "Charger les données historiques depuis le serveur"),
+            'btn_delete_temp':      ("Supprimer temp.json", "Supprimer tous les _temp.json de la campagne courante"),
         },
         'en': {
             'btn_recent_campaigns': ("Recent campaigns",   "Open a recent campaign"),
@@ -476,6 +479,7 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_sftp':             ("KOSMOS Connection",  "SFTP connection / Deployment planning"),
             'btn_notes':            ("Notes",              "Session notes — free memo for the campaign"),
             'btn_load_history':     ("Historical data",    "Load historical data from the server"),
+            'btn_delete_temp':      ("Delete temp.json",   "Delete all _temp.json files from the current campaign"),
         },
     }
 

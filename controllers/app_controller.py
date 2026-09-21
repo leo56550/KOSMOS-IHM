@@ -113,6 +113,9 @@ class AppController(QtCore.QObject):
         if hasattr(window, 'btn_load_history'):
             window.btn_load_history.clicked.connect(self._load_historical_data)
 
+        if hasattr(window, 'btn_delete_temp'):
+            window.btn_delete_temp.clicked.connect(self._delete_temp_jsons)
+
         # Boutons QUALIFIER / VALIDER retirés : la navigation entre pages n'est plus
         # conditionnée à un clic explicite, seule une campagne chargée est nécessaire.
         btn_finir_qualif = window.findChild(QtWidgets.QPushButton, "btn_finir_qualif")
@@ -332,6 +335,53 @@ class AppController(QtCore.QObject):
             working_dir=working_dir,
         )
 
+    def _delete_temp_jsons(self):
+        """Supprime tous les _temp.json du dossier campagne brut courant après confirmation."""
+        campaign_folder = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
+        if not campaign_folder or not os.path.isdir(campaign_folder):
+            return
+        import glob as _glob
+        temp_files = _glob.glob(os.path.join(campaign_folder, "**", "*_temp.json"), recursive=True)
+        if not temp_files:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Aucun fichier", "No files"),
+                self.translate("Aucun _temp.json trouvé dans le dossier de travail.",
+                               "No _temp.json found in the working directory.")
+            )
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.window,
+            self.translate("Confirmer la suppression", "Confirm deletion"),
+            self.translate(
+                f"{len(temp_files)} fichier(s) _temp.json vont être supprimés.\nCette action est irréversible.\nContinuer ?",
+                f"{len(temp_files)} _temp.json file(s) will be deleted.\nThis action cannot be undone.\nContinue?"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        errors = []
+        for f in temp_files:
+            try:
+                os.remove(f)
+            except Exception as e:
+                errors.append(f"{os.path.basename(f)}: {e}")
+        if errors:
+            QtWidgets.QMessageBox.warning(
+                self.window,
+                self.translate("Erreurs", "Errors"),
+                "\n".join(errors)
+            )
+        else:
+            QtWidgets.QMessageBox.information(
+                self.window,
+                self.translate("Suppression terminée", "Deletion complete"),
+                self.translate(f"{len(temp_files)} _temp.json supprimé(s).",
+                               f"{len(temp_files)} _temp.json deleted.")
+            )
+
     def _load_historical_data(self):
         """Déclenche le chargement des données historiques (back-end à implémenter)."""
         # TODO: implémenter la logique de chargement historique
@@ -423,6 +473,8 @@ class AppController(QtCore.QObject):
 
         if hasattr(self.window, 'btn_notes'):
             self.window.btn_notes.setEnabled(True)
+        if hasattr(self.window, 'btn_delete_temp'):
+            self.window.btn_delete_temp.setEnabled(True)
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session

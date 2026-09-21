@@ -24,7 +24,7 @@ from models.video_model import VideoFilterProxyModel
 _TEMPLATE_JSON_PATH = os.path.join(os.path.dirname(__file__), '..', 'template.json')
 
 # Champs calculés automatiquement (non éditables dans le tableau)
-_COMPUTED_FIELDS = {"codeObs", "video_path"}
+_COMPUTED_FIELDS = {"codeObs", "video_path", "video_number"}
 
 # Champs de l'en-tête campagne (identiques pour toutes les vidéos → read-only dans le tableau)
 _CAMPAIGN_HEADER_KEYS = {
@@ -120,7 +120,7 @@ _INFOSTATION_CSV_SCHEMA: list[tuple] = [
     ("video_observation", "deployment_comment",        "Commentaires terrain pose"),         # col 16
     ("video_observation", "location_comment",          "Commentaires terrain localisation"),  # col 17
     ("video_observation", "video_path",                "Dossier Datawork"),       # col 18
-    ("video_observation", "video_number",              "sous-dossier video & metadata"),      # col 19
+    ("video_observation", "video_number",              "Nom de la video"),                    # col 19
     ("video_observation", "derush_comment",            "Commentaires video"),     # col 20
     (None,                "events_interesting_images", "Images interessantes"),   # col 21 – calculé
     ("video_observation", "habitat",                   "Milieu/Habitat"),         # col 22
@@ -1769,16 +1769,26 @@ class MetadonneesController:
                 val = self._fmt_date(val) if val else ""
 
             elif field_key == "video_path" and not val:
+                import re as _re_vp
                 _vdir = os.path.dirname(os.path.normpath(video_path))
-                _sys = os.path.basename(os.path.dirname(_vdir))
-                _camp = os.path.basename(os.path.dirname(os.path.dirname(_vdir)))
-                val = f"{_camp}\\{_sys}"
+                _direct = os.path.basename(_vdir)
+                if _re_vp.match(r'^\d{4}$', _direct):
+                    # Nouvelle structure : campagne\système\station\video.mp4
+                    _sys  = os.path.basename(os.path.dirname(_vdir))
+                    _camp = os.path.basename(os.path.dirname(os.path.dirname(_vdir)))
+                    val   = f"{_camp}\\{_sys}\\{_direct}"
+                else:
+                    # Ancienne structure : campagne\système\video.mp4
+                    _sys  = _direct
+                    _camp = os.path.basename(os.path.dirname(_vdir))
+                    val   = f"{_camp}\\{_sys}"
 
             elif field_key == "video_file_name" and not val:
                 val = stem
 
-            elif field_key == "video_number" and not val:
-                val = os.path.basename(os.path.dirname(os.path.normpath(video_path)))
+            elif field_key == "video_number":
+                # Toujours recalculé depuis le chemin (ignore les valeurs stockées au format ancien)
+                val = os.path.basename(os.path.normpath(video_path))
 
             elif field_key == "latitude":
                 val = val.replace('.', ',') if val else lat_gps
@@ -1848,9 +1858,6 @@ class MetadonneesController:
                 _label = val.replace('"', '""')
                 val = f'=LIEN_HYPERTEXTE("{_target}";"{_label}")'
 
-            # video_number est un nom de dossier ("0181"), pas un nombre : sans ce forçage,
-            # Excel réinterprète automatiquement la cellule CSV comme un entier et perd le
-            # zéro de tête ("0181" → 181).
             if for_csv and field_key == "video_number" and val:
                 val = f'="{val}"'
 
