@@ -480,6 +480,35 @@ class MetadonneesController:
             "color: #D94F38; font-size: 10px; border: none; font-family: 'Segoe UI', sans-serif;")
         tb_row.addWidget(self.lbl_video_count)
         tb_row.addWidget(self.lbl_trash_count)
+
+        _btn_style_fill = (
+            "QPushButton{background:#3a2a1a;color:#e8c080;border:1px solid #8a5a2a;"
+            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
+            "font-family:'Segoe UI',sans-serif;}"
+            "QPushButton:hover{background:#8a5a2a;color:white;}"
+        )
+        self._btn_incrementer = QtWidgets.QPushButton(
+            self.translate("Incrémenter ↓", "Increment ↓"))
+        self._btn_incrementer.setToolTip(self.translate(
+            "Sélectionnez la cellule de départ (avec sa valeur) et les cellules à "
+            "remplir en dessous dans la même colonne, puis cliquez ici.",
+            "Select the starting cell (with its value) and the cells to fill below "
+            "it in the same column, then click here."))
+        self._btn_incrementer.setStyleSheet(_btn_style_fill)
+        self._btn_incrementer.clicked.connect(self._increment_fill_selection)
+        tb_row.addWidget(self._btn_incrementer)
+
+        self._btn_copier = QtWidgets.QPushButton(
+            self.translate("Copier ↓", "Copy ↓"))
+        self._btn_copier.setToolTip(self.translate(
+            "Sélectionnez la cellule source et les cellules à remplir en dessous "
+            "dans la même colonne, puis cliquez ici pour copier la même valeur.",
+            "Select the source cell and the cells to fill below it in the same "
+            "column, then click here to copy the same value."))
+        self._btn_copier.setStyleSheet(_btn_style_fill)
+        self._btn_copier.clicked.connect(self._copy_fill_selection)
+        tb_row.addWidget(self._btn_copier)
+
         tb_row.addStretch()
 
         _btn_style_action = (
@@ -501,22 +530,6 @@ class MetadonneesController:
         self._btn_web.setEnabled(False)
         self._btn_web.clicked.connect(self.action_compare_weather_web)
         tb_row.addWidget(self._btn_web)
-
-        self._btn_incrementer = QtWidgets.QPushButton(
-            self.translate("Incrémenter ↓", "Increment ↓"))
-        self._btn_incrementer.setToolTip(self.translate(
-            "Sélectionnez la cellule de départ (avec sa valeur) et les cellules à "
-            "remplir en dessous dans la même colonne, puis cliquez ici.",
-            "Select the starting cell (with its value) and the cells to fill below "
-            "it in the same column, then click here."))
-        self._btn_incrementer.setStyleSheet(
-            "QPushButton{background:#3a2a1a;color:#e8c080;border:1px solid #8a5a2a;"
-            "border-radius:4px;padding:2px 10px;font-size:10px;font-weight:bold;"
-            "font-family:'Segoe UI',sans-serif;}"
-            "QPushButton:hover{background:#8a5a2a;color:white;}"
-        )
-        self._btn_incrementer.clicked.connect(self._increment_fill_selection)
-        tb_row.addWidget(self._btn_incrementer)
 
         self._btn_gpx = QtWidgets.QPushButton(self.translate("IMPORT GPX", "IMPORT GPX"))
         self._btn_gpx.setStyleSheet(
@@ -858,6 +871,44 @@ class MetadonneesController:
             fill_value = str(base_int + (idx.row() - anchor_row))
             self._ft_table.model().setData(idx, fill_value, QtCore.Qt.ItemDataRole.EditRole)
 
+    def _copy_fill_selection(self):
+        """Copie la valeur de la cellule du haut vers toutes les cellules sélectionnées en dessous
+        dans la même colonne (bouton "Copier ↓")."""
+        if not hasattr(self, '_ft_table') or self._ft_table is None:
+            return
+        sel = self._ft_table.selectedIndexes()
+        if not sel:
+            QtWidgets.QMessageBox.information(
+                self.widget,
+                self.translate("Copier", "Copy"),
+                self.translate(
+                    "Sélectionnez d'abord la cellule source (avec sa valeur) et les "
+                    "cellules à remplir en dessous, dans une même colonne.",
+                    "First select the source cell (with its value) and the cells to "
+                    "fill below it, in a single column."))
+            return
+        cols = {idx.column() for idx in sel}
+        if len(cols) != 1:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Copier", "Copy"),
+                self.translate("La sélection doit porter sur une seule colonne.",
+                               "The selection must be within a single column."))
+            return
+        col = cols.pop()
+        if not (0 <= col < len(_FT_TABLE_COLS)) or _FT_TABLE_COLS[col][3]:
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Copier", "Copy"),
+                self.translate("Cette colonne n'est pas modifiable.",
+                               "This column is not editable."))
+            return
+        anchor_row = min(idx.row() for idx in sel)
+        anchor_item = self._ft_table.item(anchor_row, col)
+        base_text = anchor_item.text().strip() if anchor_item else ""
+        for idx in sel:
+            self._ft_table.model().setData(idx, base_text, QtCore.Qt.ItemDataRole.EditRole)
+
     def _on_ft_table_cell_changed(self, row: int, col: int):
         """Sauvegarde la valeur éditée dans le JSON de la vidéo correspondante."""
         first_item = self._ft_table.item(row, 0)
@@ -1059,6 +1110,10 @@ class MetadonneesController:
             self._btn_ardoise.setText(self.translate("Comparer avec l'ardoise", "Compare with slate"))
         if hasattr(self, '_btn_web'):
             self._btn_web.setText(self.translate("Comparer données web", "Compare web data"))
+        if hasattr(self, '_btn_incrementer'):
+            self._btn_incrementer.setText(self.translate("Incrémenter ↓", "Increment ↓"))
+        if hasattr(self, '_btn_copier'):
+            self._btn_copier.setText(self.translate("Copier ↓", "Copy ↓"))
         if hasattr(self, '_btn_map'):
             self._btn_map.setText(self.translate("OUVRIR CARTE", "OPEN MAP"))
         if hasattr(self, '_ft_table'):
