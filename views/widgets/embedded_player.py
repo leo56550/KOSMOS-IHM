@@ -106,12 +106,13 @@ class _FullscreenWindow(QtWidgets.QWidget):
         key  = event.key()
         mods = event.modifiers()
         shift = bool(mods & QtCore.Qt.KeyboardModifier.ShiftModifier)
+        ctrl  = bool(mods & QtCore.Qt.KeyboardModifier.ControlModifier)
         if key == QtCore.Qt.Key.Key_Escape:
             self.exit_requested.emit()
         elif key == QtCore.Qt.Key.Key_Right:
-            self.step_frame.emit(+1 if shift else +10)
+            self.step_frame.emit(+1 if shift else +5 if ctrl else +10)
         elif key == QtCore.Qt.Key.Key_Left:
-            self.step_frame.emit(-1 if shift else -10)
+            self.step_frame.emit(-1 if shift else -5 if ctrl else -10)
         elif key == QtCore.Qt.Key.Key_Space:
             self.toggle_play.emit()
         else:
@@ -550,6 +551,14 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             QtGui.QKeySequence(QtCore.Qt.Modifier.SHIFT | QtCore.Qt.Key.Key_Left), self)
         sc_left_1.setContext(_ctx)
         sc_left_1.activated.connect(lambda: self._step_frame(-1))
+        sc_right_5 = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_Right), self)
+        sc_right_5.setContext(_ctx)
+        sc_right_5.activated.connect(lambda: self._step_frame(+5))
+        sc_left_5 = QtGui.QShortcut(
+            QtGui.QKeySequence(QtCore.Qt.Modifier.CTRL | QtCore.Qt.Key.Key_Left), self)
+        sc_left_5.setContext(_ctx)
+        sc_left_5.activated.connect(lambda: self._step_frame(-5))
         # +/- (accélérer/ralentir) : géré globalement par AppController.eventFilter,
         # pas ici, pour ne pas dépendre du focus précis du widget dès l'arrivée sur
         # la page (cf. _speed_step ci-dessous, appelée directement par ce filtre).
