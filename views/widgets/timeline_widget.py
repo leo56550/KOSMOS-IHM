@@ -591,50 +591,7 @@ class VideoTimeline(QtWidgets.QWidget):
             self.update()
 
     def wheelEvent(self, event):
-        """Zoom la timeline à la molette et conserve l'ancre temporelle sous le curseur."""
-        if self.total_duration <= 0:
-            return
-
-        # Chercher la scroll area parente
-        scroll_area = None
-        p = self.parent()
-        while p is not None:
-            if isinstance(p, QtWidgets.QScrollArea):
-                scroll_area = p
-                break
-            p = p.parent()
-
-        scroll_offset = scroll_area.horizontalScrollBar().value() if scroll_area else 0
-        # pos_x dans l'espace du contenu (coordonnée widget + scroll courant)
-        pos_x_content = event.position().x() + scroll_offset
-        current_width = self.min_zoomed_width()
-        time_ratio = pos_x_content / current_width if current_width > 0 else 0
-        target_time = time_ratio * self.total_duration
-
-        zoom_step = 1.2
-        old_zoom = self.zoom_factor
-        if event.angleDelta().y() > 0:
-            self.zoom_factor *= zoom_step
-        else:
-            self.zoom_factor /= zoom_step
-        self.zoom_factor = max(1.0, min(self.zoom_factor, 10.0))
-
-        if self.zoom_factor == old_zoom:
-            return
-
-        self.zoomChanged.emit(self.zoom_factor)
-        self.setMinimumWidth(self.min_zoomed_width())
-        self.updateGeometry()
-
-        new_width = self.min_zoomed_width()
-        new_pos_x_content = (target_time / self.total_duration) * new_width
-
-        if scroll_area:
-            # Repositionner pour que le temps sous le curseur reste au même endroit
-            new_scroll = int(new_pos_x_content - event.position().x())
-            QtCore.QTimer.singleShot(1, lambda: (
-                scroll_area.horizontalScrollBar().setValue(new_scroll),
-            ))
+        event.ignore()
 
         self.timeChanged.emit(self.current_pos)
         self.update()
