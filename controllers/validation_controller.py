@@ -624,6 +624,7 @@ class ValidationController:
         self.player.btn_ardoise.setEnabled(True)
         self.player.btn_ardoise_manquante.setEnabled(True)
         self.player.set_ardoise_missing_overlay(False)
+        _has_ardoise = False   # True si timecode_ardoise déjà saisi → bascule auto vers secteurs
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
@@ -636,6 +637,7 @@ class ValidationController:
                 self.player.set_ardoise_missing_overlay(True)
             elif _tc:
                 # Ardoise saisie : "MODIFIER ARDOISE" + restaure le marker sur la timeline
+                _has_ardoise = True
                 self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
                 try:
                     _parts = str(_tc).split(":")
@@ -667,9 +669,7 @@ class ValidationController:
             self.player.btn_telemetry.setEnabled(False)
             self.player.btn_telemetry.setChecked(False)
 
-        # Nouvelle vidéo : toujours repartir en mode lecteur (recherche de l'ardoise)
-        # à vitesse x1, et précharger la vue des secteurs pour qu'elle soit prête
-        # dès que l'utilisateur bascule dessus.
+        # Repartir en mode lecteur (pour reset propre), puis basculer vers secteurs si ardoise déjà saisie
         if self._sector_view_active:
             self._toggle_sector_view()
         self.player.set_playback_rate_all(1.0)
@@ -677,6 +677,9 @@ class ValidationController:
             self.player.btn_x1.setChecked(True)
         if os.path.exists(csv_system):
             self._load_sector_view(selected_video_path, csv_system)
+            # Ardoise déjà saisie → afficher directement la mosaïque des secteurs
+            if _has_ardoise:
+                self._toggle_sector_view()
         else:
             while self._sector_layout.count():
                 item = self._sector_layout.takeAt(0)
