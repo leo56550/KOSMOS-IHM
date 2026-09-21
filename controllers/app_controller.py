@@ -186,7 +186,14 @@ class AppController(QtCore.QObject):
                     data = _json.load(f)
                 vo = data.get("video_observation", {})
                 if "derusher" in vo:
-                    vo["derusher"]["value"] = derusher_name
+                    existing = (vo["derusher"].get("value") or "").strip()
+                    new_val = derusher_name.strip()
+                    if existing and existing != new_val:
+                        if new_val not in [n.strip() for n in existing.split(",")]:
+                            new_val = f"{existing}, {new_val}"
+                        else:
+                            new_val = existing
+                    vo["derusher"]["value"] = new_val
                     with open(wjson, 'w', encoding='utf-8') as f:
                         _json.dump(data, f, indent=2, ensure_ascii=False)
                     count += 1
@@ -301,8 +308,26 @@ class AppController(QtCore.QObject):
                 ),
             )
             return
+
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.window,
+            self.translate("Nom du dérusher", "Derusher name"),
+            self.translate("Votre nom :", "Your name:"),
+            text=derusher_name or "",
+        )
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(
+                self.window,
+                self.translate("Nom requis", "Name required"),
+                self.translate("Veuillez saisir un nom de dérusher.", "Please enter a derusher name."),
+            )
+            return
+
         self.handle_campaign_opening(
-            derusher_name or "—",
+            name,
             campaign_folder=campaign_folder,
             working_dir=working_dir,
         )
