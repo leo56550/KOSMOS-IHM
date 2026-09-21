@@ -1126,10 +1126,15 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             self.player_R.pause()
 
     def set_playback_rate_all(self, rate: float):
-        """Applique une vitesse de lecture sur les deux flux."""
+        """Applique une vitesse de lecture sur les deux flux et synchronise les boutons."""
         self.player.setPlaybackRate(rate)
         if self.is_stereo:
             self.player_R.setPlaybackRate(rate)
+        _rate_to_btn = {1.0: self.btn_x1, 2.0: self.btn_x2,
+                        5.0: self.btn_x5, 10.0: self.btn_x10}
+        btn = _rate_to_btn.get(rate)
+        if btn and not btn.isChecked():
+            btn.setChecked(True)
 
     _SPEED_STEPS = [1.0, 2.0, 5.0, 10.0]
 
