@@ -675,6 +675,14 @@ class MetadonneesController:
         self._ft_table.cellClicked.connect(self._on_ft_table_row_clicked)
         self._ft_table.currentCellChanged.connect(self._on_ft_current_cell_changed)
 
+        # Double-clic sur un en-tête de colonne : la cache. Clic droit sur un en-tête :
+        # menu pour réafficher les colonnes cachées (sinon aucun moyen de revenir en arrière).
+        self._ft_table.horizontalHeader().sectionDoubleClicked.connect(self._hide_ft_column)
+        self._ft_table.horizontalHeader().setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self._ft_table.horizontalHeader().customContextMenuRequested.connect(
+            self._show_ft_header_menu)
+
         # Touche Suppr : efface le contenu de la/les cellule(s) sélectionnée(s)
         del_shortcut = QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Delete), self._ft_table)
         del_shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetShortcut)
@@ -990,6 +998,37 @@ class MetadonneesController:
                 item.setBackground(QtGui.QBrush(color))
         finally:
             self._ft_table.blockSignals(False)
+
+    def _hide_ft_column(self, col: int):
+        """Double-clic sur un en-tête de colonne du tableau infostation : la cache."""
+        if not (0 <= col < self._ft_table.columnCount()):
+            return
+        self._ft_table.horizontalHeader().setSectionHidden(col, True)
+
+    def _show_ft_header_menu(self, pos):
+        """Clic droit sur un en-tête : menu pour réafficher les colonnes cachées
+        (seul moyen de revenir en arrière après un double-clic qui en a caché une)."""
+        header = self._ft_table.horizontalHeader()
+        labels = self._get_ft_header_labels()
+        menu = QtWidgets.QMenu(self._ft_table)
+        any_hidden = False
+        for col in range(self._ft_table.columnCount()):
+            label = labels[col] if col < len(labels) else f"Colonne {col + 1}"
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(not header.isSectionHidden(col))
+            if header.isSectionHidden(col):
+                any_hidden = True
+            action.toggled.connect(
+                lambda checked, c=col: header.setSectionHidden(c, not checked))
+        if any_hidden:
+            menu.addSeparator()
+            action_all = menu.addAction(
+                self.translate("Tout afficher", "Show all columns"))
+            action_all.triggered.connect(
+                lambda: [header.setSectionHidden(c, False)
+                         for c in range(self._ft_table.columnCount())])
+        menu.exec(header.mapToGlobal(pos))
 
     # ── Public interface ─────────────────────────────────────────────────
 
