@@ -1641,3 +1641,28 @@ Traceback (most recent call last):
     self.v_lines.append(v_line_lux)
     ^^^^^^^^^^^^
 AttributeError: 'TelemetryDialog' object has no attribute 'v_lines'
+
+============================================================
+2026-09-21 13:22:16.110885
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 615, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-09-21 13:22:16.277205
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 348, in paintEvent
+    self._draw_ruler(painter, width, RH, total_duration)
+  File "c:\KOSMOS_IHM\views\widgets\timeline_widget.py", line 521, in _draw_ruler
+    painter.drawText(lx, ruler_h - 14, label)
+KeyboardInterrupt
+
+============================================================
+2026-09-21 13:22:16.444204
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 615, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

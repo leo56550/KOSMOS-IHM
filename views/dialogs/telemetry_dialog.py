@@ -11,6 +11,22 @@ _MISSING_STYLE = (
 _COMPACT_H = 36
 
 
+class _TimeAxis(pg.AxisItem):
+    """Axe X pyqtgraph qui affiche les secondes au format MM:SS."""
+    def tickStrings(self, values, scale, spacing):
+        out = []
+        for v in values:
+            try:
+                total_s = int(round(float(v)))
+                sign = "-" if total_s < 0 else ""
+                total_s = abs(total_s)
+                m, s = divmod(total_s, 60)
+                out.append(f"{sign}{m:02d}:{s:02d}")
+            except (TypeError, ValueError):
+                out.append("")
+        return out
+
+
 _LUX_RGB_COLS = {
     'RLux': ('#ff4040', 'R'),
     'GLux': ('#40dd70', 'G'),
@@ -62,7 +78,7 @@ class TelemetryDialog(QtWidgets.QDialog):
             stack = QtWidgets.QStackedWidget()
 
             # --- Graphe ---
-            pw = pg.PlotWidget(title=label)
+            pw = pg.PlotWidget(title=label, axisItems={'bottom': _TimeAxis(orientation='bottom')})
             self.plot_widgets[key] = pw
             pw.setBackground('#111820')
             pw.showGrid(x=True, y=True, alpha=0.3)
@@ -97,7 +113,7 @@ class TelemetryDialog(QtWidgets.QDialog):
 
         # ── Graphe RGB Lux (3 courbes sur un même PlotWidget) ────────────────
         _lux_label = "Luminosité RGB (Lux)"
-        pw_lux = pg.PlotWidget(title=_lux_label)
+        pw_lux = pg.PlotWidget(title=_lux_label, axisItems={'bottom': _TimeAxis(orientation='bottom')})
         self.plot_widgets["lux_rgb"] = pw_lux
         pw_lux.setBackground('#111820')
         pw_lux.showGrid(x=True, y=True, alpha=0.3)
