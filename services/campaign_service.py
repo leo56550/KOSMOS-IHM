@@ -3,6 +3,7 @@ import math
 import os
 import re
 import shutil
+from datetime import datetime
 import pandas as pd
 
 from services.migration_service import _build_base_template
@@ -400,13 +401,41 @@ def get_working_video_dir(working_dir: str, video_path: str) -> str:
     return os.path.join(work_root, stem)
 
 
-def get_infostation_path(working_dir: str) -> str:
-    """Retourne le chemin du CSV Infostation global dans le répertoire de travail.
+def yymmdd_from_date(date_v: str) -> str:
+    """Normalise une date stockée en YYYYMMDD (8 chiffres, format actuel) ou YYMMDD
+    (6 chiffres, ancien format) vers un YYMMDD (6 chiffres) pour nommer les fichiers
+    de sortie. Retourne "" si date_v est vide/invalide."""
+    digits = re.sub(r"[^0-9]", "", date_v or "")
+    if len(digits) >= 8:
+        return digits[2:8]
+    if len(digits) == 6:
+        return digits
+    return ""
 
-    Le nom est basé sur le nom du répertoire (ex: '2026' → 'infostation_2026.csv').
-    """
-    year_label = os.path.basename(os.path.normpath(working_dir))
-    return os.path.join(working_dir, f"infostation_{year_label}.csv")
+
+def get_infostation_path(working_dir: str) -> str:
+    """Retourne le chemin du CSV Infostation global : nommé "YYMMDD_infoStation.csv"
+    d'après la date de campagne (survey.date, lue dans le premier _temp.json trouvé
+    dans le dossier de travail) ; repli sur la date du jour si aucune date de
+    campagne n'est renseignée."""
+    date_v = ""
+    if working_dir and os.path.isdir(working_dir):
+        for root, _dirs, files in os.walk(working_dir):
+            for fname in files:
+                if not fname.endswith("_temp.json"):
+                    continue
+                try:
+                    with open(os.path.join(root, fname), 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    date_v = str((data.get("survey", {}).get("date") or {}).get("value") or "").strip()
+                except (OSError, ValueError, json.JSONDecodeError):
+                    continue
+                if date_v:
+                    break
+            if date_v:
+                break
+    yymmdd = yymmdd_from_date(date_v) or datetime.now().strftime("%y%m%d")
+    return os.path.join(working_dir, f"{yymmdd}_infoStation.csv")
 
 
 def get_campaign_output_dir(campaign_folder: str) -> str:
