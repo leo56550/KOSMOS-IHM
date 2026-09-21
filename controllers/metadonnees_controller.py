@@ -289,10 +289,12 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
         elif ftype == "float":
             validator = QtGui.QDoubleValidator(editor)
             validator.setNotation(QtGui.QDoubleValidator.Notation.StandardNotation)
-            # Le tableau affiche les décimaux avec une virgule (convention française déjà
-            # utilisée pour Latitude/Longitude/Profondeur ailleurs dans ce fichier).
-            validator.setLocale(QtCore.QLocale(QtCore.QLocale.Language.French))
+            validator.setLocale(QtCore.QLocale.c())
             editor.setValidator(validator)
+            # Remplace automatiquement "," par "." à la saisie
+            editor.textEdited.connect(
+                lambda txt, e=editor: e.setText(txt.replace(",", "."))
+            )
         # "str" (et types inconnus) : pas de restriction, saisie libre.
 
     def eventFilter(self, editor, event):
