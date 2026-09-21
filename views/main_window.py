@@ -219,8 +219,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_open_video  = _btn("Ouvrir vidéo",    "Ouvrir un fichier MP4 sans charger de campagne", "btn_open_video")
         self.btn_sftp        = _btn("KOSMOS Connexion", "Connexion SFTP / Planification déploiement",     "btn_sftp")
         self.btn_notes       = _btn("Notes",            "Notes de session — mémo libre de la campagne",   "btn_notes",       enabled=False)
-        self.btn_rapport_pdf = _btn("Rapport PDF",      "Générer un rapport PDF de la campagne",          "btn_rapport_pdf", enabled=False)
-        self.btn_vue_globale = _btn("Vue globale",      "Vision globale de la campagne sur une timeline", "btn_vue_globale", enabled=False)
         self.btn_load_history = _btn("Données historiques", "Charger les données historiques depuis le serveur", "btn_load_history")
 
         # Boutons regroupés dans une zone défilable horizontalement : sur petit écran,
@@ -241,8 +239,6 @@ class MainWindow(QtWidgets.QMainWindow):
         buttons_layout.addWidget(self.btn_sftp)
         buttons_layout.addWidget(sep)
         buttons_layout.addWidget(self.btn_notes)
-        buttons_layout.addWidget(self.btn_rapport_pdf)
-        buttons_layout.addWidget(self.btn_vue_globale)
         buttons_layout.addStretch()
 
         buttons_scroll = QtWidgets.QScrollArea()
@@ -472,8 +468,6 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_open_video':       ("Ouvrir vidéo",       "Ouvrir un fichier MP4 sans charger de campagne"),
             'btn_sftp':             ("KOSMOS Connexion",   "Connexion SFTP / Planification déploiement"),
             'btn_notes':            ("Notes",              "Notes de session — mémo libre de la campagne"),
-            'btn_rapport_pdf':      ("Rapport PDF",        "Générer un rapport PDF de la campagne"),
-            'btn_vue_globale':      ("Vue globale",        "Vision globale de la campagne sur une timeline"),
             'btn_load_history':     ("Données historiques","Charger les données historiques depuis le serveur"),
         },
         'en': {
@@ -481,8 +475,6 @@ class MainWindow(QtWidgets.QMainWindow):
             'btn_open_video':       ("Open video",         "Open an MP4 file without loading a campaign"),
             'btn_sftp':             ("KOSMOS Connection",  "SFTP connection / Deployment planning"),
             'btn_notes':            ("Notes",              "Session notes — free memo for the campaign"),
-            'btn_rapport_pdf':      ("PDF Report",         "Generate a PDF report of the campaign"),
-            'btn_vue_globale':      ("Global view",        "Global campaign view on a timeline"),
             'btn_load_history':     ("Historical data",    "Load historical data from the server"),
         },
     }

@@ -7,8 +7,6 @@ from services.video_service import check_stereo_status, get_system_name
 from services.weather_service import WeatherWorker
 from services.sound_service import get_sound_service
 from views.dialogs.notes_dialog import NotesDialog
-from views.dialogs.campaign_overview_dialog import CampaignOverviewDialog
-from services.report_service import generate_pdf_report
 from controllers.accueil_controller import AccueilController
 from controllers.qualif_controller import QualifController, _get_point_name
 from controllers.validation_controller import ValidationController
@@ -48,12 +46,6 @@ class AppController(QtCore.QObject):
             on_video_focused=self._focus_map,
             on_qualification_changed=self._on_qualification_changed,
         )
-        self._overview_dialog: 'CampaignOverviewDialog | None' = None
-        self._overview_refresh_timer = QtCore.QTimer()
-        self._overview_refresh_timer.setSingleShot(True)
-        self._overview_refresh_timer.setInterval(500)
-        self._overview_refresh_timer.timeout.connect(self._do_refresh_overview)
-
         self.evenements_ctrl = EvenementsController(
             window.page_evenements, self.qualif_ctrl.video_model,
             on_video_focused=self._focus_map,
@@ -83,11 +75,8 @@ class AppController(QtCore.QObject):
             self.evenements_ctrl, self.metadonnees_ctrl, self.apropos_ctrl, self.extraction_ctrl
         ]
 
-        # Rafraîchir la barre de statut et la vue globale quand le modèle vidéo change
         self.qualif_ctrl.video_model.rowsInserted.connect(self.refresh_status_bar)
         self.qualif_ctrl.video_model.rowsRemoved.connect(self.refresh_status_bar)
-        self.qualif_ctrl.video_model.rowsInserted.connect(self._schedule_overview_refresh)
-        self.qualif_ctrl.video_model.rowsRemoved.connect(self._schedule_overview_refresh)
 
         # Carte : propager les clics sur les marqueurs vers tous les controllers
         bridge = self.qualif_ctrl.bridge
@@ -115,14 +104,8 @@ class AppController(QtCore.QObject):
         if hasattr(window, 'btn_notes'):
             window.btn_notes.clicked.connect(self._open_notes)
 
-        if hasattr(window, 'btn_rapport_pdf'):
-            window.btn_rapport_pdf.clicked.connect(self._generate_rapport_pdf)
-
         if hasattr(window, 'btn_sftp'):
             window.btn_sftp.clicked.connect(self._open_sftp_dialog)
-
-        if hasattr(window, 'btn_vue_globale'):
-            window.btn_vue_globale.clicked.connect(self._open_vue_globale)
 
         if hasattr(window, 'btn_recent_campaigns'):
             window.btn_recent_campaigns.clicked.connect(self._open_recent_campaigns)
@@ -283,88 +266,15 @@ class AppController(QtCore.QObject):
         dlg = NotesDialog(dossier, parent=self.window, language=getattr(self.window, 'current_language', 'fr'))
         dlg.show()
 
-    def _generate_rapport_pdf(self):
-        """Lance la génération du rapport PDF et propose un emplacement de sauvegarde."""
-        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
-        if not dossier:
-            return
-
-        default_name = f"rapport_{os.path.basename(dossier.rstrip('/\\'))}.pdf"
-        out_path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self.window,
-            self.translate("Enregistrer le rapport PDF", "Save PDF report"),
-            os.path.join(dossier, default_name),
-            self.translate("PDF (*.pdf)", "PDF (*.pdf)"),
-        )
-        if not out_path:
-            return
-
-        # Collect video paths from shared model (column 0, UserRole = path)
-        model = self.qualif_ctrl.video_model
-        video_paths = []
-        for row in range(model.rowCount()):
-            item = model.item(row, 0)
-            if item:
-                path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-                if path:
-                    video_paths.append(path)
-
-        logo_path = os.path.join(os.path.dirname(__file__), '..', 'img', 'logo_kosmos.png')
-        if not os.path.isfile(logo_path):
-            logo_path = None
-
-        # Show progress dialog
-        progress = QtWidgets.QProgressDialog(
-            self.translate("Génération du rapport PDF…", "Generating PDF report…"),
-            self.translate("Annuler", "Cancel"), 0, 0, self.window
-        )
-        progress.setWindowTitle(self.translate("Rapport PDF", "PDF Report"))
-        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.show()
-        QtWidgets.QApplication.processEvents()
-
-        result = generate_pdf_report(dossier, video_paths, out_path, logo_path)
-
-        progress.close()
-
-        if result == out_path:
-            QtWidgets.QMessageBox.information(
-                self.window, self.translate("Rapport PDF", "PDF Report"),
-                self.translate(
-                    f"Rapport généré avec succès :\n{out_path}",
-                    f"Report generated successfully:\n{out_path}",
-                )
-            )
-        else:
-            QtWidgets.QMessageBox.critical(
-                self.window, self.translate("Erreur", "Error"), result
-            )
-
     def _on_qualification_changed(self):
-        """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit stats + vue globale."""
+        """Appelé quand l'exploitabilité d'une vidéo change — rafraîchit la barre de statut."""
         self.refresh_status_bar()
-        self._do_refresh_overview()  # immédiat — un seul clic, pas besoin de debounce
         self.metadonnees_ctrl.refresh_feuille_terrain()
         self.qualif_ctrl.refresh_map_marker_colors()
 
     def _on_events_changed(self, *_):
-        """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés.
-
-        Notifie la vue globale ET la feuille terrain (champs auto-dérivés ardoise/images).
-        """
-        self._schedule_overview_refresh()
+        """Callback déclenché quand des événements sont ajoutés/supprimés/modifiés."""
         self.metadonnees_ctrl.refresh_feuille_terrain()
-
-    def _schedule_overview_refresh(self, *_):
-        """Déclenche un refresh de la vue globale avec debounce 500ms."""
-        if self._overview_dialog is not None:
-            self._overview_refresh_timer.start()
-
-    def _do_refresh_overview(self):
-        """Exécute le refresh effectif de la vue globale."""
-        if self._overview_dialog is not None:
-            self._overview_dialog.refresh(self.qualif_ctrl.video_model)
 
     def _open_sftp_dialog(self):
         """Ouvre le hub KOSMOS Connexion (SFTP + planification déploiement)."""
@@ -409,34 +319,6 @@ class AppController(QtCore.QObject):
             )
         )
 
-    def _open_vue_globale(self):
-        """Ouvre le dialog de vision globale de la campagne (une seule instance)."""
-        dossier = getattr(self.qualif_ctrl, 'current_campaign_folder', None)
-        if not dossier:
-            return
-        if self._overview_dialog is not None and self._overview_dialog.isVisible():
-            self._overview_dialog.raise_()
-            self._overview_dialog.activateWindow()
-            return
-        dlg = CampaignOverviewDialog(
-            dossier, self.qualif_ctrl.video_model, parent=self.window,
-            language=getattr(self.window, 'current_language', 'fr')
-        )
-        dlg.video_selected.connect(self._on_overview_video_selected)
-        dlg.destroyed.connect(lambda: setattr(self, '_overview_dialog', None))
-        self._overview_dialog = dlg
-        dlg.show()
-
-    def _on_overview_video_selected(self, row: int):
-        """Navigue vers la vidéo sélectionnée depuis la vue globale."""
-        model = self.qualif_ctrl.video_model
-        item = model.item(row, 0)
-        if not item:
-            return
-        video_name = item.text()
-        self.switch_page(self.window.page_qualification)
-        self.qualif_ctrl.select_video_by_name(video_name)
-
     # --- Language ---
 
     def translate(self, fr: str, en: str) -> str:
@@ -456,8 +338,6 @@ class AppController(QtCore.QObject):
         for ctrl in self.page_controllers:
             if hasattr(ctrl, 'set_language'):
                 ctrl.set_language(language)
-        if self._overview_dialog is not None:
-            self._overview_dialog.set_language(language)
         self.refresh_status_bar()
 
     def _update_info_labels(self, trans: dict):
@@ -518,11 +398,6 @@ class AppController(QtCore.QObject):
 
         if hasattr(self.window, 'btn_notes'):
             self.window.btn_notes.setEnabled(True)
-        if hasattr(self.window, 'btn_rapport_pdf'):
-            self.window.btn_rapport_pdf.setEnabled(True)
-        if hasattr(self.window, 'btn_vue_globale'):
-            self.window.btn_vue_globale.setEnabled(True)
-
         session = os.path.basename(os.path.normpath(dossier))
         parent = os.path.basename(os.path.dirname(os.path.normpath(dossier)))
         self._current_campaign_name = f"{parent} / {session}" if parent else session
