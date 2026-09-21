@@ -351,6 +351,7 @@ class MetadonneesController:
         self._ft_highlighted_item0: QtWidgets.QTableWidgetItem | None = None
         self._ft_table_video_paths: list = []
         self._working_dir: str = ""
+        self._campaign_folder: str = ""
 
         # Debounce pour l'upsert infostation (2 s après la dernière modif)
         self._infostation_timer = QtCore.QTimer()
@@ -1135,6 +1136,7 @@ class MetadonneesController:
 
     def load_global_campaign_metadata(self, campaign_folder: str):
         """Charge les sections système et campagne depuis le premier JSON trouvé dans campaign_folder."""
+        self._campaign_folder = campaign_folder or ""
         from services.campaign_service import get_campaign_json_data
         if get_campaign_json_data(campaign_folder, extract_system=False):
             for root, _, _files in os.walk(campaign_folder):
@@ -1992,7 +1994,7 @@ class MetadonneesController:
         gpx_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.widget,
             self.translate("Sélectionner un fichier GPX", "Select a GPX file"),
-            "",
+            self._campaign_folder or self._working_dir or "",
             "GPX files (*.gpx);;All files (*)"
         )
         if not gpx_path:
@@ -2382,7 +2384,7 @@ class MetadonneesController:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.widget,
             self.translate("Ouvrir feuille terrain", "Open field sheet"),
-            "",
+            self._campaign_folder or self._working_dir or "",
             "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff);;All files (*)"
         )
         if not path:

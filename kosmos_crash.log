@@ -1549,3 +1549,27 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-21 12:44:06.315110
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 615, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-09-21 12:44:07.482685
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 615, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
+
+============================================================
+2026-09-21 12:44:12.499097
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 615, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt
