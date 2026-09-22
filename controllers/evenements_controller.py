@@ -21,6 +21,20 @@ from views.dialogs.export_options_dialog import ExportOptionsDialog
 from models.video_model import VideoFilterProxyModel
 from services.thumbnail_service import THUMB_W, THUMB_H
 
+class _DeleteKeyFilter(QtCore.QObject):
+    """Intercepte la touche Suppr sur le tree des événements."""
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self._cb = callback
+
+    def eventFilter(self, obj, event):
+        if (event.type() == QtCore.QEvent.Type.KeyPress
+                and event.key() == QtCore.Qt.Key.Key_Delete):
+            self._cb()
+            return True
+        return super().eventFilter(obj, event)
+
+
 # Bruitage dédié pour certaines valeurs d'événement "Faune / Animal" (poisson/oiseau/tortue).
 _ANIMAL_SOUND_MAP = {
     "poisson": "fish", "fish": "fish",
@@ -99,6 +113,8 @@ class EvenementsController:
         self.event_dictionary = {}
         self.capture_start_time = None
         self._analysis_widgets: dict[str, QtWidgets.QLineEdit] = {}
+        # Cache des rotations moteur : (csv_path, mtime) → list
+        self._motor_cache: dict[tuple, list] = {}
 
         self.left_frame_events = self.page.findChild(QtWidgets.QFrame, "frame_12")
         self.player_container_events = self.page.findChild(QtWidgets.QFrame, "video_timeline_container")
@@ -166,6 +182,11 @@ class EvenementsController:
             self.event_player.timeline.customContextMenuRequested.connect(
                 lambda pos: self.open_context_menu(pos, self.event_player.timeline)
             )
+            self._timeline_del_filter = _DeleteKeyFilter(
+                self._delete_selected_timeline_event, self.event_player.timeline
+            )
+            self.event_player.timeline.installEventFilter(self._timeline_del_filter)
+            self.event_player.timeline.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
             self._initialize_event_dropdown_menus()
 
 
@@ -378,6 +399,9 @@ class EvenementsController:
         )
         self.tree_captures.itemSelectionChanged.connect(self.on_tree_event_selected)
 
+        self._del_key_filter = _DeleteKeyFilter(self._delete_selected_tree_event, self.tree_captures)
+        self.tree_captures.installEventFilter(self._del_key_filter)
+
         self._event_type_delegate = _EventTypeDelegate(lambda: list(self.event_dictionary.keys()))
         self.tree_captures.setItemDelegateForColumn(2, self._event_type_delegate)
 
@@ -387,37 +411,34 @@ class EvenementsController:
 
     def on_tree_event_selected(self):
         """Propage la sélection de l'arbre vers la timeline (synchronisation bidirectionnelle)."""
-        if not hasattr(self, 'event_player') or not self.event_player or not self.event_player.timeline:
+        if not hasattr(self, 'event_player') or self.event_player is None:
+            return
+        if self.event_player.timeline is None:
             return
         self.event_player.timeline.blockSignals(True)
         try:
             selected_items = self.tree_captures.selectedItems()
             if not selected_items:
-                if hasattr(self.event_player.timeline, 'set_selected_event'):
-                    self.event_player.timeline.set_selected_event(None)
-                else:
-                    self.event_player.timeline._selected_event = None
-                    self.event_player.timeline.update()
+                self.event_player.timeline.set_selected_event(None)
                 return
             item = selected_items[0]
             target_value = item.text(3)
             found_event = None
-            if hasattr(self.event_player.timeline, 'events'):
-                for evt in self.event_player.timeline.events:
-                    if evt.get("title", "").replace("Pic: ", "") == target_value:
-                        found_event = evt
-                        break
-            if hasattr(self.event_player.timeline, 'set_selected_event'):
-                self.event_player.timeline.set_selected_event(found_event)
-            else:
-                self.event_player.timeline._selected_event = found_event
-                self.event_player.timeline.update()
+            for evt in self.event_player.timeline.events:
+                if evt.get("title", "").replace("Pic: ", "") == target_value:
+                    found_event = evt
+                    break
+            self.event_player.timeline.set_selected_event(found_event)
         finally:
             self.event_player.timeline.blockSignals(False)
 
     def on_timeline_event_selected(self, event_dict):
-        """Propage la sélection de la timeline vers l'arbre (synchronisation bidirectionnelle)."""
-        if not hasattr(self, 'tree_captures') or not self.tree_captures:
+        """Propage la sélection de la timeline vers l'arbre et seek le lecteur."""
+        # Seek lecteur vers le début de l'événement
+        if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
+            self.event_player.player.setPosition(int(event_dict.get("start", 0)))
+
+        if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return
         self.tree_captures.blockSignals(True)
         try:
@@ -797,7 +818,7 @@ class EvenementsController:
                 tl.events.append({
                     "start": pos_ms, "end": pos_ms,
                     "title": label,
-                    "type": "timecode_marker",
+                    "type": "rotation_manual",   # barre jaune pointillée
                     "zone": 0,
                     "_json_key": "events_motor",
                     "_event_uid": event_uid,
@@ -1701,7 +1722,10 @@ class EvenementsController:
         csv_system = os.path.join(video_dir, "systemEvent.csv")
         if os.path.exists(csv_system):
             try:
-                motor_data = get_motor_stable_timestamps(csv_system, delay=6.0)
+                _cache_key = (csv_system, os.path.getmtime(csv_system))
+                if _cache_key not in self._motor_cache:
+                    self._motor_cache[_cache_key] = get_motor_stable_timestamps(csv_system, delay=6.0)
+                motor_data = self._motor_cache[_cache_key]
                 for motor_item in motor_data:
                     start_ms = int(motor_item["timestamp"] * 1000)
                     timeline_events.append({
@@ -1709,6 +1733,37 @@ class EvenementsController:
                         "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
                         "type": motor_item["type"]
                     })
+
+                # Persister dans le JSON si events_motor est encore vide (première détection)
+                if motor_data and self.current_json_path and os.path.isfile(self.current_json_path):
+                    try:
+                        with open(self.current_json_path, 'r', encoding='utf-8') as _f:
+                            _jdata = json.load(_f)
+                        _obs = _jdata.setdefault("video_observation", {})
+                        _existing = self._strip_events_motor_placeholder(_obs.get("events_motor"))
+                        if not _existing:
+                            _obs["events_motor"] = []
+                            for _mi in motor_data:
+                                _ms = int(_mi["timestamp"] * 1000)
+                                _h = _ms // 3600000
+                                _m = (_ms % 3600000) // 60000
+                                _s = (_ms % 60000) // 1000
+                                _tc = f"{_h:02d}:{_m:02d}:{_s:02d}"
+                                _frame = int(_mi["timestamp"] * video_fps)
+                                _obs["events_motor"].append({
+                                    "event_id":       self._generate_event_uid(),
+                                    "time_code":      _tc,
+                                    "frame_number":   _frame,
+                                    "description_fr": f"Rotation moteur #{_mi['rotation_index']} ({_mi['angle']}°)",
+                                    "description_en": f"Motor rotation #{_mi['rotation_index']} ({_mi['angle']}°)",
+                                    "comment":        "",
+                                })
+                            with open(self.current_json_path, 'w', encoding='utf-8') as _f:
+                                json.dump(_jdata, _f, indent=4, ensure_ascii=False)
+                            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)}"
+                                  f" ← events_motor auto ({len(motor_data)} rotation(s) depuis CSV)")
+                    except Exception as _e:
+                        print(f"[EVENTS] Erreur écriture events_motor depuis CSV : {_e}")
             except Exception as e:
                 print(f"[EVENTS] Motor CSV Error: {e}")
 
@@ -1762,6 +1817,49 @@ class EvenementsController:
                         is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
                         timeline_title = f"Pic: {value}" if is_pic else value
                         zone_index = self._zone_index_for_event_type(json_key)
+
+                        # events_motor : si une barre CSV existe déjà à ±2 s → c'est un doublon
+                        # auto-détecté, on ne l'ajoute pas à la timeline (déjà représenté).
+                        # Sinon (ajout manuel) → barre jaune pointillée via "rotation_manual".
+                        if json_key == "events_motor":
+                            already_in_csv = any(
+                                abs(e.get("start", 0) - start_ms) <= 2000
+                                for e in timeline_events
+                                if e.get("type", "").startswith("rotation")
+                            )
+                            if already_in_csv:
+                                # Doublon CSV/JSON : ignorer pour la timeline, mais garder dans le tree
+                                txt_start = self.event_player.timeline._format_ms(start_ms)
+                                if hasattr(self, 'tree_captures') and self.tree_captures:
+                                    category_name_local = self._get_label_from_json_key(json_key)
+                                    _ti = QtWidgets.QTreeWidgetItem(
+                                        [txt_start, "-", category_name_local, value, json_comment, ""])
+                                    _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                                    _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                                    self.tree_captures.addTopLevelItem(_ti)
+                                continue
+                            # Rotation manuelle : barre jaune pointillée
+                            event_dict = {
+                                "start": start_ms, "end": start_ms,
+                                "title": timeline_title,
+                                "type": "rotation_manual",
+                                "zone": zone_index,
+                                "comment": json_comment,
+                                "_json_key": json_key,
+                            }
+                            if "event_id" in val and val["event_id"]:
+                                event_dict["_event_uid"] = val["event_id"]
+                            timeline_events.append(event_dict)
+                            txt_start = self.event_player.timeline._format_ms(start_ms)
+                            if hasattr(self, 'tree_captures') and self.tree_captures:
+                                category_name_local = self._get_label_from_json_key(json_key)
+                                _ti = QtWidgets.QTreeWidgetItem(
+                                    [txt_start, "-", category_name_local, value, json_comment, ""])
+                                _ti.setFlags(_ti.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                                _ti.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                                self.tree_captures.addTopLevelItem(_ti)
+                            self.add_tree_thumbnail(_ti, start_ms) if hasattr(self, 'tree_captures') and self.tree_captures else None
+                            continue
 
                         is_duplicate = any(
                             e.get("title") == timeline_title
@@ -2159,6 +2257,46 @@ class EvenementsController:
         chosen_action = menu.exec(emitter.mapToGlobal(position))
         if chosen_action == delete_action:
             self.delete_event_unified(event_dict, target_tree_item)
+
+    def _delete_selected_timeline_event(self):
+        """Supprime l'événement sélectionné dans la timeline (touche Suppr)."""
+        if not hasattr(self, 'event_player') or self.event_player is None:
+            return
+        evt = self.event_player.timeline.selected_event_dict
+        if evt is None:
+            return
+        # Retrouver l'item dans le tree correspondant
+        title_value = evt.get("title", "").replace("Pic: ", "")
+        tree_item = None
+        for i in range(self.tree_captures.topLevelItemCount()):
+            it = self.tree_captures.topLevelItem(i)
+            if it and it.text(3) == title_value:
+                tree_item = it
+                break
+        self.delete_event_unified(evt, tree_item)
+
+    def _delete_selected_tree_event(self):
+        """Supprime l'événement sélectionné dans l'arbre via la touche Suppr."""
+        if not hasattr(self, 'tree_captures') or self.tree_captures is None:
+            return
+        items = self.tree_captures.selectedItems()
+        if not items:
+            return
+        item = items[0]
+        title_value = item.text(3)
+        if not hasattr(self, 'event_player') or self.event_player is None:
+            return
+        event_dict = None
+        for evt in self.event_player.timeline.events:
+            if evt.get("title", "").replace("Pic: ", "") == title_value:
+                event_dict = evt
+                break
+        if event_dict is not None:
+            self.delete_event_unified(event_dict, item)
+        else:
+            top_index = self.tree_captures.indexOfTopLevelItem(item)
+            if top_index != -1:
+                self.tree_captures.takeTopLevelItem(top_index)
 
     def delete_event_unified(self, event_dict: dict, tree_item: QtWidgets.QTreeWidgetItem):
         """Supprime un événement de la timeline, de l'arbre et du JSON en une seule opération."""

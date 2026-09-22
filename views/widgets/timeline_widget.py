@@ -138,6 +138,7 @@ class VideoTimeline(QtWidgets.QWidget):
     C_PLAYHEAD     = "#00d4ff"
     C_MOTOR        = "#f0c040"
     C_MOTOR360     = "#ff5555"
+    C_MOTOR_MANUAL = "#ff8c1a"   # rotation moteur ajoutée manuellement
     C_MARKER_IN    = "#2ecc71"
     C_MARKER_OUT   = "#e74c3c"
 
@@ -251,15 +252,37 @@ class VideoTimeline(QtWidgets.QWidget):
                 continue
 
             if evt_type != "custom_event":
-                is_360 = "360" in str(evt_type).lower()
-                c_line = QtGui.QColor(self.C_MOTOR360 if is_360 else self.C_MOTOR)
-                dash_pen = QtGui.QPen(c_line, 1.5 if is_360 else 1)
-                dash_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
-                painter.setPen(dash_pen)
-                painter.drawLine(x_start, RH, x_start, H)
-                painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.setBrush(c_line)
-                painter.drawEllipse(QtCore.QPoint(x_start, RH + 5), 3, 3)
+                if evt_type == "rotation_manual":
+                    # Rotation manuelle : orange, trait tiret-point, losange
+                    c_line = QtGui.QColor(self.C_MOTOR_MANUAL)
+                    pen = QtGui.QPen(c_line, 1.5)
+                    pen.setStyle(QtCore.Qt.PenStyle.DashDotLine)
+                    painter.setPen(pen)
+                    painter.drawLine(x_start, RH, x_start, H)
+                    painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                    painter.setBrush(c_line)
+                    pts = QtGui.QPolygon([
+                        QtCore.QPoint(x_start,     RH + 3),
+                        QtCore.QPoint(x_start + 4, RH + 7),
+                        QtCore.QPoint(x_start,     RH + 11),
+                        QtCore.QPoint(x_start - 4, RH + 7),
+                    ])
+                    painter.drawPolygon(pts)
+                    f_m = QtGui.QFont("Segoe UI", 7, QtGui.QFont.Weight.Bold)
+                    painter.setFont(f_m)
+                    painter.setPen(c_line)
+                    painter.drawText(x_start + 5, RH + 16, "M")
+                else:
+                    # Rotation CSV : jaune (ou rouge pour 360°), tirets
+                    is_360 = "360" in str(evt_type).lower()
+                    c_line = QtGui.QColor(self.C_MOTOR360 if is_360 else self.C_MOTOR)
+                    dash_pen = QtGui.QPen(c_line, 1.5 if is_360 else 1)
+                    dash_pen.setStyle(QtCore.Qt.PenStyle.DashLine)
+                    painter.setPen(dash_pen)
+                    painter.drawLine(x_start, RH, x_start, H)
+                    painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                    painter.setBrush(c_line)
+                    painter.drawEllipse(QtCore.QPoint(x_start, RH + 5), 3, 3)
                 continue
 
             x_end      = self._clamp_int((end_ms / total_duration) * width)
