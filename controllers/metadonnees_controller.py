@@ -2253,59 +2253,38 @@ class MetadonneesController:
     # ── Feature : import GPX ─────────────────────────────────────────────
 
     @staticmethod
-    def _parse_gpx_points(gpx_path: str) -> list:
-        """Retourne une liste triée de (datetime UTC, lat, lon) depuis un fichier GPX."""
+    def _parse_gpx_waypoints(gpx_path: str) -> dict[str, tuple[float, float]]:
+        """Retourne {name: (lat, lon)} depuis les waypoints d'un fichier GPX (XML).
+
+        Lit les éléments <wpt>, <trkpt> et <rtept> ; extrait la balise <name>.
+        """
         tree = ET.parse(gpx_path)
         root = tree.getroot()
 
-        # Gestion des namespaces GPX 1.0, 1.1 et sans namespace
         tag = root.tag
         ns = ""
         if tag.startswith("{"):
             ns = tag[:tag.index("}") + 1]
 
-        points = []
-        for tag_name in (f"{ns}trkpt", f"{ns}wpt", f"{ns}rtept"):
+        result: dict[str, tuple[float, float]] = {}
+        for tag_name in (f"{ns}wpt", f"{ns}trkpt", f"{ns}rtept"):
             for pt in root.iter(tag_name):
                 try:
                     lat = float(pt.get("lat"))
                     lon = float(pt.get("lon"))
-                    time_elem = pt.find(f"{ns}time")
-                    if time_elem is None or not time_elem.text:
+                    name_elem = pt.find(f"{ns}name")
+                    if name_elem is None or not name_elem.text:
                         continue
-                    raw = time_elem.text.strip().replace("Z", "+00:00")
-                    dt = datetime.fromisoformat(raw)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    points.append((dt, lat, lon))
+                    name = name_elem.text.strip()
+                    if name:
+                        result[name] = (lat, lon)
                 except (ValueError, TypeError):
                     continue
-
-        return sorted(points, key=lambda x: x[0])
-
-    @staticmethod
-    def _video_datetime_from_stem(stem: str) -> datetime | None:
-        """Extrait le datetime UTC depuis un stem de fichier vidéo.
-
-        Formats reconnus :
-          202207181314_ATL_…   → datetime(2022, 7, 18, 13, 14)  [HHmm]
-          20190819140122_ATL_… → datetime(2019, 8, 19, 14,  1)  [HHmmss]
-        """
-        m = re.match(r'^(\d{8})(\d{4,6})', stem)
-        if not m:
-            return None
-        try:
-            date_str, time_str = m.group(1), m.group(2)
-            if len(time_str) == 6:
-                fmt = "%Y%m%d%H%M%S"
-            else:
-                fmt = "%Y%m%d%H%M"
-            return datetime.strptime(date_str + time_str, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            return None
+        return result
 
     def _import_gpx(self):
-        """Ouvre un explorateur pour choisir un .gpx et applique les coordonnées à toutes les vidéos."""
+        """Ouvre un explorateur pour choisir un .gpx et applique les coordonnées aux vidéos
+        en matchant la balise <name> du waypoint avec le champ 'point_name' de chaque vidéo."""
         if not self._working_dir:
             QtWidgets.QMessageBox.warning(
                 self.widget,
@@ -2315,6 +2294,49 @@ class MetadonneesController:
             )
             return
 
+        # ── Étape 1 : vérifier que tous les point_name sont renseignés ──────
+        missing_point: list[str] = []
+        video_point_map: dict[str, str] = {}   # video_path → point_name
+
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
+            if not item:
+                continue
+            video_path = str(item.data(QtCore.Qt.ItemDataRole.UserRole) or '').strip()
+            if not video_path:
+                continue
+            json_path = get_working_video_json_path(self._working_dir, video_path)
+            point_name = ''
+            if os.path.isfile(json_path):
+                try:
+                    with open(json_path, 'r', encoding='utf-8') as _f:
+                        _jd = json.load(_f)
+                    point_name = str(
+                        (_jd.get("video_observation") or {}).get("point_name", {}).get("value") or ''
+                    ).strip()
+                except Exception:
+                    pass
+            if not point_name:
+                missing_point.append(os.path.basename(video_path))
+            else:
+                video_point_map[video_path] = point_name
+
+        if missing_point:
+            QtWidgets.QMessageBox.critical(
+                self.widget,
+                self.translate("Nom du point manquant", "Missing point name"),
+                self.translate(
+                    "Toutes les vidéos doivent avoir un 'Nom du point' avant d'importer le GPX.\n\n"
+                    "Vidéos sans nom de point :\n"
+                    + "\n".join(f"  • {v}" for v in missing_point),
+                    "All videos must have a 'Point name' before importing GPX.\n\n"
+                    "Videos without a point name:\n"
+                    + "\n".join(f"  • {v}" for v in missing_point),
+                )
+            )
+            return
+
+        # ── Étape 2 : choisir le fichier GPX ────────────────────────────────
         gpx_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.widget,
             self.translate("Sélectionner un fichier GPX", "Select a GPX file"),
@@ -2324,8 +2346,9 @@ class MetadonneesController:
         if not gpx_path:
             return
 
+        # ── Étape 3 : parser les waypoints par nom ───────────────────────────
         try:
-            points = self._parse_gpx_points(gpx_path)
+            waypoints = self._parse_gpx_waypoints(gpx_path)
         except Exception as e:
             QtWidgets.QMessageBox.critical(
                 self.widget,
@@ -2335,41 +2358,30 @@ class MetadonneesController:
             )
             return
 
-        if not points:
+        if not waypoints:
             QtWidgets.QMessageBox.warning(
                 self.widget,
                 self.translate("GPX vide", "Empty GPX"),
-                self.translate("Aucun point GPS trouvé dans ce fichier.",
-                               "No GPS points found in this file.")
+                self.translate("Aucun waypoint avec balise <name> trouvé dans ce fichier.",
+                               "No waypoint with <name> tag found in this file.")
             )
             return
 
-        matched, unmatched = 0, 0
-        for row in range(self.video_model.rowCount()):
-            item = self.video_model.item(row, 0)
-            if not item:
-                continue
-            video_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if not video_path:
-                continue
-            video_path = str(video_path)
-            stem = os.path.splitext(os.path.basename(video_path))[0]
-            video_dt = self._video_datetime_from_stem(stem)
+        # ── Étape 4 : matcher point_name ↔ <name> GPX et écrire lat/lon ─────
+        matched = 0
+        not_found: list[str] = []   # (vidéo, point_name) introuvable dans le GPX
+        write_errors: list[str] = []
 
-            # Trouver le waypoint le plus proche en temps
-            if video_dt and points:
-                closest = min(points, key=lambda p: abs((p[0] - video_dt).total_seconds()))
-                lat, lon = closest[1], closest[2]
-            elif points:
-                # Pas de timestamp dans le nom → premier point du GPX
-                lat, lon = points[0][1], points[0][2]
-            else:
-                unmatched += 1
+        for video_path, point_name in video_point_map.items():
+            coords = waypoints.get(point_name)
+            if coords is None:
+                not_found.append(f"{os.path.basename(video_path)} (point « {point_name} »)")
                 continue
 
+            lat, lon = coords
             json_path = get_working_video_json_path(self._working_dir, video_path)
             if not os.path.isfile(json_path):
-                unmatched += 1
+                write_errors.append(f"{os.path.basename(video_path)} : JSON introuvable")
                 continue
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
@@ -2377,32 +2389,40 @@ class MetadonneesController:
                 obs = data.setdefault("video_observation", {})
                 lat_str = str(lat).replace(".", ",")
                 lon_str = str(lon).replace(".", ",")
-                obs["latitude"] = {"value": lat_str}
+                obs["latitude"]  = {"value": lat_str}
                 obs["longitude"] = {"value": lon_str}
-                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← video_observation.latitude={lat_str!r}, longitude={lon_str!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 matched += 1
             except Exception as e:
-                print(f"[GPX] {os.path.basename(video_path)}: {e}")
-                unmatched += 1
+                write_errors.append(f"{os.path.basename(video_path)} : {e}")
 
         self._rebuild_ft_table()
         if self._on_metadata_saved:
             self._on_metadata_saved()
 
+        # ── Résumé ───────────────────────────────────────────────────────────
         msg = self.translate(
             f"Coordonnées GPX appliquées à {matched} vidéo(s).",
-            f"GPS coordinates applied to {matched} video(s)."
+            f"GPS coordinates applied to {matched} video(s).",
         )
-        if unmatched:
-            msg += self.translate(f"\n{unmatched} vidéo(s) ignorée(s) (JSON absent ou introuvable).",
-                                   f"\n{unmatched} video(s) skipped (no output JSON).")
-        QtWidgets.QMessageBox.information(
-            self.widget,
-            self.translate("Import GPX terminé", "GPX import done"),
-            msg
-        )
+        problems = not_found + write_errors
+        if problems:
+            msg += "\n\n" + self.translate(
+                f"⚠️ {len(problems)} problème(s) :\n" + "\n".join(f"  • {p}" for p in problems),
+                f"⚠️ {len(problems)} issue(s):\n"     + "\n".join(f"  • {p}" for p in problems),
+            )
+            QtWidgets.QMessageBox.warning(
+                self.widget,
+                self.translate("Import GPX terminé avec avertissements", "GPX import done with warnings"),
+                msg,
+            )
+        else:
+            QtWidgets.QMessageBox.information(
+                self.widget,
+                self.translate("Import GPX terminé", "GPX import done"),
+                msg,
+            )
 
     # Champs requis dans le JSON de chaque vidéo pour construire le nom formaté
     # Format : (block, json_key, label_affichage)
