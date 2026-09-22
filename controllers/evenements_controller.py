@@ -1236,17 +1236,21 @@ class EvenementsController:
             )
             self.on_capturer_clicked()
         else:
-            if self.capture_start_time is not None:
-                # Annule la capture en cours avant d'en démarrer une nouvelle
-                self.capture_start_time = None
-                if self._active_event_btn:
-                    sb = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
-                    self._apply_evt_btn_style(self._active_event_btn, sb, "normal")
+            if self.capture_start_time is not None and self._active_event_btn is btn:
+                # 2e clic sur le même bouton → terminer l'événement
+                self.on_finir_clicked()
+            else:
+                if self.capture_start_time is not None:
+                    # Autre bouton cliqué pendant une capture : annuler l'en cours
+                    self.capture_start_time = None
+                    if self._active_event_btn:
+                        sb = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
+                        self._apply_evt_btn_style(self._active_event_btn, sb, "normal")
 
-            # Armer la capture de durée
-            self._active_event_btn = btn
-            self._apply_evt_btn_style(btn, s, "selected")
-            self.on_capturer_clicked()  # positionne capture_start_time et affiche btn_finir
+                # 1er clic → armer la capture de durée
+                self._active_event_btn = btn
+                self._apply_evt_btn_style(btn, s, "selected")
+                self.on_capturer_clicked()
 
     # --- Export UI ---
 
@@ -1524,15 +1528,10 @@ class EvenementsController:
         else:
             self.capture_start_time = pos_ms
             self._current_comment = quick_comment
-            # Marquer le bouton actif en "active" et afficher FIN
+            # Marquer le bouton actif en "recording"
             if hasattr(self, '_active_event_btn') and self._active_event_btn:
                 s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
                 self._apply_evt_btn_style(self._active_event_btn, s, "active")
-            if hasattr(self, 'btn_finir'):
-                self.btn_finir.setText(
-                    self.translate(f"⏹ FIN  (début {time_str})", f"⏹ END  (start {time_str})")
-                )
-                self.btn_finir.setVisible(True)
 
     def on_finir_clicked(self):
         """Clôture la capture en cours et enregistre l'événement avec sa durée start→end."""
@@ -1580,14 +1579,11 @@ class EvenementsController:
         self._current_comment = ""
         if hasattr(self, 'input_commentaire_event'):
             self.input_commentaire_event.clear()
-        # Réinitialiser le bouton actif et cacher FIN
+        # Réinitialiser le bouton actif
         if hasattr(self, '_active_event_btn') and self._active_event_btn:
             s = self._active_event_btn.property("_zone_s") or self._ZONE_STYLES[0]
             self._apply_evt_btn_style(self._active_event_btn, s, "normal")
             self._active_event_btn = None
-        if hasattr(self, 'btn_finir'):
-            self.btn_finir.setVisible(False)
-            self.btn_finir.setText(self.translate("⏹ FIN D'ÉVÉNEMENT", "⏹ END EVENT"))
 
     def _saisir_ardoise(self):
         """Capture un événement ardoise ponctuel à la position courante du lecteur."""
