@@ -604,6 +604,147 @@ class EvenementsController:
         except Exception as e:
             print(f"[EVENTS] Erreur capture {field_key} : {e}")
 
+    def _write_timecode_at_ms(self, field_key: str, pos_ms: int, btn=None):
+        """Écrit un timecode à une position ms donnée (sans demander confirmation).
+
+        Utilisé par la détection automatique télémétrie.
+        """
+        if not self.current_json_path or not os.path.isfile(self.current_json_path):
+            return
+        h = int(pos_ms // 3600000)
+        m = int((pos_ms % 3600000) // 60000)
+        s = int((pos_ms % 60000) // 1000)
+        timecode = f"{h:02d}:{m:02d}:{s:02d}"
+        try:
+            with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            obs = data.setdefault("video_observation", {})
+            obs.setdefault(field_key, {})["value"] = timecode
+            with open(self.current_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            label = self.translate("Atterrissage", "Landing") if field_key == "timecode_landing" \
+                    else self.translate("Décollage", "Takeoff")
+            if hasattr(self, 'event_player') and getattr(self.event_player, 'timeline', None):
+                tl = self.event_player.timeline
+                tl.events = [e for e in tl.events if e.get("_json_key") != field_key]
+                tl.events.append({
+                    "start": pos_ms, "end": pos_ms,
+                    "title": label,
+                    "type": "timecode_marker",
+                    "zone": 0,
+                    "_json_key": field_key,
+                })
+                tl.update()
+            if hasattr(self, 'tree_captures') and self.tree_captures:
+                for i in range(self.tree_captures.topLevelItemCount() - 1, -1, -1):
+                    it = self.tree_captures.topLevelItem(i)
+                    if it.text(3) == label:
+                        self.tree_captures.takeTopLevelItem(i)
+                txt_tc = self.event_player.timeline._format_ms(pos_ms) if hasattr(self.event_player, 'timeline') else timecode
+                tree_item = QtWidgets.QTreeWidgetItem([txt_tc, "-", "Déploiement", label, "", ""])
+                tree_item.setFlags(tree_item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                tree_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#2778A2")))
+                self.tree_captures.addTopLevelItem(tree_item)
+                self.add_tree_thumbnail(tree_item, pos_ms)
+            if btn:
+                s_dep = self._ZONE_STYLES[0]
+                self._apply_evt_btn_style(btn, s_dep, "selected")
+                QtCore.QTimer.singleShot(600, lambda: self._apply_evt_btn_style(btn, s_dep, "normal"))
+            if self._on_events_changed:
+                self._on_events_changed()
+        except Exception as e:
+            print(f"[EVENTS] Erreur écriture {field_key} @ {timecode}: {e}")
+
+    def _show_landing_context_menu(self, btn: QtWidgets.QPushButton, pos):
+        """Menu contextuel (clic droit) sur Atterrissage ou Décollage."""
+        menu = QtWidgets.QMenu(btn)
+        action = menu.addAction(
+            self.translate("Détecter automatiquement (télémétrie)",
+                           "Auto-detect (telemetry)"))
+        chosen = menu.exec(btn.mapToGlobal(pos))
+        if chosen == action:
+            self._detect_landing_takeoff_from_telemetry()
+
+    def _detect_landing_takeoff_from_telemetry(self):
+        """Détecte automatiquement l'atterrissage et le décollage depuis la courbe de profondeur."""
+        if not hasattr(self, 'event_player') or not self.event_player:
+            return
+
+        df = getattr(self.event_player, 'df_telemetry', None)
+        if df is None or df.empty \
+                or 'profondeur' not in df.columns or 'Delta' not in df.columns:
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Pas de télémétrie", "No telemetry"),
+                self.translate(
+                    "Aucune donnée de profondeur disponible.\n"
+                    "Vérifiez que le fichier CSV de télémétrie est présent.",
+                    "No depth data available.\n"
+                    "Check that the telemetry CSV file is present.",
+                ),
+            )
+            return
+
+        # Lisser la courbe de profondeur (moyenne glissante)
+        smooth_window = max(3, len(df) // 60)
+        smoothed = df['profondeur'].rolling(window=smooth_window, center=True, min_periods=1).mean()
+        times_s = df['Delta'].values
+
+        max_depth = smoothed.max()
+        if max_depth < 0.3:
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Profondeur insuffisante", "Insufficient depth"),
+                self.translate(
+                    f"Profondeur maximale trop faible ({max_depth:.2f} m).\n"
+                    "Impossible de détecter automatiquement l'atterrissage.",
+                    f"Maximum depth too low ({max_depth:.2f} m).\n"
+                    "Cannot auto-detect landing.",
+                ),
+            )
+            return
+
+        # Seuil = 70 % de la profondeur max
+        threshold = max_depth * 0.70
+        above = smoothed >= threshold
+
+        # Landing : premier index au-dessus du seuil
+        landing_idx = above.idxmax() if above.any() else None
+        # Takeoff  : dernier index au-dessus du seuil
+        takeoff_idx = above[::-1].idxmax() if above.any() else None
+
+        if landing_idx is None or takeoff_idx is None:
+            QtWidgets.QMessageBox.warning(
+                self.page,
+                self.translate("Détection impossible", "Detection failed"),
+                self.translate(
+                    "Impossible de détecter l'atterrissage/décollage sur cette courbe.",
+                    "Cannot detect landing/takeoff on this curve.",
+                ),
+            )
+            return
+
+        landing_ms = int(float(times_s[landing_idx]) * 1000)
+        takeoff_ms  = int(float(times_s[takeoff_idx])  * 1000)
+
+        self._write_timecode_at_ms("timecode_landing", landing_ms,
+                                   getattr(self, '_btn_atterrissage', None))
+        self._write_timecode_at_ms("timecode_takeoff",  takeoff_ms,
+                                   getattr(self, '_btn_decollage', None))
+
+        label_att = self.event_player.timeline._format_ms(landing_ms) \
+                    if hasattr(self.event_player, 'timeline') else f"{landing_ms // 1000}s"
+        label_dec = self.event_player.timeline._format_ms(takeoff_ms) \
+                    if hasattr(self.event_player, 'timeline') else f"{takeoff_ms // 1000}s"
+        QtWidgets.QMessageBox.information(
+            self.page,
+            self.translate("Détection télémétrie", "Telemetry detection"),
+            self.translate(
+                f"Atterrissage détecté à {label_att}\nDécollage détecté à {label_dec}",
+                f"Landing detected at {label_att}\nTakeoff detected at {label_dec}",
+            ),
+        )
+
     @staticmethod
     def _strip_events_motor_placeholder(events_motor) -> list:
         """Retire l'entrée-modèle vide de events_motor (copiée telle quelle depuis template.json,
@@ -943,6 +1084,13 @@ class EvenementsController:
         self._btn_atterrissage = btn_att
         self._btn_decollage = btn_dec
         self._btn_rotation_moteur = btn_rot
+
+        # Clic droit sur Atterrissage / Décollage → "Détecter automatiquement"
+        for btn in (btn_att, btn_dec):
+            btn.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+            btn.customContextMenuRequested.connect(
+                lambda pos, b=btn: self._show_landing_context_menu(b, pos)
+            )
 
         # --- Boutons dédiés Début / Fin annotation — sous Atterrissage/Décollage/Rotation ---
         annot_row_w = QtWidgets.QWidget()
