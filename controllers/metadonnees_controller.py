@@ -1019,6 +1019,22 @@ class MetadonneesController:
             self.current_video_path = str(video_path)
             self.load_all_data(json_path)
             self._load_infostation_fields(str(video_path))
+        # Mise à jour automatique du dialogue ardoise si ouvert
+        dlg = getattr(self, '_slate_dialog', None)
+        if dlg is not None and dlg.isVisible():
+            slate_frame = self._find_slate_frame()
+            if slate_frame is not None:
+                self._display_slate_window(slate_frame)
+            else:
+                vname = os.path.basename(str(video_path))
+                dlg.setWindowTitle(self.translate(
+                    f"Ardoise — {vname} — introuvable",
+                    f"Slate — {vname} — not found"
+                ))
+                self._slate_lbl.setText(self.translate(
+                    "Aucune ardoise pour cette vidéo", "No slate for this video"
+                ))
+                self._slate_lbl.setPixmap(QtGui.QPixmap())
 
     def _on_ft_current_cell_changed(self, current_row, _current_col, previous_row, _previous_col):
         """Surligne toute la ligne courante du tableau infostation au clic (la sélection
@@ -3273,36 +3289,23 @@ class MetadonneesController:
 
     # ── Slate compare ─────────────────────────────────────────────────────
 
-    def on_compare_slate_clicked(self):
-        """Cherche l'événement 'slate' dans le JSON et affiche la frame correspondante."""
-        if not self.current_video_path or not os.path.exists(self.current_video_path):
-            QtWidgets.QMessageBox.warning(self.widget,
-                self.translate("Erreur", "Error"),
-                self.translate("Veuillez sélectionner une séquence vidéo valide.", "Please select a valid video sequence first."))
-            return
+    def _find_slate_frame(self) -> int | None:
+        """Retourne le numéro de frame de l'ardoise pour la vidéo courante, ou None si introuvable."""
         if not self.current_template_json or not os.path.exists(self.current_template_json):
-            QtWidgets.QMessageBox.warning(self.widget,
-                self.translate("Ardoise introuvable", "Slate Not Found"),
-                self.translate("Aucun JSON trouvé pour cette vidéo.",
-                               "No JSON found for this video."))
-            return
+            return None
         try:
             with open(self.current_template_json, 'r', encoding='utf-8') as f:
-                self._json_data = json.load(f)
-        except Exception as e:
-            print(f"[SLATE] Failed reloading JSON: {e}")
+                jdata = json.load(f)
+        except Exception:
+            return None
 
+        obs = jdata.get("video_observation", {})
         slate_frame = None
         slate_timecode = None
-        obs = self._json_data.get("video_observation", {})
 
-        # Mécanisme actuel : le bouton "SAISIR ARDOISE" (page Validation) écrit un timecode
-        # scalaire dans video_observation.timecode_ardoise — c'est la source à vérifier en premier.
         tc_ardoise = obs.get("timecode_ardoise", {})
         slate_timecode = tc_ardoise.get("value") if isinstance(tc_ardoise, dict) else tc_ardoise
 
-        # Rétro-compat : anciens JSON où l'ardoise était enregistrée comme événement dans un
-        # tableau (events_deployment/events_interesting_images/events_animal).
         if not slate_timecode:
             for key in ["events_deployment", "events_interesting_images", "events_animal"]:
                 if key in obs and isinstance(obs[key], list) and obs[key]:
@@ -3315,14 +3318,12 @@ class MetadonneesController:
                 if slate_frame is not None or slate_timecode:
                     break
 
-        # Calculer le frame depuis le timecode si non fourni directement
         if slate_frame is None and slate_timecode:
             try:
                 cap_tmp = cv2.VideoCapture(self.current_video_path)
                 fps = cap_tmp.get(cv2.CAP_PROP_FPS) or 25.0
                 cap_tmp.release()
-                parts = slate_timecode.replace(',', ':').split(':')
-                parts = [int(p) for p in parts]
+                parts = [int(p) for p in slate_timecode.replace(',', ':').split(':')]
                 if len(parts) == 2:
                     secs = parts[0] * 60 + parts[1]
                 elif len(parts) == 3:
@@ -3333,6 +3334,22 @@ class MetadonneesController:
             except Exception:
                 pass
 
+        return slate_frame
+
+    def on_compare_slate_clicked(self):
+        """Cherche l'événement 'slate' dans le JSON et affiche la frame correspondante."""
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Erreur", "Error"),
+                self.translate("Veuillez sélectionner une séquence vidéo valide.", "Please select a valid video sequence first."))
+            return
+        if not self.current_template_json or not os.path.exists(self.current_template_json):
+            QtWidgets.QMessageBox.warning(self.widget,
+                self.translate("Ardoise introuvable", "Slate Not Found"),
+                self.translate("Aucun JSON trouvé pour cette vidéo.", "No JSON found for this video."))
+            return
+
+        slate_frame = self._find_slate_frame()
         if slate_frame is None:
             QtWidgets.QMessageBox.warning(self.widget,
                 self.translate("Ardoise introuvable", "Slate Not Found"),
@@ -3342,7 +3359,7 @@ class MetadonneesController:
         self._display_slate_window(slate_frame)
 
     def _display_slate_window(self, frame_number: int):
-        """Extrait frame_number de la vidéo et l'affiche dans une boîte de dialogue."""
+        """Extrait frame_number de la vidéo et l'affiche dans une boîte de dialogue persistante."""
         cap = cv2.VideoCapture(self.current_video_path)
         if not cap.isOpened():
             QtWidgets.QMessageBox.warning(self.widget,
@@ -3363,8 +3380,26 @@ class MetadonneesController:
         q_img = QtGui.QImage(frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
         pixmap = QtGui.QPixmap.fromImage(q_img)
 
+        video_name = os.path.basename(self.current_video_path)
+        title = self.translate(
+            f"Ardoise — {video_name} — Frame {frame_number}",
+            f"Slate — {video_name} — Frame {frame_number}"
+        )
+
+        # Réutiliser le dialogue existant s'il est encore ouvert
+        dlg = getattr(self, '_slate_dialog', None)
+        if dlg is not None and dlg.isVisible():
+            dlg.setWindowTitle(title)
+            self._slate_lbl.setPixmap(
+                pixmap.scaled(780, 520, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                              QtCore.Qt.TransformationMode.SmoothTransformation)
+            )
+            dlg.raise_()
+            dlg.activateWindow()
+            return
+
         dialog = QtWidgets.QDialog(self.widget)
-        dialog.setWindowTitle(self.translate(f"Ardoise — Frame {frame_number}", f"Slate — Frame {frame_number}"))
+        dialog.setWindowTitle(title)
         dialog.setMinimumSize(800, 600)
         layout = QtWidgets.QVBoxLayout(dialog)
         lbl = QtWidgets.QLabel()
@@ -3375,4 +3410,6 @@ class MetadonneesController:
         btn = QtWidgets.QPushButton(self.translate("Fermer", "Close"))
         btn.clicked.connect(dialog.accept)
         layout.addWidget(btn)
+        self._slate_dialog = dialog
+        self._slate_lbl = lbl
         dialog.show()
