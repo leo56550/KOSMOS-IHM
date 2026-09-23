@@ -178,6 +178,7 @@ class EvenementsController:
                 self.event_player.timeline.eventChanged.connect(self.refresh_event_list)
 
             self.event_player.timeline.eventSelected.connect(self.on_timeline_event_selected)
+            self.event_player.timeline.eventDoubleClicked.connect(self._seek_to_event)
             self.event_player.timeline.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
             self.event_player.timeline.customContextMenuRequested.connect(
                 lambda pos: self.open_context_menu(pos, self.event_player.timeline)
@@ -432,11 +433,13 @@ class EvenementsController:
         finally:
             self.event_player.timeline.blockSignals(False)
 
-    def on_timeline_event_selected(self, event_dict):
-        """Propage la sélection de la timeline vers l'arbre et seek le lecteur."""
-        # Seek lecteur vers le début de l'événement
+    def _seek_to_event(self, event_dict):
+        """Double-clic sur un événement : positionne le lecteur au début de l'événement."""
         if event_dict is not None and hasattr(self, 'event_player') and self.event_player is not None:
             self.event_player.player.setPosition(int(event_dict.get("start", 0)))
+
+    def on_timeline_event_selected(self, event_dict):
+        """Propage la sélection de la timeline vers l'arbre (simple clic)."""
 
         if not hasattr(self, 'tree_captures') or self.tree_captures is None:
             return

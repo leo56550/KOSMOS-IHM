@@ -10,7 +10,8 @@ class VideoTimeline(QtWidgets.QWidget):
     timeChanged = QtCore.pyqtSignal(int)
     eventResized = QtCore.pyqtSignal(dict)
     eventMoved = QtCore.pyqtSignal(dict)
-    eventSelected = QtCore.pyqtSignal(object)  # dict or None
+    eventSelected = QtCore.pyqtSignal(object)      # dict or None
+    eventDoubleClicked = QtCore.pyqtSignal(object) # dict
     zoomChanged = QtCore.pyqtSignal(float)
     markersChanged = QtCore.pyqtSignal(int, int)
 
@@ -681,6 +682,17 @@ class VideoTimeline(QtWidgets.QWidget):
                 self.sliderMoved.emit(self.current_pos)
             self.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.ArrowCursor))
             self.update()
+
+    def mouseDoubleClickEvent(self, event):
+        """Double-clic sur un événement → émet eventDoubleClicked pour que le lecteur se positionne."""
+        if event.button() != QtCore.Qt.MouseButton.LeftButton:
+            return
+        pos_x = event.position().x()
+        pos_y = event.position().y()
+        for _, (evt, rect) in self.rects_evenements.items():
+            if rect.contains(int(pos_x), int(pos_y)):
+                self.eventDoubleClicked.emit(evt)
+                return
 
     def wheelEvent(self, event):
         event.ignore()
