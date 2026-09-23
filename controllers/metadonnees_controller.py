@@ -132,6 +132,38 @@ def _coerce_field_value(section: str, field_key: str, val: str):
     return val
 
 
+def _compute_codeobs(jdata: dict) -> str | None:
+    """Calcule codeObs (zone + 2 derniers chiffres année + numéro point 0000) depuis jdata."""
+    obs  = jdata.get("video_observation", {})
+    surv = jdata.get("survey", {})
+
+    def _v(block, key):
+        f = block.get(key, {})
+        return str(f.get("value") or "").strip() if isinstance(f, dict) else str(f or "").strip()
+
+    zone_v  = _v(surv, "zone").strip()
+    date_v  = _v(surv, "date").strip()
+    pname_v = (_v(obs, "point_name") or _v(obs, "station_number")).strip()
+
+    # Extraire les 2 derniers chiffres de l'année depuis date (YYYY-MM-DD ou DD/MM/YYYY)
+    year_2d = ""
+    if date_v:
+        for sep in ("-", "/"):
+            parts = date_v.split(sep)
+            if len(parts) == 3:
+                yr = parts[0] if len(parts[0]) == 4 else parts[2]
+                year_2d = yr[-2:] if len(yr) >= 2 else ""
+                break
+
+    if not (zone_v and year_2d and pname_v):
+        return None
+    try:
+        station_idx = f"{int(pname_v):04d}"
+    except ValueError:
+        station_idx = pname_v.zfill(4)[:4]
+    return f"{zone_v}{year_2d}{station_idx}"
+
+
 # Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
 # section=None → champ calculé ou non mappé (toujours vide)
@@ -973,6 +1005,14 @@ class MetadonneesController:
             else:
                 block[json_key] = {"value": coerced}
             print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
+            # Recompute codeObs chaque fois qu'un champ source change
+            computed_code = _compute_codeobs(jdata)
+            if computed_code:
+                obs_block = jdata.setdefault("video_observation", {})
+                if "codeObs" in obs_block and isinstance(obs_block["codeObs"], dict):
+                    obs_block["codeObs"]["value"] = computed_code
+                else:
+                    obs_block["codeObs"] = {"value": computed_code}
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             if self._on_metadata_saved:
@@ -1318,6 +1358,24 @@ class MetadonneesController:
                                 temp_vo[_coord] = {"value": raw_val}
                 except Exception as e:
                     print(f"[META] Fusion JSON brut impossible : {e}")
+
+        # Si codeObs est null, le recalculer depuis zone+date+point_name et le persister
+        if json_path.endswith('_temp.json'):
+            _code_val = (self._json_data.get("video_observation", {})
+                         .get("codeObs", {}) or {}).get("value")
+            if not _code_val:
+                _computed = _compute_codeobs(self._json_data)
+                if _computed:
+                    _vobs = self._json_data.setdefault("video_observation", {})
+                    if "codeObs" in _vobs and isinstance(_vobs["codeObs"], dict):
+                        _vobs["codeObs"]["value"] = _computed
+                    else:
+                        _vobs["codeObs"] = {"value": _computed}
+                    try:
+                        with open(json_path, 'w', encoding='utf-8') as _fw:
+                            json.dump(self._json_data, _fw, indent=4, ensure_ascii=False)
+                    except Exception as _we:
+                        print(f"[META] codeObs persist error: {_we}")
 
         if "video_observation" in self._json_data:
             self._ensure_custom_fields()
@@ -2015,7 +2073,7 @@ class MetadonneesController:
                     stem_to_path[stem] = os.path.join(root, fname)
 
         # Champs toujours null dans les temp.json générés (saisis manuellement dans l'IHM)
-        _NULL_IN_GENERATED = {"codeObs", "point_name", "video_file_name"}
+        _NULL_IN_GENERATED = {"point_name", "video_file_name"}
 
         # Colonnes écrivables : section non-None, champ non calculé, et non réservé à l'IHM
         writable_cols = [
@@ -2062,6 +2120,14 @@ class MetadonneesController:
             for fk in _NULL_IN_GENERATED:
                 if fk in vobs and isinstance(vobs[fk], dict):
                     vobs[fk]['value'] = None
+
+            # Calculer et écrire codeObs depuis zone + date + numéros de point du tableau
+            computed_code = _compute_codeobs(jdata)
+            if computed_code:
+                if "codeObs" in vobs and isinstance(vobs["codeObs"], dict):
+                    vobs["codeObs"]["value"] = computed_code
+                else:
+                    vobs["codeObs"] = {"value": computed_code}
 
             try:
                 with open(temp_path, 'w', encoding='utf-8') as f:
