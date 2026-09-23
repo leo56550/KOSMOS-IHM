@@ -377,10 +377,9 @@ class _FillSelectionDelegate(QtWidgets.QStyledItemDelegate):
         _label, section, field_key, _read_only = _FT_TABLE_COLS[col]
         if not section or not field_key:
             return
-        info = _FIELD_TYPES.get((section, field_key))
-        if not info:
+        ftype = _FIELD_TYPES.get((section, field_key))
+        if not ftype:
             return
-        ftype = info.get("type")
         if ftype == "int":
             editor.setValidator(QtGui.QIntValidator(editor))
         elif ftype == "float":
@@ -756,8 +755,9 @@ class MetadonneesController:
             "Profondeur":                        65,
             "Commentaires terrain pose":         150,
             "Commentaires terrain localisation": 150,
-            "Dossier Datawork":                  160,
+            "Dossier Datawork":                  220,
             "sous-dossier video & metadata":     160,
+            "Nom de la video":                   100,
             "Commentaires video":                160,
             "Images interessantes":              160,
             "Milieu/Habitat":                    90,
@@ -1385,6 +1385,10 @@ class MetadonneesController:
                             if not raw_val:
                                 raw_val = raw_gps.get(_coord)
                             if raw_val and raw_val != 0:
+                                try:
+                                    raw_val = float(str(raw_val).replace(',', '.'))
+                                except (ValueError, TypeError):
+                                    pass
                                 temp_vo[_coord] = {"value": raw_val}
                 except Exception as e:
                     print(f"[META] Fusion JSON brut impossible : {e}")
@@ -1405,6 +1409,19 @@ class MetadonneesController:
                     else:
                         _vobs["codeObs"] = {"value": _computed}
                     _needs_save = True
+
+            # Coercer latitude/longitude en float si stockés comme str
+            _vobs_gps = self._json_data.get("video_observation", {})
+            for _coord in ("latitude", "longitude"):
+                _gps_entry = _vobs_gps.get(_coord)
+                if isinstance(_gps_entry, dict):
+                    _gps_val = _gps_entry.get("value")
+                    if isinstance(_gps_val, str) and _gps_val:
+                        try:
+                            _gps_entry["value"] = float(_gps_val.replace(',', '.'))
+                            _needs_save = True
+                        except (ValueError, TypeError):
+                            pass
 
             # Toujours recalculer video_path et video_number depuis le chemin réel
             if self.current_video_path:
@@ -1905,8 +1922,8 @@ class MetadonneesController:
             return ""
 
         gps = get_video_gps_coords(video_path)
-        lat_gps = str(gps[0]).replace('.', ',') if gps else ""
-        lon_gps = str(gps[1]).replace('.', ',') if gps else ""
+        lat_gps = str(gps[0]) if gps else ""
+        lon_gps = str(gps[1]) if gps else ""
 
         # ── Construction de la ligne dans l'ordre exact du XLSX ───────────
         row: list = []
@@ -1957,10 +1974,14 @@ class MetadonneesController:
                 val = os.path.basename(os.path.normpath(video_path))
 
             elif field_key == "latitude":
-                val = val.replace('.', ',') if val else lat_gps
+                val = val if val else lat_gps
+                if for_csv and val:
+                    val = str(val).replace('.', ',')
 
             elif field_key == "longitude":
-                val = val.replace('.', ',') if val else lon_gps
+                val = val if val else lon_gps
+                if for_csv and val:
+                    val = str(val).replace('.', ',')
 
             elif field_key == "time" and not val:
                 val = heure_stem
@@ -2575,10 +2596,16 @@ class MetadonneesController:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 obs = data.setdefault("video_observation", {})
-                lat_str = str(lat).replace(".", ",")
-                lon_str = str(lon).replace(".", ",")
-                obs["latitude"]  = {"value": lat_str}
-                obs["longitude"] = {"value": lon_str}
+                try:
+                    lat_val = float(lat)
+                except (ValueError, TypeError):
+                    lat_val = lat
+                try:
+                    lon_val = float(lon)
+                except (ValueError, TypeError):
+                    lon_val = lon
+                obs["latitude"]  = {"value": lat_val}
+                obs["longitude"] = {"value": lon_val}
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 matched += 1

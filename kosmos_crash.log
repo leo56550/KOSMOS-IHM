@@ -1728,3 +1728,21 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-23 10:19:47.842564
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\metadonnees_controller.py", line 369, in createEditor
+    self._apply_type_validator(editor, index.column())
+  File "c:\KOSMOS_IHM\controllers\metadonnees_controller.py", line 383, in _apply_type_validator
+    ftype = info.get("type")
+            ^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+
+============================================================
+2026-09-23 10:24:51.065820
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 758, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

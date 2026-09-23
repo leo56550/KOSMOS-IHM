@@ -302,6 +302,15 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                 mapped += [f"video_observation.{c}" for c in _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
                     exclude_keys={"exploitable", "qualifiable", "point_name", "station_number"})]
+                # Coercer latitude/longitude en float après la merge (le JSON brut peut stocker des str)
+                _vo_merged = data.get("video_observation", {})
+                for _coord in ("latitude", "longitude"):
+                    _e = _vo_merged.get(_coord)
+                    if isinstance(_e, dict) and isinstance(_e.get("value"), str) and _e["value"]:
+                        try:
+                            _e["value"] = float(_e["value"].replace(',', '.'))
+                        except (ValueError, TypeError):
+                            pass
                 if mapped:
                     print(f"[TEMP_JSON] {stem}_temp.json ← depuis {stem}.json :")
                     for entry in mapped:
