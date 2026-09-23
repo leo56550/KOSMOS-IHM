@@ -1969,11 +1969,14 @@ class MetadonneesController:
                     stem = os.path.splitext(fname)[0].lower()
                     stem_to_path[stem] = os.path.join(root, fname)
 
-        # Colonnes écrivables : section non-None et champ non calculé
+        # Champs toujours null dans les temp.json générés (saisis manuellement dans l'IHM)
+        _NULL_IN_GENERATED = {"codeObs", "point_name", "video_file_name"}
+
+        # Colonnes écrivables : section non-None, champ non calculé, et non réservé à l'IHM
         writable_cols = [
             (col_i, sec, fk)
             for col_i, (_, sec, fk, _) in enumerate(_FT_TABLE_COLS)
-            if sec is not None and fk not in _COMPUTED_FIELDS
+            if sec is not None and fk not in _COMPUTED_FIELDS and fk not in _NULL_IN_GENERATED
         ]
 
         total = self._ft_table.rowCount()
@@ -2007,6 +2010,12 @@ class MetadonneesController:
                     block[fk]['value'] = val
                 else:
                     block[fk] = {'value': val}
+
+            # Forcer explicitement les champs IHM à null (sécurité si présents dans le template)
+            vobs = jdata.setdefault("video_observation", {})
+            for fk in _NULL_IN_GENERATED:
+                if fk in vobs and isinstance(vobs[fk], dict):
+                    vobs[fk]['value'] = None
 
             try:
                 with open(temp_path, 'w', encoding='utf-8') as f:
