@@ -1,3 +1,4 @@
+import json
 import os
 import cv2
 
@@ -8,10 +9,11 @@ from services.thumbnail_service import THUMB_W, THUMB_H
 from services.video_service import check_stereo_status
 from services.export_service import VideoSegmentationWorker
 from services.sound_service import get_sound_service
-from services.campaign_service import get_campaign_output_dir, get_working_video_dir
+from services.campaign_service import get_campaign_output_dir, get_working_video_dir, get_temp_json_path
 from views.widgets.embedded_player import EmbeddedVideoPlayer
 from views.widgets.video_bar_delegate import VideoBarDelegate
 from views.dialogs.capture_dialog import CaptureDialog
+from models.video_model import VideoFilterProxyModel
 
 
 class ExtractionController:
@@ -48,6 +50,7 @@ class ExtractionController:
             self.tree_segment_capture_container.setModel(self.deliverables_model)
             self.tree_segment_capture_container.setIconSize(QtCore.QSize(64, 48))
 
+        self.current_json_path = None
         self.video_player = EmbeddedVideoPlayer(zone_definitions=None)
         self._setup_ui()
 
@@ -58,15 +61,27 @@ class ExtractionController:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.addWidget(self.video_player)
 
+        self.proxy_model = VideoFilterProxyModel(self.widget)
+        if self.video_model:
+            self.proxy_model.setSourceModel(self.video_model)
+            self.proxy_model.setSortRole(QtCore.Qt.ItemDataRole.UserRole + 2)
+            self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
+
         if self.tree_videos_2:
             self.tree_videos_2.clicked.connect(self.on_video_selected_treeview)
             self.tree_videos_2.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             if self.video_model:
-                self.tree_videos_2.setModel(self.video_model)
+                self.tree_videos_2.setModel(self.proxy_model)
+                self.tree_videos_2.header().hide()
+                for col in range(1, self.video_model.columnCount()):
+                    self.tree_videos_2.hideColumn(col)
             else:
                 self.show_no_campaign_message()
             self._bar_delegate = VideoBarDelegate(self.tree_videos_2)
             self.tree_videos_2.setItemDelegateForColumn(0, self._bar_delegate)
+
+        self.video_player.btn_ardoise.setVisible(False)
+        self.video_player.btn_ardoise_manquante.setVisible(False)
 
         if self.param_container:
             self._fill_param_container()
@@ -75,6 +90,9 @@ class ExtractionController:
             self.show_no_cap_seg_message()
 
         self.video_player.timeline.markersChanged.connect(self.on_timeline_markers_moved)
+        self.video_player.timeline.eventDoubleClicked.connect(self.on_event_double_clicked)
+        self.video_player.timeline.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.video_player.timeline.customContextMenuRequested.connect(self.on_timeline_context_menu)
 
     def translate(self, fr: str, en: str) -> str:
         """Retourne fr ou en selon la langue active."""
@@ -127,44 +145,139 @@ class ExtractionController:
     def load_campaign_videos(self, model):
         """Remplace le modèle vidéo après changement de campagne."""
         self.video_model = model
+        self.proxy_model.setSourceModel(self.video_model)
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.AscendingOrder)
         if self.tree_videos_2:
-            self.tree_videos_2.setModel(self.video_model)
+            self.tree_videos_2.setModel(self.proxy_model)
+            self.tree_videos_2.header().hide()
+            for col in range(1, self.video_model.columnCount()):
+                self.tree_videos_2.hideColumn(col)
 
     def select_video_by_name(self, video_name: str):
         """Sélectionne une vidéo dans l'arbre depuis son nom (appel depuis la carte)."""
         if not self.tree_videos_2 or not self.video_model:
             return
-        model = self.tree_videos_2.model()
-        if not model:
-            return
-        for row in range(model.rowCount()):
-            item = model.item(row, 0)
+        for row in range(self.video_model.rowCount()):
+            item = self.video_model.item(row, 0)
             if item and item.text() == video_name:
-                index = model.indexFromItem(item)
+                source_index = self.video_model.indexFromItem(item)
+                proxy_index = self.proxy_model.mapFromSource(source_index)
+                if not proxy_index.isValid():
+                    return
                 self.tree_videos_2.selectionModel().setCurrentIndex(
-                    index,
+                    proxy_index,
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect |
                     QtCore.QItemSelectionModel.SelectionFlag.Rows
                 )
-                self.tree_videos_2.scrollTo(index)
-                self.on_video_selected_treeview(index)
+                self.tree_videos_2.scrollTo(proxy_index)
+                self.on_video_selected_treeview(proxy_index)
                 break
 
     def refresh_video_list(self):
-        """Rafraîchit l'arbre vidéo (appelé lors des changements de page)."""
+        """Rafraîchit l'arbre vidéo et recharge les événements de la vidéo courante."""
         if hasattr(self, 'tree_videos_2') and self.tree_videos_2:
             if self.video_model and self.video_model.rowCount() > 0:
-                self.tree_videos_2.setModel(self.video_model)
+                self.tree_videos_2.setModel(self.proxy_model)
                 self.tree_videos_2.viewport().update()
             else:
                 self.show_no_campaign_message()
+        self._reload_current_video_events()
+
+    def _reload_current_video_events(self):
+        """Relit le JSON de la vidéo courante et met à jour la timeline (si vidéo chargée)."""
+        if not self.current_video_path or not os.path.exists(self.current_video_path):
+            return
+
+        video_dir = os.path.dirname(self.current_video_path)
+        csv_system = os.path.join(video_dir, "systemEvent.csv")
+        timeline_events = []
+        if os.path.exists(csv_system):
+            try:
+                from services.motor_service import get_motor_stable_timestamps as _gmt
+                motor_data = _gmt(csv_system, delay=6.0)
+                for motor_item in motor_data:
+                    start_ms = int(motor_item["timestamp"] * 1000)
+                    timeline_events.append({
+                        "start": start_ms, "end": start_ms + 3000,
+                        "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
+                        "type": motor_item["type"]
+                    })
+            except Exception:
+                pass
+
+        json_path = get_temp_json_path(self.current_video_path)
+        if json_path and os.path.exists(json_path):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                video_obs = data.get("video_observation", {})
+                for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
+                    raw = video_obs.get(json_key) or (video_obs.get("events_deployment") if json_key == "events_motor" else None)
+                    if not isinstance(raw, list) or not raw:
+                        continue
+                    if json_key == "events_motor":
+                        first = raw[0] if raw else {}
+                        if isinstance(first, dict) and "values" in first:
+                            values_list = [
+                                {"frame_number": v.get("frame_number_start", 0),
+                                 "description_fr": v.get("value", ""),
+                                 "event_id": v.get("event_id"),
+                                 "comment": v.get("comment", "")}
+                                for v in first.get("values", []) if isinstance(v, dict)
+                            ]
+                        else:
+                            values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+                    else:
+                        values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                    for val in values_list:
+                        if json_key == "events_motor":
+                            frame_start = val.get("frame_number", 0)
+                            frame_end = frame_start
+                            value = val.get("description_fr") or val.get("value", "rotation")
+                        else:
+                            frame_start = val.get("frame_number_start", 0)
+                            frame_end = val.get("frame_number_end", 0)
+                            value = val.get("value", "")
+                        fps = 25.0
+                        start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
+                        end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
+                        is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
+                        if json_key == "events_motor":
+                            already = any(
+                                abs(e.get("start", 0) - start_ms) <= 2000
+                                for e in timeline_events
+                                if e.get("type", "").startswith("rotation")
+                            )
+                            if already:
+                                continue
+                            event_dict = {
+                                "start": start_ms, "end": start_ms,
+                                "title": f"Pic: {value}" if is_pic else value,
+                                "type": "rotation_manual", "zone": 0, "_json_key": json_key,
+                            }
+                        else:
+                            event_dict = {
+                                "start": start_ms, "end": end_ms,
+                                "title": f"Pic: {value}" if is_pic else value,
+                                "type": "custom_event", "zone": 0, "_json_key": json_key,
+                            }
+                        if val.get("event_id"):
+                            event_dict["_event_uid"] = val["event_id"]
+                        if is_pic:
+                            event_dict["single_frame"] = True
+                        timeline_events.append(event_dict)
+            except Exception as e:
+                print(f"[EXTRACTION] reload events error: {e}")
+
+        self.video_player.timeline.events = timeline_events
+        self.video_player.timeline.update()
 
     def on_video_selected_treeview(self, index: QtCore.QModelIndex):
-        """Charge la vidéo sélectionnée, la télémétrie CSV et les événements moteur."""
+        """Charge la vidéo sélectionnée, la télémétrie CSV, les événements moteur et JSON."""
         if not index.isValid():
             return
-        model = self.tree_videos_2.model()
-        item = model.itemFromIndex(index.siblingAtColumn(0))
+        source_index = self.proxy_model.mapToSource(index)
+        item = self.video_model.itemFromIndex(source_index.siblingAtColumn(0))
         if not item:
             return
 
@@ -176,6 +289,7 @@ class ExtractionController:
             self.current_is_stereo = is_stereo
             self.current_video_payload = video_payload
             self.current_video_path = video_path
+            self.current_json_path = get_temp_json_path(video_path)
 
             if hasattr(self, 'btn_capture_main'):
                 self.btn_capture_main.setVisible(not is_stereo)
@@ -188,15 +302,89 @@ class ExtractionController:
 
             video_dir = os.path.dirname(video_path)
             csv_system = os.path.join(video_dir, "systemEvent.csv")
-            motor_events = []
+            timeline_events = []
             if os.path.exists(csv_system):
                 try:
-                    motor_events = get_motor_stable_timestamps(csv_system, delay=6.0)
+                    motor_data = get_motor_stable_timestamps(csv_system, delay=6.0)
+                    for motor_item in motor_data:
+                        start_ms = int(motor_item["timestamp"] * 1000)
+                        timeline_events.append({
+                            "start": start_ms, "end": start_ms + 3000,
+                            "title": f"Rot #{motor_item['rotation_index']} ({motor_item['angle']}°)",
+                            "type": motor_item["type"]
+                        })
                 except Exception as e:
                     print(f"[MOTEURS] Erreur : {e}")
 
+            if self.current_json_path and os.path.exists(self.current_json_path):
+                try:
+                    with open(self.current_json_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    video_obs = data.get("video_observation", {})
+                    for json_key in ["events_motor", "events_animal", "events_interesting_images"]:
+                        raw = video_obs.get(json_key) or (video_obs.get("events_deployment") if json_key == "events_motor" else None)
+                        if not isinstance(raw, list) or not raw:
+                            continue
+                        if json_key == "events_motor":
+                            first = raw[0] if raw else {}
+                            if isinstance(first, dict) and "values" in first:
+                                values_list = [
+                                    {"frame_number": v.get("frame_number_start", 0),
+                                     "description_fr": v.get("value", ""),
+                                     "event_id": v.get("event_id"),
+                                     "comment": v.get("comment", "")}
+                                    for v in first.get("values", []) if isinstance(v, dict)
+                                ]
+                            else:
+                                values_list = [v for v in raw if isinstance(v, dict) and "frame_number" in v]
+                        else:
+                            values_list = raw[0].get("values", []) if isinstance(raw[0], dict) else []
+                        for val in values_list:
+                            if json_key == "events_motor":
+                                frame_start = val.get("frame_number", 0)
+                                frame_end = frame_start
+                                value = val.get("description_fr") or val.get("value", "rotation")
+                            else:
+                                frame_start = val.get("frame_number_start", 0)
+                                frame_end = val.get("frame_number_end", 0)
+                                value = val.get("value", "")
+                            fps = 25.0
+                            start_ms = int(((frame_start - 1) / fps) * 1000) if frame_start and fps else 0
+                            end_ms = int(((frame_end - 1) / fps) * 1000) if frame_end and fps else 0
+                            is_pic = (json_key == "events_interesting_images" or start_ms == end_ms)
+                            if json_key == "events_motor":
+                                already = any(
+                                    abs(e.get("start", 0) - start_ms) <= 2000
+                                    for e in timeline_events
+                                    if e.get("type", "").startswith("rotation")
+                                )
+                                if already:
+                                    continue
+                                event_dict = {
+                                    "start": start_ms, "end": start_ms,
+                                    "title": f"Pic: {value}" if is_pic else value,
+                                    "type": "rotation_manual",
+                                    "zone": 0,
+                                    "_json_key": json_key,
+                                }
+                            else:
+                                event_dict = {
+                                    "start": start_ms, "end": end_ms,
+                                    "title": f"Pic: {value}" if is_pic else value,
+                                    "type": "custom_event",
+                                    "zone": 0,
+                                    "_json_key": json_key,
+                                }
+                            if val.get("event_id"):
+                                event_dict["_event_uid"] = val["event_id"]
+                            if is_pic:
+                                event_dict["single_frame"] = True
+                            timeline_events.append(event_dict)
+                except Exception as e:
+                    print(f"[EXTRACTION] JSON events error: {e}")
+
             if hasattr(self.video_player, 'load_video_and_events'):
-                self.video_player.load_video_and_events(video_payload, motor_events, is_stereo=is_stereo)
+                self.video_player.load_video_and_events(video_payload, timeline_events, is_stereo=is_stereo)
 
             csv_telemetry = video_path.replace(".mp4", ".csv")
             if os.path.exists(csv_telemetry):
@@ -207,9 +395,91 @@ class ExtractionController:
                 self.video_player.btn_telemetry.setChecked(False)
 
             self.update_segmentation_display()
+            self._refresh_deliverables(video_path)
+
+    def on_timeline_context_menu(self, position: QtCore.QPoint):
+        """Clic droit sur la timeline : propose d'exporter l'événement sous le curseur."""
+        if not self.current_video_path:
+            return
+        event_dict = self.video_player.timeline.get_event_at_position(position)
+        if not event_dict:
+            return
+        start_ms = event_dict.get("start", 0)
+        end_ms = event_dict.get("end", start_ms)
+        is_image = event_dict.get("single_frame", False) or (start_ms == end_ms)
+
+        menu = QtWidgets.QMenu(self.widget)
+        menu.setStyleSheet(
+            "QMenu { background-color: #2b2b2b; color: white; border: 1px solid #2778a2; }"
+            "QMenu::item { padding: 6px 20px 6px 20px; }"
+            "QMenu::item:selected { background-color: #20415d; color: #f09624; }"
+        )
+        if is_image:
+            action_export = menu.addAction(self.translate("Exporter en JPG", "Export as JPG"))
+        else:
+            action_export = menu.addAction(self.translate("Exporter en MP4", "Export as MP4"))
+
+        chosen = menu.exec(self.video_player.timeline.mapToGlobal(position))
+        if chosen == action_export:
+            self.on_event_double_clicked(event_dict)
+
+    def on_event_double_clicked(self, event: dict):
+        """Double-clic sur un événement : extrait en JPG (image) ou MP4 (vidéo)."""
+        if not self.current_video_path:
+            return
+        start_ms = event.get("start", 0)
+        end_ms = event.get("end", start_ms)
+        is_image = event.get("single_frame", False) or (start_ms == end_ms)
+
+        if is_image:
+            cap = cv2.VideoCapture(self.current_video_path)
+            cap.set(cv2.CAP_PROP_POS_MSEC, start_ms)
+            ret, frame = cap.read()
+            cap.release()
+            if not ret:
+                return
+            title = event.get("title", "event").replace("Pic: ", "")
+            default_name = f"{title}_{start_ms // 1000}s"
+            name, ok = QtWidgets.QInputDialog.getText(
+                self.widget,
+                self.translate("Capture événement", "Event capture"),
+                self.translate("Nom du fichier :", "File name:"),
+                text=default_name
+            )
+            if ok and name:
+                out_dir = os.path.join(self._get_video_out_dir(self.current_video_path), "captures")
+                os.makedirs(out_dir, exist_ok=True)
+                path = os.path.join(out_dir, f"{name}.jpg")
+                cv2.imwrite(path, frame)
+                self.add_to_deliverables_tree(path)
+        else:
+            title = event.get("title", "event")
+            default_name = f"{title}_{start_ms // 1000}s_{end_ms // 1000}s"
+            name, ok = QtWidgets.QInputDialog.getText(
+                self.widget,
+                self.translate("Export événement", "Event export"),
+                self.translate("Nom du fichier :", "File name:"),
+                text=default_name
+            )
+            if ok and name:
+                self.start_ms = start_ms
+                self.end_ms = end_ms
+                self.last_segment_name = name
+                if hasattr(self, 'group_export'):
+                    self.group_export.setEnabled(False)
+                if hasattr(self, 'lbl_export_status'):
+                    self.lbl_export_status.setText(self.translate("Préparation de l'export...", "Preparing export..."))
+                segments_dir = os.path.join(self._get_video_out_dir(self.current_video_path), "segments")
+                self.segmentation_worker = VideoSegmentationWorker(
+                    self.current_video_path, start_ms, end_ms, segments_dir
+                )
+                self.segmentation_worker.progress_updated.connect(self.on_export_progress)
+                self.segmentation_worker.export_finished.connect(self.on_segment_finished)
+                self.segmentation_worker.export_error.connect(self.on_export_error)
+                self.segmentation_worker.start()
 
     def _fill_param_container(self):
-        """Construit le panneau de paramètres (groupes Découpe, Capture, Export)."""
+        """Construit le panneau de paramètres (groupes Découpe, Export, Capture)."""
         if not self.param_container.layout():
             QtWidgets.QVBoxLayout(self.param_container)
 
@@ -220,7 +490,6 @@ class ExtractionController:
                 child.widget().deleteLater()
 
         layout.addWidget(self._group_segmentation())
-        layout.addWidget(self._group_frame_capture())
 
         self.group_export = QtWidgets.QGroupBox(self.translate("Export Vidéo", "Video Export"))
         export_vbox = QtWidgets.QVBoxLayout(self.group_export)
@@ -245,6 +514,8 @@ class ExtractionController:
         export_vbox.addWidget(self.btn_export_main)
         export_vbox.addLayout(self.layout_stereo_export)
         layout.addWidget(self.group_export)
+
+        layout.addWidget(self._group_frame_capture())
         layout.addStretch()
 
         self.lbl_export_status = QtWidgets.QLabel("")
@@ -265,6 +536,50 @@ class ExtractionController:
         video_dir = os.path.dirname(video_path)
         campaign_folder = os.path.dirname(video_dir)
         return os.path.join(get_campaign_output_dir(campaign_folder), "segments")
+
+    def _refresh_deliverables(self, video_path: str):
+        """Peuple l'arbre avec les captures et segments déjà exportés pour cette vidéo."""
+        self.deliverables_model.clear()
+        self.deliverables_model.setHorizontalHeaderLabels([
+            self.translate("Nom", "Name"),
+            self.translate("Taille", "Size"),
+            self.translate("Type", "Type"),
+        ])
+        if self.tree_segment_capture_container:
+            self.tree_segment_capture_container.setModel(self.deliverables_model)
+
+        _IMAGE_EXT = {'.jpg', '.jpeg', '.png'}
+        _VIDEO_EXT = {'.mp4', '.avi'}
+        _ALL_EXT = _IMAGE_EXT | _VIDEO_EXT
+
+        dirs_to_scan = []
+        base_out = self._get_video_out_dir(video_path)
+        dirs_to_scan.append(os.path.join(base_out, "captures"))
+        dirs_to_scan.append(os.path.join(base_out, "segments"))
+        # Fallback: dossier brut de la vidéo (utilisé par on_segment_finished)
+        raw_dir = os.path.dirname(video_path)
+        dirs_to_scan.append(os.path.join(raw_dir, "segments"))
+        dirs_to_scan.append(os.path.join(raw_dir, "captures"))
+
+        seen = set()
+        found = []
+        for d in dirs_to_scan:
+            if not os.path.isdir(d):
+                continue
+            for fname in sorted(os.listdir(d)):
+                if os.path.splitext(fname)[1].lower() not in _ALL_EXT:
+                    continue
+                full = os.path.normpath(os.path.join(d, fname))
+                if full not in seen:
+                    seen.add(full)
+                    found.append(full)
+
+        if not found:
+            self.show_no_cap_seg_message()
+            return
+
+        for path in found:
+            self.add_to_deliverables_tree(path)
 
     def on_export_segment(self, side="mono"):
         """Lance le VideoSegmentationWorker pour exporter le segment dans segments/."""
