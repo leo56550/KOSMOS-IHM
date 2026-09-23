@@ -164,6 +164,36 @@ def _compute_codeobs(jdata: dict) -> str | None:
     return f"{zone_v}{year_2d}{station_idx}"
 
 
+def _compute_video_path_number(actual_video_path: str) -> tuple[str, str]:
+    """Calcule (video_path_value, video_number_value) depuis le chemin réel du fichier vidéo.
+
+    video_path_value  : chemin relatif camp\\sys\\num  (num = int du stem, sans zéros de tête)
+    video_number_value: nom de fichier avec extension (ex. 0103.mp4)
+    """
+    import re as _re_vpn
+    stem = os.path.splitext(os.path.basename(actual_video_path))[0]
+    vdir = os.path.dirname(os.path.normpath(actual_video_path))
+    direct = os.path.basename(vdir)
+
+    if _re_vpn.match(r'^\d{4}$', direct):
+        # Structure campagne\système\station(4 chiffres)\video.mp4
+        sys_name  = os.path.basename(os.path.dirname(vdir))
+        camp_name = os.path.basename(os.path.dirname(os.path.dirname(vdir)))
+        vpath_val = f"{camp_name}\\{sys_name}\\{direct}"
+    else:
+        # Structure campagne\système\video.mp4
+        sys_name  = direct
+        camp_name = os.path.basename(os.path.dirname(vdir))
+        try:
+            stem_num = str(int(stem))
+        except ValueError:
+            stem_num = stem
+        vpath_val = f"{camp_name}\\{sys_name}\\{stem_num}"
+
+    vnum_val = os.path.basename(actual_video_path)
+    return vpath_val, vnum_val
+
+
 # Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
 # section=None → champ calculé ou non mappé (toujours vide)
@@ -1361,6 +1391,9 @@ class MetadonneesController:
 
         # Si codeObs est null, le recalculer depuis zone+date+point_name et le persister
         if json_path.endswith('_temp.json'):
+            _needs_save = False
+
+            # Recalculer codeObs si absent
             _code_val = (self._json_data.get("video_observation", {})
                          .get("codeObs", {}) or {}).get("value")
             if not _code_val:
@@ -1371,11 +1404,28 @@ class MetadonneesController:
                         _vobs["codeObs"]["value"] = _computed
                     else:
                         _vobs["codeObs"] = {"value": _computed}
-                    try:
-                        with open(json_path, 'w', encoding='utf-8') as _fw:
-                            json.dump(self._json_data, _fw, indent=4, ensure_ascii=False)
-                    except Exception as _we:
-                        print(f"[META] codeObs persist error: {_we}")
+                    _needs_save = True
+
+            # Toujours recalculer video_path et video_number depuis le chemin réel
+            if self.current_video_path:
+                _vp_fix, _vn_fix = _compute_video_path_number(self.current_video_path)
+                _vobs_fix = self._json_data.setdefault("video_observation", {})
+                if "video_path" in _vobs_fix and isinstance(_vobs_fix["video_path"], dict):
+                    _vobs_fix["video_path"]["value"] = _vp_fix
+                else:
+                    _vobs_fix["video_path"] = {"value": _vp_fix}
+                if "video_number" in _vobs_fix and isinstance(_vobs_fix["video_number"], dict):
+                    _vobs_fix["video_number"]["value"] = _vn_fix
+                else:
+                    _vobs_fix["video_number"] = {"value": _vn_fix}
+                _needs_save = True
+
+            if _needs_save:
+                try:
+                    with open(json_path, 'w', encoding='utf-8') as _fw:
+                        json.dump(self._json_data, _fw, indent=4, ensure_ascii=False)
+                except Exception as _we:
+                    print(f"[META] persist error: {_we}")
 
         if "video_observation" in self._json_data:
             self._ensure_custom_fields()
@@ -1892,7 +1942,12 @@ class MetadonneesController:
                     # Ancienne structure : campagne\système\video.mp4
                     _sys  = _direct
                     _camp = os.path.basename(os.path.dirname(_vdir))
-                    val   = f"{_camp}\\{_sys}"
+                    _vid_stem_local = os.path.splitext(os.path.basename(video_path))[0]
+                    try:
+                        _vid_stem_num = str(int(_vid_stem_local))
+                    except ValueError:
+                        _vid_stem_num = _vid_stem_local
+                    val   = f"{_camp}\\{_sys}\\{_vid_stem_num}"
 
             elif field_key == "video_file_name" and not val:
                 val = stem
@@ -2128,6 +2183,17 @@ class MetadonneesController:
                     vobs["codeObs"]["value"] = computed_code
                 else:
                     vobs["codeObs"] = {"value": computed_code}
+
+            # Calculer et écrire video_path et video_number depuis le chemin réel
+            _vp_val, _vn_val = _compute_video_path_number(video_path)
+            if "video_path" in vobs and isinstance(vobs["video_path"], dict):
+                vobs["video_path"]["value"] = _vp_val
+            else:
+                vobs["video_path"] = {"value": _vp_val}
+            if "video_number" in vobs and isinstance(vobs["video_number"], dict):
+                vobs["video_number"]["value"] = _vn_val
+            else:
+                vobs["video_number"] = {"value": _vn_val}
 
             try:
                 with open(temp_path, 'w', encoding='utf-8') as f:

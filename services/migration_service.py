@@ -238,20 +238,29 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
         import re as _re
         vo = data.get("video_observation", {})
 
-        # video_path → "<campagne>\<système>"
-        # Structure : campagne/système/numéro_vidéo/fichier.mp4
-        # ex. "260611_ATL_CC_ENEZEG\260611_SVR_K53"
-        system_folder = os.path.basename(os.path.dirname(folder))
-        campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
-        vpath_val = f"{campaign_folder}\\{system_folder}"
+        # video_path → "<campagne>\<système>\<num_station>"
+        # Structure camp/sys/station(4 chiffres)/fichier.mp4 ou camp/sys/fichier.mp4
+        _direct = os.path.basename(folder)
+        if _re.match(r'^\d{4}$', _direct):
+            # Nouvelle structure : camp/sys/0210/0210.mp4
+            system_folder   = os.path.basename(os.path.dirname(folder))
+            campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+            vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
+        else:
+            # Ancienne structure : camp/sys/0210.mp4
+            system_folder   = _direct
+            campaign_folder = os.path.basename(os.path.dirname(folder))
+            try:
+                _stem_num = str(int(stem))
+            except ValueError:
+                _stem_num = stem
+            vpath_val = f"{campaign_folder}\\{system_folder}\\{_stem_num}"
         if "video_path" in vo:
             vo["video_path"]["value"] = vpath_val
 
-        # video_number → dernier bloc numérique du stem, zero-paddé sur 4 chiffres
-        # ex. "0018" depuis "0018.mp4"
-        digits = _re.findall(r'\d+', stem)
-        if digits and "video_number" in vo:
-            vo["video_number"]["value"] = digits[-1].zfill(4)
+        # video_number → nom du fichier vidéo avec extension (ex. "0210.mp4")
+        if "video_number" in vo:
+            vo["video_number"]["value"] = os.path.basename(video_path)
 
         # video_file_name → nom du fichier vidéo sans extension
         if "video_file_name" in vo:
@@ -323,11 +332,20 @@ def update_temp_json_paths(video_path: str) -> None:
     if not os.path.isfile(temp_path):
         return
 
-    system_folder = os.path.basename(os.path.dirname(folder))
-    campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
-    vpath_val = f"{campaign_folder}\\{system_folder}"
-    digits = _re.findall(r'\d+', stem)
-    video_number_val = digits[-1].zfill(4) if digits else stem
+    _direct = os.path.basename(folder)
+    if _re.match(r'^\d{4}$', _direct):
+        system_folder   = os.path.basename(os.path.dirname(folder))
+        campaign_folder = os.path.basename(os.path.dirname(os.path.dirname(folder)))
+        vpath_val = f"{campaign_folder}\\{system_folder}\\{_direct}"
+    else:
+        system_folder   = _direct
+        campaign_folder = os.path.basename(os.path.dirname(folder))
+        try:
+            _stem_num = str(int(stem))
+        except ValueError:
+            _stem_num = stem
+        vpath_val = f"{campaign_folder}\\{system_folder}\\{_stem_num}"
+    video_number_val = os.path.basename(video_path)  # inclut l'extension
 
     try:
         with open(temp_path, "r", encoding="utf-8") as f:
