@@ -105,6 +105,33 @@ except Exception as _e:
     print(f"[SCHEMA] Erreur chargement template.json base : {_e}")
     _TEMPLATE_BASE: dict = {}
 
+# Types par (section, field_key) extraits du template — pour coercer les valeurs au bon type
+_FIELD_TYPES: dict[tuple, str] = {}
+for _sec, _sec_data in _TEMPLATE_BASE.items():
+    if isinstance(_sec_data, dict):
+        for _fk, _fdef in _sec_data.items():
+            if isinstance(_fdef, dict) and "type" in _fdef:
+                _FIELD_TYPES[(_sec, _fk)] = str(_fdef["type"]).lower()
+
+
+def _coerce_field_value(section: str, field_key: str, val: str):
+    """Convertit val au type défini dans le template (int, float) ou laisse en str."""
+    if not val:
+        return None
+    ftype = _FIELD_TYPES.get((section, field_key), "str")
+    if ftype == "int":
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return val
+    if ftype == "float":
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return val
+    return val
+
+
 # Schéma CSV infoStation : ordre et noms de colonnes calqués sur TEMPLATE_infoStation.xlsx.
 # Chaque tuple : (section, field_key, csv_column_name)
 # section=None → champ calculé ou non mappé (toujours vide)
@@ -940,11 +967,12 @@ class MetadonneesController:
             with open(json_path, 'r', encoding='utf-8') as f:
                 jdata = json.load(f)
             block = jdata.setdefault(block_name, {})
+            coerced = _coerce_field_value(block_name, json_key, new_value)
             if json_key in block and isinstance(block[json_key], dict):
-                block[json_key]["value"] = new_value or None
+                block[json_key]["value"] = coerced
             else:
-                block[json_key] = {"value": new_value or None}
-            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {new_value!r}")
+                block[json_key] = {"value": coerced}
+            print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             if self._on_metadata_saved:
@@ -1533,11 +1561,12 @@ class MetadonneesController:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 block = data.setdefault(block_name, {})
+                coerced = _coerce_field_value(block_name, json_key, str(value) if value else "")
                 if json_key in block and isinstance(block[json_key], dict):
-                    block[json_key]["value"] = value or None
+                    block[json_key]["value"] = coerced
                 else:
-                    block[json_key] = {"value": value or None}
-                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {value!r}")
+                    block[json_key] = {"value": coerced}
+                print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
             except Exception as e:
@@ -2021,11 +2050,12 @@ class MetadonneesController:
                 val = titem.text().strip() if titem else ''
                 if not val:
                     continue
+                coerced = _coerce_field_value(sec, fk, val)
                 block = jdata.setdefault(sec, {})
                 if fk in block and isinstance(block[fk], dict):
-                    block[fk]['value'] = val
+                    block[fk]['value'] = coerced
                 else:
-                    block[fk] = {'value': val}
+                    block[fk] = {'value': coerced}
 
             # Forcer explicitement les champs IHM à null (sécurité si présents dans le template)
             vobs = jdata.setdefault("video_observation", {})
@@ -2131,11 +2161,12 @@ class MetadonneesController:
                     val = ''
                 if not val:
                     continue
+                coerced = _coerce_field_value(sec, fk, val)
                 block = jdata.setdefault(sec, {})
                 if fk in block and isinstance(block[fk], dict):
-                    block[fk]['value'] = val
+                    block[fk]['value'] = coerced
                 else:
-                    block[fk] = {'value': val}
+                    block[fk] = {'value': coerced}
                 changed = True
 
             if changed:
@@ -2880,12 +2911,13 @@ class MetadonneesController:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 for _fid, (block_name, json_key, val) in field_values.items():
+                    coerced = _coerce_field_value(block_name, json_key, str(val) if val else "")
                     block = data.setdefault(block_name, {})
                     if json_key in block and isinstance(block[json_key], dict):
-                        block[json_key]["value"] = val or None
+                        block[json_key]["value"] = coerced
                     else:
-                        block[json_key] = {"value": val or None}
-                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {val!r}")
+                        block[json_key] = {"value": coerced}
+                    print(f"[TEMP_JSON] {os.path.basename(json_path)} ← {block_name}.{json_key} = {coerced!r}")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 n += 1
