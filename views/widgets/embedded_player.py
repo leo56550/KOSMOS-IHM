@@ -73,8 +73,10 @@ class _FullscreenWindow(QtWidgets.QWidget):
     """Fenêtre plein écran — double-clic ou Échap pour quitter."""
 
     exit_requested  = QtCore.pyqtSignal()
-    step_frame      = QtCore.pyqtSignal(int)   # direction en frames
+    step_frame      = QtCore.pyqtSignal(int)   # nombre de frames (signée)
     toggle_play     = QtCore.pyqtSignal()
+    speed_up        = QtCore.pyqtSignal()
+    speed_down      = QtCore.pyqtSignal()
 
     def __init__(self):
         super().__init__(None, QtCore.Qt.WindowType.Window)
@@ -102,6 +104,59 @@ class _FullscreenWindow(QtWidgets.QWidget):
         self._hint_timer.setSingleShot(True)
         self._hint_timer.timeout.connect(self._hint.hide)
 
+        # ── OSD (indicateur visuel de touche) ──────────────────────────────
+        # Fenêtre top-level sans bordure : flotte au-dessus de la surface native QVideoWidget
+        self._osd = QtWidgets.QLabel("")
+        self._osd.setWindowFlags(
+            QtCore.Qt.WindowType.Tool
+            | QtCore.Qt.WindowType.FramelessWindowHint
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
+        self._osd.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._osd.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self._osd.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._osd.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._osd.setStyleSheet(
+            "color: white; background: rgba(0,0,0,170);"
+            " font-size: 32px; font-weight: bold;"
+            " padding: 14px 32px; border-radius: 14px;"
+        )
+        self._osd_effect = QtWidgets.QGraphicsOpacityEffect(self._osd)
+        self._osd.setGraphicsEffect(self._osd_effect)
+        self._osd_anim = QtCore.QPropertyAnimation(self._osd_effect, b"opacity")
+        self._osd_anim.setDuration(500)
+        self._osd_anim.setStartValue(1.0)
+        self._osd_anim.setEndValue(0.0)
+        self._osd_anim.setEasingCurve(QtCore.QEasingCurve.Type.OutQuad)
+        self._osd_anim.finished.connect(self._osd.hide)
+        self._osd_timer = QtCore.QTimer(self)
+        self._osd_timer.setSingleShot(True)
+        self._osd_timer.timeout.connect(self._osd_anim.start)
+
+    def show_osd(self, text: str):
+        """Affiche le texte OSD centré en bas et le fait disparaître après 800ms."""
+        self._osd_anim.stop()
+        self._osd_timer.stop()
+        self._osd.setText(text)
+        self._osd.adjustSize()
+        self._osd_effect.setOpacity(1.0)
+        self._reposition_osd()
+        self._osd.show()
+        self._osd_timer.start(800)
+
+    def _reposition_osd(self):
+        sh = self._osd.sizeHint()
+        w, h = sh.width() + 16, sh.height() + 8
+        self._osd.resize(w, h)
+        origin = self.mapToGlobal(QtCore.QPoint(0, 0))
+        x = origin.x() + (self.width() - w) // 2
+        y = origin.y() + self.height() - h - 80
+        self._osd.move(x, y)
+
+    def closeEvent(self, event):
+        self._osd.hide()
+        super().closeEvent(event)
+
     def keyPressEvent(self, event):
         key  = event.key()
         mods = event.modifiers()
@@ -110,9 +165,29 @@ class _FullscreenWindow(QtWidgets.QWidget):
         if key == QtCore.Qt.Key.Key_Escape:
             self.exit_requested.emit()
         elif key == QtCore.Qt.Key.Key_Right:
-            self.step_frame.emit(+1 if shift else +5 if ctrl else +10)
+            if shift:
+                self.show_osd("▶  +1 img")
+                self.step_frame.emit(+1)
+            elif ctrl:
+                self.show_osd("▶▶  +5 img")
+                self.step_frame.emit(+5)
+            else:
+                self.show_osd("▶▶▶  +10 img")
+                self.step_frame.emit(+10)
         elif key == QtCore.Qt.Key.Key_Left:
-            self.step_frame.emit(-1 if shift else -5 if ctrl else -10)
+            if shift:
+                self.show_osd("◀  -1 img")
+                self.step_frame.emit(-1)
+            elif ctrl:
+                self.show_osd("◀◀  -5 img")
+                self.step_frame.emit(-5)
+            else:
+                self.show_osd("◀◀◀  -10 img")
+                self.step_frame.emit(-10)
+        elif key in (QtCore.Qt.Key.Key_Plus, QtCore.Qt.Key.Key_Equal):
+            self.speed_up.emit()
+        elif key == QtCore.Qt.Key.Key_Minus:
+            self.speed_down.emit()
         elif key == QtCore.Qt.Key.Key_Space:
             self.toggle_play.emit()
         else:
@@ -129,6 +204,8 @@ class _FullscreenWindow(QtWidgets.QWidget):
         super().resizeEvent(event)
         if self._hint.isVisible():
             self._hint.move((self.width() - self._hint.width()) // 2, 24)
+        if self._osd.isVisible():
+            self._reposition_osd()
 
     def mouseDoubleClickEvent(self, event):
         self.exit_requested.emit()
@@ -681,6 +758,19 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         win.exit_requested.connect(self._exit_fullscreen)
         win.step_frame.connect(self._step_frame)
         win.toggle_play.connect(self._toggle_play_pause)
+
+        def _on_speed_up():
+            self._speed_step(+1)
+            rate = self.player.playbackRate() or 1.0
+            win.show_osd(f"⬆  ×{int(rate) if rate == int(rate) else rate}")
+
+        def _on_speed_down():
+            self._speed_step(-1)
+            rate = self.player.playbackRate() or 1.0
+            win.show_osd(f"⬇  ×{int(rate) if rate == int(rate) else rate}")
+
+        win.speed_up.connect(_on_speed_up)
+        win.speed_down.connect(_on_speed_down)
         # Respecte la même sélection exclusive Gauche/Droite qu'en vue normale.
         show_right = self.is_stereo and self.btn_cam_R.isChecked()
         win.video_L.setVisible(not show_right)
@@ -1113,12 +1203,19 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         idx = max(0, min(len(self._SPEED_STEPS) - 1, idx + direction))
         self.set_playback_rate_all(self._SPEED_STEPS[idx])
 
+    def show_fs_osd(self, text: str):
+        """Affiche un OSD dans la fenêtre plein écran si elle est ouverte."""
+        if self._fs_window is not None:
+            self._fs_window.show_osd(text)
+
     def _toggle_play_pause(self):
         """Bascule entre lecture et pause (raccourci Espace)."""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.pause_all()
+            self.show_fs_osd("⏸  Pause")
         else:
             self.play_all()
+            self.show_fs_osd("▶  Lecture")
 
     def _update_play_pause_icon(self, state):
         """Met à jour l'icône du bouton play/pause selon l'état du lecteur."""

@@ -768,6 +768,11 @@ class AppController(QtCore.QObject):
                     player = self._get_page_player(page)
                     if player is not None and hasattr(player, '_speed_step'):
                         player._speed_step(direction)
+                        rate = player.player.playbackRate() or 1.0
+                        rate_str = f"×{int(rate) if rate == int(rate) else rate}"
+                        icon = "⬆" if direction > 0 else "⬇"
+                        if hasattr(player, 'show_fs_osd'):
+                            player.show_fs_osd(f"{icon}  {rate_str}")
                         return True
         return super().eventFilter(obj, event)
 
