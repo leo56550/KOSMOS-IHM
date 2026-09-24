@@ -165,7 +165,6 @@ class EvenementsController:
             layout.addWidget(self.event_player)
 
             self.event_player.btn_ardoise.setVisible(False)
-            self.event_player.btn_ardoise_manquante.setVisible(False)
             # Boutons annotation déplacés dans le panneau "Sélection d'événement" (sous
             # Atterrissage/Décollage/Rotation moteur) : ceux du player restent cachés.
             self.event_player.btn_debut_annotation.setVisible(False)

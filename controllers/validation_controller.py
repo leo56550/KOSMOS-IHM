@@ -139,9 +139,8 @@ class ValidationController:
             self.player.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
             )
-            # Cacher les boutons ardoise originaux du player
+            # Cacher le bouton ardoise original du player
             self.player.btn_ardoise.setVisible(False)
-            self.player.btn_ardoise_manquante.setVisible(False)
 
             # ── Bascule lecteur / vue des secteurs ────────────────────────────
             # Workflow : on cherche l'ardoise en mode lecteur, puis une fois le
@@ -199,14 +198,7 @@ class ValidationController:
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
 
-        # ── Boutons ardoise sous la liste vidéo ──────────────────────────────
-        _STYLE_MANQUANTE = """
-            QPushButton { background-color:#2e1800; color:#f0a030; font-weight:bold;
-                border:1px solid #8b5e10; border-radius:4px; padding:5px 10px;
-                font-size:11px; font-family:"Segoe UI",sans-serif; }
-            QPushButton:hover { background-color:#4a2a00; color:#ffc050; border-color:#c07820; }
-            QPushButton:disabled { background-color:#181818; color:#484848; border-color:#282828; }
-        """
+        # ── Bouton ardoise sous la liste vidéo ──────────────────────────────
         ardoise_bar = QtWidgets.QWidget()
         ardoise_bar.setFixedHeight(38)
         ab_layout = QtWidgets.QHBoxLayout(ardoise_bar)
@@ -218,13 +210,7 @@ class ValidationController:
         btn_ard.setEnabled(False)
         btn_ard.setToolTip(self.translate("Saisir l'ardoise à la position courante",
                                           "Record slate at current position"))
-        btn_ard_manq = QtWidgets.QPushButton("⚠ " + self.translate("ARDOISE MANQUANTE", "MISSING SLATE"))
-        btn_ard_manq.setStyleSheet(_STYLE_MANQUANTE)
-        btn_ard_manq.setEnabled(False)
-        btn_ard_manq.setToolTip(self.translate("Signaler l'absence d'ardoise dans cette vidéo",
-                                               "Flag missing slate for this video"))
         ab_layout.addWidget(btn_ard)
-        ab_layout.addWidget(btn_ard_manq)
 
         # Insérer juste après sp4 dans son layout parent
         if sp4:
@@ -234,13 +220,10 @@ class ValidationController:
                 idx = parent_l.indexOf(sp4)
                 parent_l.insertWidget(idx + 1, ardoise_bar)
 
-        # Remplacer les attributs du player par les nouveaux boutons
-        # → tout le code existant (setText, setEnabled…) opère sur les vrais boutons
+        # Remplacer le btn_ardoise du player par le vrai bouton
         if hasattr(self, 'player') and self.player:
             self.player.btn_ardoise = btn_ard
-            self.player.btn_ardoise_manquante = btn_ard_manq
             self.player.btn_ardoise.clicked.connect(self._saisir_ardoise)
-            self.player.btn_ardoise_manquante.clicked.connect(self._saisir_ardoise_manquante)
 
         self._exploitable_btns: list[_ToggleFrame] = []
         self._exploitable_choices: list[str] = []
@@ -540,11 +523,6 @@ class ValidationController:
                 "Saisir l'ardoise à la position courante",
                 "Record slate at current position"
             ))
-        if hasattr(self, 'player') and hasattr(self.player, 'btn_ardoise_manquante'):
-            self.player.btn_ardoise_manquante.setToolTip(self.translate(
-                "Signaler l'absence d'ardoise dans cette vidéo",
-                "Flag missing slate for this video"
-            ))
 
     def load_campaign_videos(self, model: QtGui.QStandardItemModel):
         """Remplace le modèle source du proxy après un changement de campagne."""
@@ -622,20 +600,13 @@ class ValidationController:
         # Reset ardoise buttons, puis applique l'état réel depuis le JSON
         self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
         self.player.btn_ardoise.setEnabled(True)
-        self.player.btn_ardoise_manquante.setEnabled(True)
-        self.player.set_ardoise_missing_overlay(False)
         _has_ardoise = False   # True si timecode_ardoise déjà saisi → bascule auto vers secteurs
         try:
             with open(self.current_json_path, 'r', encoding='utf-8') as _f:
                 _jdata = json.load(_f)
             _vob = _jdata.get("video_observation", {})
-            _ardoise_missing = bool(_vob.get("ardoise_missing", {}).get("value"))
             _tc = (_vob.get("timecode_ardoise") or {}).get("value")
-            if _ardoise_missing:
-                # Ardoise manquante déclarée : bouton "SAISIR ARDOISE" actif, overlay visible
-                self.player.btn_ardoise_manquante.setEnabled(False)
-                self.player.set_ardoise_missing_overlay(True)
-            elif _tc:
+            if _tc:
                 # Ardoise saisie : "MODIFIER ARDOISE" + restaure le marker sur la timeline
                 _has_ardoise = True
                 self.player.btn_ardoise.setText(self.translate("MODIFIER ARDOISE", "MODIFY SLATE"))
@@ -1116,15 +1087,6 @@ class ValidationController:
         if not self.current_json_path or not os.path.exists(self.current_json_path):
             return
 
-        # Si ardoise marquée manquante : proposer uniquement la saisie du numéro de point
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as _f:
-                _chk = json.load(_f)
-            if _chk.get("video_observation", {}).get("ardoise_missing", {}).get("value"):
-                self._saisir_point_number_only()
-                return
-        except Exception:
-            pass
 
         # Met en pause avant d'ouvrir le dialog pour figer la position
         self.player.pause()
@@ -1213,11 +1175,6 @@ class ValidationController:
                 obs.setdefault("point_name", {})["value"] = station_num
                 obs.setdefault("station_number", {})["value"] = station_num
 
-            # Une vraie ardoise efface le flag "ardoise manquante"
-            _had_missing = bool(obs.get("ardoise_missing", {}).get("value"))
-            if _had_missing:
-                obs["ardoise_missing"] = {"value": False}
-
             with open(self.current_json_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -1236,13 +1193,6 @@ class ValidationController:
                         it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
                         break
                 self.video_tree.viewport().update()
-
-            # Masque l'overlay et réactive le bouton si ardoise_missing était actif
-            if _had_missing:
-                self.player.set_ardoise_missing_overlay(False)
-                self.player.btn_ardoise_manquante.setEnabled(True)
-                if self.video_tree:
-                    self.video_tree.viewport().update()
 
             # Feedback visuel : label temporaire puis "MODIFIER ARDOISE"
             if _is_modify:
@@ -1351,117 +1301,3 @@ class ValidationController:
         anim.finished.connect(flash.deleteLater)
         anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    def _saisir_ardoise_manquante(self):
-        """Marque la vidéo comme n'ayant pas d'ardoise et affiche un logo d'avertissement."""
-        if not hasattr(self, 'player') or self.player is None:
-            return
-        if not self.current_json_path or not os.path.exists(self.current_json_path):
-            return
-
-        try:
-            with open(self.current_json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            print(f"[VALIDATION] Lecture JSON échouée : {e}")
-            return
-
-        vob = data.get("video_observation", {})
-
-        # Déjà marqué comme manquante — rien à faire
-        if vob.get("ardoise_missing", {}).get("value"):
-            return
-
-        # Dialog : saisie optionnelle du numéro de point avant de confirmer l'ardoise manquante
-        existing_num = (vob.get("point_name", {}).get("value")
-                        or vob.get("station_number", {}).get("value") or "")
-        dlg = QtWidgets.QDialog(self.page)
-        dlg.setWindowTitle(self.translate("Ardoise manquante", "Missing slate"))
-        dlg.setFixedWidth(300)
-        dlg.setStyleSheet("background:#1a1a2e; color:#d4e8f5;")
-        dlg_layout = QtWidgets.QVBoxLayout(dlg)
-        dlg_layout.setSpacing(10)
-        dlg_layout.setContentsMargins(14, 12, 14, 12)
-
-        lbl = QtWidgets.QLabel(self.translate("Numéro du point :", "Point number:"))
-        lbl.setStyleSheet("font-size:12px; font-weight:bold;")
-        dlg_layout.addWidget(lbl)
-
-        pt_edit = QtWidgets.QLineEdit()
-        pt_edit.setText(str(existing_num))
-        pt_edit.setPlaceholderText("—")
-        pt_edit.setStyleSheet(
-            "QLineEdit { background:#0d1825; color:#ffffff; border:1px solid #2778A2;"
-            " border-radius:4px; padding:4px 8px; font-size:13px; }")
-        dlg_layout.addWidget(pt_edit)
-
-        btn_row = QtWidgets.QHBoxLayout()
-        btn_saisir = QtWidgets.QPushButton(
-            self.translate("Saisir point tout de même", "Enter point anyway"))
-        btn_saisir.setStyleSheet(BTN_PRIMARY)
-        btn_skip = QtWidgets.QPushButton(self.translate("Skip", "Skip"))
-        btn_skip.setStyleSheet(
-            "QPushButton { background:#222; color:#aaa; border:1px solid #555;"
-            " border-radius:4px; padding:5px 14px; font-size:11px; }"
-            "QPushButton:hover { background:#333; }")
-        btn_row.addWidget(btn_skip)
-        btn_row.addWidget(btn_saisir)
-        dlg_layout.addLayout(btn_row)
-
-        btn_saisir.clicked.connect(dlg.accept)
-        btn_skip.clicked.connect(dlg.reject)
-        pt_edit.returnPressed.connect(dlg.accept)
-
-        accepted = dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted
-
-        # Récupère le numéro de point saisi (seulement si "Saisir" cliqué et champ rempli)
-        station_num = self._normalize_point_num(pt_edit.text()) if accepted else ""
-
-        try:
-            vob = data.setdefault("video_observation", {})
-
-            # Efface le timecode ardoise existant
-            if "timecode_ardoise" in vob:
-                vob["timecode_ardoise"]["value"] = None
-
-            vob["ardoise_missing"] = {"value": True}
-            print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.ardoise_missing = True")
-            if station_num:
-                vob.setdefault("point_name", {})["value"] = station_num
-                vob.setdefault("station_number", {})["value"] = station_num
-                print(f"[TEMP_JSON] {os.path.basename(self.current_json_path)} ← video_observation.point_name = {station_num!r}")
-            with open(self.current_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            # Mise à jour immédiate du numéro de point dans la liste
-            if station_num and self.video_tree and self.video_model:
-                try:
-                    display_pt = str(int(station_num))
-                except ValueError:
-                    display_pt = station_num
-                for row in range(self.video_model.rowCount()):
-                    it = self.video_model.item(row, 0)
-                    if it and it.data(QtCore.Qt.ItemDataRole.UserRole) == self.current_video_path:
-                        it.setData(display_pt, QtCore.Qt.ItemDataRole.UserRole + 3)
-                        break
-
-            # Supprime le marker ardoise de la timeline
-            if hasattr(self.player, 'timeline'):
-                self.player.timeline.events = [
-                    e for e in self.player.timeline.events
-                    if e.get("_json_key") != "timecode_ardoise"
-                ]
-                self.player.timeline.update()
-
-            self.player.set_ardoise_missing_overlay(True)
-            self.player.btn_ardoise_manquante.setEnabled(False)
-            # Remet btn_ardoise à "SAISIR ARDOISE" pour permettre une saisie ultérieure
-            self.player.btn_ardoise.setText(self.translate("SAISIR ARDOISE", "RECORD SLATE"))
-            self.player.btn_ardoise.setEnabled(True)
-
-            if self.video_tree:
-                self.video_tree.viewport().update()
-
-            if self._on_qualification_changed:
-                self._on_qualification_changed()
-            self.refresh_ardoise_warning()
-        except Exception as e:
-            print(f"[VALIDATION] Erreur sauvegarde ardoise_missing : {e}")

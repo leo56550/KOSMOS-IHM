@@ -81,7 +81,6 @@ class ExtractionController:
             self.tree_videos_2.setItemDelegateForColumn(0, self._bar_delegate)
 
         self.video_player.btn_ardoise.setVisible(False)
-        self.video_player.btn_ardoise_manquante.setVisible(False)
 
         if self.param_container:
             self._fill_param_container()

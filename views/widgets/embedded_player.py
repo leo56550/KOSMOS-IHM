@@ -266,21 +266,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         vc_layout.addWidget(self.video_widget_R)
         self.display_stack.addWidget(self.video_container)
 
-        # Overlay "Ardoise manquante" — enfant de video_container, hors layout (absolu)
-        self._ardoise_missing_lbl = QtWidgets.QLabel("⛔  ARDOISE MANQUANTE", self.video_container)
-        self._ardoise_missing_lbl.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._ardoise_missing_lbl.setStyleSheet(
-            "background-color: rgba(160, 50, 10, 210);"
-            "color: #ffffff; font-size: 14px; font-weight: bold;"
-            "font-family: 'Segoe UI', sans-serif;"
-            "border-radius: 8px; padding: 8px 18px;"
-            "border: 2px solid #E8A838;"
-        )
-        self._ardoise_missing_lbl.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
-        self._ardoise_missing_lbl.setVisible(False)
-
         # Connecter les players à leurs QVideoWidget (rendu natif, 0 CPU)
         self.player.setVideoOutput(self.video_widget)
         self.player_R.setVideoOutput(self.video_widget_R)
@@ -377,12 +362,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         self.btn_ardoise.setEnabled(False)
         self.btn_ardoise.setToolTip("Saisir l'ardoise à la position courante")
         buttons_layout.addWidget(self.btn_ardoise)
-
-        self.btn_ardoise_manquante = QtWidgets.QPushButton("⚠ ARDOISE MANQUANTE")
-        self.btn_ardoise_manquante.setStyleSheet(_BTN_ARDOISE_MANQUANTE_STYLE)
-        self.btn_ardoise_manquante.setEnabled(False)
-        self.btn_ardoise_manquante.setToolTip("Signaler l'absence d'ardoise dans cette vidéo")
-        buttons_layout.addWidget(self.btn_ardoise_manquante)
 
         self.btn_telemetry = QtWidgets.QPushButton("Télémétrie")
         self.btn_telemetry.setCheckable(True)
@@ -613,11 +592,6 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
             "Afficher / masquer le graphe de télémétrie", "Show / hide the telemetry graph"))
         self.btn_ardoise.setToolTip(self.translate(
             "Saisir l'ardoise à la position courante", "Record the slate at the current position"))
-        self.btn_ardoise_manquante.setToolTip(self.translate(
-            "Signaler l'absence d'ardoise dans cette vidéo", "Flag this video as missing its slate"))
-        if hasattr(self, '_ardoise_missing_lbl'):
-            self._ardoise_missing_lbl.setText(
-                self.translate("⛔  ARDOISE MANQUANTE", "⛔  MISSING SLATE"))
         if hasattr(self, 'telemetry_dialog'):
             self.telemetry_dialog.set_language(language)
         self.update_top_time_label(self.player.position(), self.player.duration())
@@ -1170,26 +1144,8 @@ class EmbeddedVideoPlayer(QtWidgets.QWidget):
         if self.left_display.currentIndex() == 1:
             QtCore.QTimer.singleShot(50, self._refresh_corrections)
 
-    # ── Overlay "Ardoise manquante" ───────────────────────────────────────
-
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
-        if hasattr(self, '_ardoise_missing_lbl') and self._ardoise_missing_lbl.isVisible():
-            self._reposition_ardoise_overlay()
-
-    def _reposition_ardoise_overlay(self):
-        lbl = self._ardoise_missing_lbl
-        lbl.adjustSize()
-        sh = lbl.sizeHint()
-        w, h = sh.width() + 24, sh.height() + 8
-        vc = self.video_container
-        x = (vc.width() - w) // 2
-        y = vc.height() - h - 12
-        lbl.setGeometry(x, y, w, h)
 
     def set_ardoise_missing_overlay(self, visible: bool):
-        """Affiche ou masque le bandeau 'Ardoise manquante' sur la vidéo."""
-        self._ardoise_missing_lbl.setVisible(visible)
-        if visible:
-            self._ardoise_missing_lbl.raise_()
-            QtCore.QTimer.singleShot(0, self._reposition_ardoise_overlay)
+        pass
