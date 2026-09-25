@@ -1854,3 +1854,39 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-25 14:27:26.703602
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2570, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2747, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-25 14:27:31.804038
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2570, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2747, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-25 14:27:42.971670
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 758, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

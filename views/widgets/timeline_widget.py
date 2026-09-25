@@ -596,6 +596,16 @@ class VideoTimeline(QtWidgets.QWidget):
                     self.drag_start_event_end = evt["end"]
                     return
 
+        # Marqueurs verticaux (rotation_manual, timecode_marker, etc.) : sélection par proximité x
+        TOLERANCE_PX = 6
+        for evt in self.events:
+            if evt.get("type") != "custom_event":
+                x_line = int((evt.get("start", 0) / total_duration) * width)
+                if abs(pos_x - x_line) <= TOLERANCE_PX:
+                    self.set_selected_event(evt)
+                    self.eventSelected.emit(evt)
+                    return
+
         self.set_selected_event(None)
         self.eventSelected.emit(None)
         self.is_dragging = True
@@ -728,12 +738,12 @@ class VideoTimeline(QtWidgets.QWidget):
 
     def get_event_at_position(self, pos: QtCore.QPoint) -> dict | None:
         """Retourne le dict d'événement sous pos, ou None si aucun ne contient ce point."""
-        # Marqueurs verticaux (timecode_marker) : détection par proximité en x
         total_duration = self.total_duration if self.total_duration > 0 else 1
         width = self.min_zoomed_width()
         TOLERANCE_PX = 6
+        # Marqueurs verticaux (timecode_marker, rotation_manual, rotations CSV) : proximité en x
         for evt in self.events:
-            if evt.get("type") == "timecode_marker":
+            if evt.get("type") != "custom_event":
                 x = int((evt.get("start", 0) / total_duration) * width)
                 if abs(pos.x() - x) <= TOLERANCE_PX:
                     return evt

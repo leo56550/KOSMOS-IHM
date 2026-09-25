@@ -2081,10 +2081,15 @@ class EvenementsController:
                 if json_key not in video_obs or not video_obs[json_key]:
                     continue
                 if json_key == "events_motor":
+                    event_uid = event_dict.get("_event_uid")
                     video_obs[json_key] = [
                         v for v in video_obs[json_key]
-                        if not (v.get("description_fr") == target_value
+                        if not (
+                            (event_uid and v.get("event_id") == event_uid)
+                            or (not event_uid
+                                and v.get("description_fr") == target_value
                                 and abs(v.get("frame_number", 0) - target_frame_start) <= tolerance)
+                        )
                     ]
                 else:
                     values_list = video_obs[json_key][0].get("values", [])
@@ -2567,7 +2572,6 @@ class EvenementsController:
         session_root = os.path.dirname(parent_video_directory)   # = dossier campagne
         json_path = os.path.join(session_root, "matrices.json")
         is_stereo_mode = getattr(self.event_player, "is_stereo", False)
-        video_out_dir = self._get_video_out_dir(self.current_video_path)
 
         dialog = ExportOptionsDialog(self.page, is_stereo=is_stereo_mode)
         dialog.set_language(self.current_language)
@@ -2584,13 +2588,20 @@ class EvenementsController:
             )
         else:
             bounds = self._get_export_segment_bounds()
-            missing_msg = self.translate("Bornes temporelles manquantes.", "Missing time bounds.")
+            missing_msg = self.translate(
+                "Aucun événement d'atterrissage / décollage trouvé dans la timeline.\n"
+                "Marquez d'abord ces repères dans la page Événements avant d'exporter.",
+                "No landing / takeoff event found in the timeline.\n"
+                "Please mark these timestamps in the Events page before exporting."
+            )
 
         if bounds is None:
             QtWidgets.QMessageBox.warning(self.page,
                 self.translate("Export Impossible", "Export Impossible"),
                 missing_msg)
             return
+
+        video_out_dir = self._get_video_out_dir(self.current_video_path)
 
         target_fps = options.get("target_fps", 5)
         apply_he = options.get("apply_he", False)

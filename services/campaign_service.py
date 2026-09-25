@@ -249,8 +249,8 @@ def build_video_output_name(video_path: str) -> str:
 
     # N° du point saisi à l'ardoise (point_name en priorité, station_number en repli)
     vo = data.get("video_observation", {})
-    station_num_raw = ((vo.get("point_name", {}).get("value"))
-                        or (vo.get("station_number", {}).get("value")) or "").strip()
+    station_num_raw = str((vo.get("point_name", {}).get("value"))
+                          or (vo.get("station_number", {}).get("value")) or "").strip()
     if station_num_raw:
         try:
             station_idx = f"{int(station_num_raw):04d}"
