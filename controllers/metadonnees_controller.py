@@ -144,16 +144,7 @@ def _compute_codeobs(jdata: dict) -> str | None:
     zone_v  = _v(surv, "zone").strip()
     date_v  = _v(surv, "date").strip()
     pname_v = (_v(obs, "point_name") or _v(obs, "station_number")).strip()
-
-    # Extraire les 2 derniers chiffres de l'année depuis date (YYYY-MM-DD ou DD/MM/YYYY)
-    year_2d = ""
-    if date_v:
-        for sep in ("-", "/"):
-            parts = date_v.split(sep)
-            if len(parts) == 3:
-                yr = parts[0] if len(parts[0]) == 4 else parts[2]
-                year_2d = yr[-2:] if len(yr) >= 2 else ""
-                break
+    year_2d = year_2d_from_date(date_v)  # gère YYYYMMDD, YYMMDD, YYYY-MM-DD, DD/MM/YYYY
 
     if not (zone_v and year_2d and pname_v):
         return None
@@ -1047,6 +1038,20 @@ class MetadonneesController:
                 json.dump(jdata, f, indent=4, ensure_ascii=False)
             if self._on_metadata_saved:
                 self._on_metadata_saved(video_path)
+            # Rafraîchit la cellule Codestation dans le tableau sans rechargement complet
+            if computed_code:
+                _codeobs_col = next(
+                    (i for i, (_, _, k, _) in enumerate(_FT_TABLE_COLS) if k == "codeObs"),
+                    None,
+                )
+                if _codeobs_col is not None:
+                    _cell = self._ft_table.item(row, _codeobs_col)
+                    if _cell is not None and _cell.text() != computed_code:
+                        self._ft_table.blockSignals(True)
+                        try:
+                            _cell.setText(computed_code)
+                        finally:
+                            self._ft_table.blockSignals(False)
         except Exception as e:
             print(f"[INFOSTATION TABLE] Error saving {block_name}.{json_key}: {e}")
 
@@ -1393,21 +1398,26 @@ class MetadonneesController:
                 except Exception as e:
                     print(f"[META] Fusion JSON brut impossible : {e}")
 
-        # Si codeObs est null, le recalculer depuis zone+date+point_name et le persister
+        # Cohérence codeObs ↔ point_name : recalcul / nettoyage si nécessaire
         if json_path.endswith('_temp.json'):
             _needs_save = False
 
-            # Recalculer codeObs si absent
-            _code_val = (self._json_data.get("video_observation", {})
-                         .get("codeObs", {}) or {}).get("value")
-            if not _code_val:
-                _computed = _compute_codeobs(self._json_data)
-                if _computed:
+            _vobs_block = self._json_data.get("video_observation", {})
+            _code_val = (_vobs_block.get("codeObs", {}) or {}).get("value") or ""
+            _point_name = (_vobs_block.get("point_name", {}) or {}).get("value") or ""
+
+            # Cas 1 : codeObs absent → recalculer si point_name présent
+            # Cas 2 : codeObs présent mais point_name absent → valeur fantôme copiée
+            #         depuis le brut caméra → effacer pour garder la cohérence
+            if not _code_val or (_code_val and not _point_name):
+                _computed = _compute_codeobs(self._json_data)  # "" si point_name absent
+                new_code = _computed if _computed else None
+                if (new_code or "") != _code_val:
                     _vobs = self._json_data.setdefault("video_observation", {})
                     if "codeObs" in _vobs and isinstance(_vobs["codeObs"], dict):
-                        _vobs["codeObs"]["value"] = _computed
+                        _vobs["codeObs"]["value"] = new_code
                     else:
-                        _vobs["codeObs"] = {"value": _computed}
+                        _vobs["codeObs"] = {"value": new_code}
                     _needs_save = True
 
             # Coercer latitude/longitude en float si stockés comme str
@@ -1888,7 +1898,7 @@ class MetadonneesController:
         # d'acquisition peut contenir une valeur (souvent un simple numéro auto-incrémenté
         # côté caméra, sans rapport avec le vrai numéro de point lu sur l'ardoise) qui ne
         # doit jamais être utilisée comme repli tant que l'ardoise n'a pas été saisie.
-        _NO_RAW_FALLBACK = {"point_name", "station_number"}
+        _NO_RAW_FALLBACK = {"point_name", "station_number", "gps_waypoint", "codeObs"}
 
         def _merge_section(section: str) -> dict:
             """Retourne la section fusionnée : _temp.json prioritaire, brut en fallback."""
@@ -1986,23 +1996,23 @@ class MetadonneesController:
             elif field_key == "time" and not val:
                 val = heure_stem
 
-            elif field_key == "codeObs" and not val:
-                # Reconstruction dynamique : zone + 2 derniers chiffres de l'année + n° point 0000
-                zone_v   = self._v(surv, "zone").strip()
-                date_v   = self._v(surv, "date").strip()
-                year_2d  = year_2d_from_date(date_v)
-                pname_v  = (self._v(obs, "point_name") or self._v(obs, "station_number")).strip()
-                if pname_v:
+            elif field_key == "codeObs":
+                # Toujours recalculer depuis point_name IHM — on ignore val stocké car il
+                # peut être un résidu auto-caméra (station_number copié depuis le brut).
+                # station_number n'est JAMAIS utilisé ici : c'est le compteur interne caméra,
+                # pas le numéro de point réel saisi à l'ardoise.
+                pname_v = self._v(obs, "point_name").strip()
+                if not pname_v:
+                    val = "A saisir"
+                else:
+                    zone_v  = self._v(surv, "zone").strip()
+                    date_v  = self._v(surv, "date").strip()
+                    year_2d = year_2d_from_date(date_v)
                     try:
                         station_idx = f"{int(pname_v):04d}"
                     except ValueError:
                         station_idx = pname_v.zfill(4)[:4]
-                else:
-                    station_idx = ""
-                if zone_v and year_2d and station_idx:
-                    val = f"{zone_v}{year_2d}{station_idx}"
-                else:
-                    val = "A saisir"
+                    val = f"{zone_v}{year_2d}{station_idx}" if zone_v and year_2d else ""
 
             elif field_key == "point_name":
                 if not val:

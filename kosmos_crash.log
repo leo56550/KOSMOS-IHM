@@ -1762,3 +1762,95 @@ Traceback (most recent call last):
     def eventFilter(self, obj, event):
     
 KeyboardInterrupt
+
+============================================================
+2026-09-24 15:23:40.747545
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-24 15:23:44.575755
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-24 15:23:46.656737
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-24 15:23:46.795521
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-24 15:23:46.977518
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-24 15:23:50.849951
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2569, in on_export_segment_clicked
+    video_out_dir = self._get_video_out_dir(self.current_video_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\controllers\evenements_controller.py", line 2746, in _get_video_out_dir
+    folder_name = build_video_output_name(video_path)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\KOSMOS_IHM\services\campaign_service.py", line 253, in build_video_output_name
+    or (vo.get("station_number", {}).get("value")) or "").strip()
+                                                          ^^^^^
+AttributeError: 'int' object has no attribute 'strip'
+
+============================================================
+2026-09-25 11:34:49.111280
+Traceback (most recent call last):
+  File "c:\KOSMOS_IHM\controllers\app_controller.py", line 758, in eventFilter
+    def eventFilter(self, obj, event):
+    
+KeyboardInterrupt

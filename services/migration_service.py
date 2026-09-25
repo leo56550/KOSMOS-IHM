@@ -301,7 +301,7 @@ def initialise_temp_json_if_needed(video_path: str) -> bool:
                 # depuis le brut — uniquement saisis via l'ardoise en page Validation.
                 mapped += [f"video_observation.{c}" for c in _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
-                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number"})]
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint"})]
                 # Coercer latitude/longitude en float après la merge (le JSON brut peut stocker des str)
                 _vo_merged = data.get("video_observation", {})
                 for _coord in ("latitude", "longitude"):
@@ -409,7 +409,7 @@ def update_temp_json_paths(video_path: str) -> None:
                 vob_changed = _merge_raw_block(
                     data.setdefault("video_observation", {}), raw.get("video_observation", {}),
                     only_if_empty=True,
-                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number"})
+                    exclude_keys={"exploitable", "qualifiable", "point_name", "station_number", "codeObs", "gps_waypoint"})
                 if sys_changed or surv_changed or vob_changed:
                     modified = True
                 mapped += [f"system.{c}" for c in sys_changed]
