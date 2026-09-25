@@ -571,6 +571,8 @@ class ValidationController:
                 _jd = json.load(_jf)
             _pn = _jd.get("video_observation", {}).get("point_name", {})
             _pn_raw = str(_pn.get("value") if isinstance(_pn, dict) else _pn or "") if _pn else ""
+            if _pn_raw.strip().lower() in ("none", "null"):
+                _pn_raw = ""
             try:
                 _pn_val = str(int(_pn_raw)) if _pn_raw else ""
             except ValueError:

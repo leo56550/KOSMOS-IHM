@@ -100,7 +100,7 @@ def _get_point_name(video_path: str, working_dir: str) -> str:
             v = val.get("value")
         else:
             v = val
-        if v is None:
+        if v is None or str(v).strip().lower() in ("none", "null", ""):
             return ""
         try:
             return str(int(str(v)))  # supprime les zéros de tête pour l'affichage

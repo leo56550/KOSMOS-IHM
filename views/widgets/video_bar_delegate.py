@@ -270,7 +270,8 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
             name_text,
         )
-        point_number = (index.data(QtCore.Qt.ItemDataRole.UserRole + 3) or "") if self.show_point_number else ""
+        _raw_pt = (index.data(QtCore.Qt.ItemDataRole.UserRole + 3) or "") if self.show_point_number else ""
+        point_number = "" if str(_raw_pt).strip().lower() in ("", "none", "null") else str(_raw_pt).strip()
         exploitable_label = ""
         if self.show_exploitable_status and exploitable_value:
             exploitable_label = exploitable_value.capitalize()
