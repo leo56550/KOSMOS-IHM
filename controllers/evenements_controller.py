@@ -195,6 +195,7 @@ class EvenementsController:
             self.tree_view_events.setModel(self.proxy_model)
             self.tree_view_events.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.tree_view_events.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            self.tree_view_events.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
             self.tree_view_events.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.tree_view_events.setHeaderHidden(True)
             self.tree_view_events.setColumnHidden(1, True)

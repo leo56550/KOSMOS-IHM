@@ -107,6 +107,7 @@ class ValidationController:
             self.video_tree.setModel(self.proxy_model)
             self.video_tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
             self.video_tree.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            self.video_tree.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
             self.video_tree.setIconSize(QtCore.QSize(THUMB_W, THUMB_H))
             self.video_tree.setHeaderHidden(True)
             self.video_tree.setColumnHidden(1, True)
