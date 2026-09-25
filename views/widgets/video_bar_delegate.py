@@ -4,7 +4,7 @@ import json
 
 from PyQt6 import QtWidgets, QtGui, QtCore
 
-from services.campaign_service import resolve_video_json_path
+from services.campaign_service import resolve_video_json_path, year_2d_from_date
 from services.thumbnail_service import THUMB_W, THUMB_H
 
 
@@ -52,21 +52,23 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
     # ── Couleur de complétion ─────────────────────────────────────────────
 
     def _get_video_status(self, video_path: str) -> tuple:
-        """Retourne (couleur_barre, exploitable_value).
+        """Retourne (couleur_barre, exploitable_value, codestation).
 
         Couleur : rouge = pas d'ardoise, orange = ardoise saisie, vert = ardoise + statut.
         exploitable_value : valeur brute de video_observation.exploitable ("" si absente).
+        codestation : calculé depuis point_name + zone + année ("" si point absent).
         """
         json_path = resolve_video_json_path(self._working_dir, str(video_path))
         if not os.path.exists(json_path):
-            return QtGui.QColor("#D94F38"), ""
+            return QtGui.QColor("#D94F38"), "", ""
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception:
-            return QtGui.QColor("#D94F38"), ""
+            return QtGui.QColor("#D94F38"), "", ""
 
-        obs = data.get("video_observation", {})
+        obs  = data.get("video_observation", {})
+        surv = data.get("survey", {})
 
         has_ardoise = bool((obs.get("timecode_ardoise") or {}).get("value"))
 
@@ -82,7 +84,25 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         else:
             color = QtGui.QColor("#D94F38")
 
-        return color, expl_val
+        # Code station calculé depuis point_name uniquement (jamais station_number/codeObs brut)
+        def _sv(block, key):
+            f = (block or {}).get(key, {})
+            return str(f.get("value") or "").strip() if isinstance(f, dict) else str(f or "").strip()
+
+        pname = _sv(obs, "point_name")
+        codestation = ""
+        if pname:
+            zone_v  = _sv(surv, "zone")
+            date_v  = _sv(surv, "date")
+            yr2d    = year_2d_from_date(date_v)
+            if zone_v and yr2d:
+                try:
+                    idx = f"{int(pname):04d}"
+                except ValueError:
+                    idx = pname.zfill(4)[:4]
+                codestation = f"{zone_v}{yr2d}{idx}"
+
+        return color, expl_val, codestation
 
     # ── Seuils durée/taille ──────────────────────────────────────────────
 
@@ -159,7 +179,7 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         if not vp:
             return
 
-        color, exploitable_value = self._get_video_status(str(vp))
+        color, exploitable_value, codestation = self._get_video_status(str(vp))
         ext_top, ext_bot = self._link_info(index)
         rect = option.rect
 
@@ -301,10 +321,12 @@ class VideoBarDelegate(QtWidgets.QStyledItemDelegate):
         else:
             info_w = 0
 
-        # Numéro de point + statut d'exploitabilité — plus grand, couleurs distinctes
+        # Numéro de point + code station + statut d'exploitabilité — plus grand, couleurs distinctes
         trailing = []
         if point_number:
             trailing.append((f"Pt {point_number}", QtGui.QColor("#f0a030")))
+            if codestation:
+                trailing.append((codestation, QtGui.QColor("#5ba8d4")))
         if exploitable_label:
             excl_color = self._EXPLOITABLE_TEXT_COLORS.get(exploitable_value.lower(), "#f0a030")
             trailing.append((exploitable_label, QtGui.QColor(excl_color)))
